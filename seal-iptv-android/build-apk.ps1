@@ -3,7 +3,7 @@
 # ..\dist\SealIPTV-FireTV-<version>.apk. Needs keystore.properties + keystore\ (never share them).
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Push-Location web; node build.js; node test-shims.js | Select-Object -Last 1; Pop-Location
+Push-Location web; node build.js; node test-shims.js | Select-Object -Last 1; node test-pieces.js | Select-Object -Last 1; Pop-Location
 $g = (Get-ChildItem "$env:USERPROFILE\.gradle\wrapper\dists\gradle-8.11.1-bin\*\gradle-8.11.1\bin\gradle.bat" | Select-Object -First 1).FullName
 & $g assembleRelease --no-daemon -q
 $ver = (Get-Content ..\seal-iptv\package.json -Raw | ConvertFrom-Json).version   # the same version as Windows

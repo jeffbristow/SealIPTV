@@ -77,6 +77,11 @@ dist/                      Seal-IPTV-Sync-Server-<ver>.zip (upload; never contai
                            meta). The Fire TV keyboard can't type into WebView fields, so OK on a
                            field opens NativeBridge.editText (an Android EditText dialog) and the
                            text comes back through window.__tvText in tvnav.js.
+                           Big data (a provider's movie list can be 50 MB+): never one Java String
+                           (OutOfMemory on a Fire TV Stick, 1.1.0). Answers > 512 KB go to a file and
+                           the page reads them in 1 MB base64 pieces (blobChunk); big saved files use
+                           fileSize/fileChunk/appendFile (shims/fs.js). Test: web/test-pieces.js.
+                           Crash logs: adb connect <TV IP>:5555, adb logcat -b crash -d.
                            Shared-code hooks for it: window.SEAL_TV / TV in app.js (wording, hidden
                            desktop-only options, tabindex on cards), vpn.js vpnActive option,
                            avsync.js asks SealNative.audioOutput().

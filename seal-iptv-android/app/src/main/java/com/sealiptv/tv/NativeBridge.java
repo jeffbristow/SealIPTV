@@ -6,7 +6,13 @@
  *              (the app's private storage, files/data/…)
  *   Keystore   encrypt / decrypt (playlist passwords, the sync vault key)
  *   web        request(id, json) -> done later: window.__nativeDone(id),
- *              then take(id) gives the answer (no CORS, any User-Agent)
+ *              then take(id) gives the answer (no CORS, any User-Agent).
+ *              Big answers (a provider's whole movie list can be 50 MB+) never
+ *              become one Java string — that ran a Fire TV Stick out of memory:
+ *              the body goes to a file and the page reads it with
+ *              blobChunk(blob, n) 1 MB at a time (base64), then blobDrop(blob).
+ *   big files  fileSize / fileChunk / appendFile: the same for saved files
+ *              (the playlist cache), read and written a piece at a time
  *   network    interfaces(), vpnActive() (Android's own "a VPN is on")
  *   sound      audioOutput() — the audio device's name, for audio sync
  *   apps       launchApp(package), openExternal(url, title, ua)
@@ -91,6 +97,9 @@ public class NativeBridge {
         this.activity = activity;
         this.web = web;
         this.root = new File(activity.getFilesDir(), "data");
+        File[] old = new File(activity.getCacheDir(), "blobs").listFiles();
+        if (old != null) for (File f : old) //noinspection ResultOfMethodCallIgnored
+            f.delete();
         //noinspection ResultOfMethodCallIgnored
         root.mkdirs();
         current = this;
@@ -151,6 +160,55 @@ public class NativeBridge {
 
     @JavascriptInterface public boolean exists(String path) {
         try { return file(path).exists(); } catch (Exception e) { return false; }
+    }
+
+    /* ---------------- big answers and files, a piece at a time ---------------- */
+    private static final int SMALL = 512 * 1024;
+    private static final int CHUNK = 1024 * 1024;
+
+    private File blobDir() {
+        File d = new File(activity.getCacheDir(), "blobs");
+        //noinspection ResultOfMethodCallIgnored
+        d.mkdirs();
+        return d;
+    }
+
+    private File blob(String name) {
+        if (name == null || !name.matches("b\\d+")) throw new SecurityException("bad blob");
+        return new File(blobDir(), name);
+    }
+
+    /** piece n (CHUNK bytes) of a file as base64; "" past the end; null if there's no such file */
+    private static String chunkOf(File f, int n) {
+        if (!f.isFile()) return null;
+        try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(f, "r")) {
+            long at = (long) n * CHUNK;
+            if (at >= r.length()) return "";
+            byte[] b = new byte[(int) Math.min(CHUNK, r.length() - at)];
+            r.seek(at);
+            r.readFully(b);
+            return Base64.encodeToString(b, Base64.NO_WRAP);
+        } catch (Exception e) { return null; }
+    }
+
+    @JavascriptInterface public String blobChunk(String name, int n) { return chunkOf(blob(name), n); }
+
+    @JavascriptInterface public void blobDrop(String name) { //noinspection ResultOfMethodCallIgnored
+        blob(name).delete(); }
+
+    /** bytes in a saved file, -1 when there's none */
+    @JavascriptInterface public long fileSize(String path) {
+        try { File f = file(path); return f.isFile() ? f.length() : -1; } catch (Exception e) { return -1; }
+    }
+
+    @JavascriptInterface public String fileChunk(String path, int n) {
+        try { return chunkOf(file(path), n); } catch (Exception e) { return null; }
+    }
+
+    /** adds text to the end of a file (big files are written as writeFile + appendFile …) */
+    @JavascriptInterface public boolean appendFile(String path, String text) {
+        try (OutputStream o = new FileOutputStream(file(path), true)) { o.write(text.getBytes(StandardCharsets.UTF_8)); return true; }
+        catch (Exception e) { return false; }
     }
 
     /* ---------------- Keystore (AES-GCM, key never leaves Android) ---------------- */
@@ -228,13 +286,30 @@ public class NativeBridge {
                 }
                 InputStream in = status >= 400 ? c.getErrorStream() : c.getInputStream();
                 String text = "";
+                String charset = charsetOf(c.getContentType()).name();
                 if (in != null) {
+                    // small answers come back as text; past SMALL the rest goes to a file (see the header)
                     ByteArrayOutputStream buf = new ByteArrayOutputStream();
                     byte[] b = new byte[65536];
                     int n;
-                    while ((n = in.read(b)) > 0) buf.write(b, 0, n);
-                    in.close();
-                    text = buf.toString(charsetOf(c.getContentType()).name());
+                    OutputStream spill = null;
+                    File blob = null;
+                    try {
+                        while ((n = in.read(b)) > 0) {
+                            if (spill == null && buf.size() + n > SMALL) {
+                                blob = new File(blobDir(), "b" + System.nanoTime());
+                                spill = new FileOutputStream(blob);
+                                buf.writeTo(spill);
+                                buf = null;
+                            }
+                            if (spill != null) spill.write(b, 0, n); else buf.write(b, 0, n);
+                        }
+                    } finally {
+                        in.close();
+                        if (spill != null) spill.close();
+                    }
+                    if (blob != null) { out.put("blob", blob.getName()); out.put("size", blob.length()); out.put("charset", charset); }
+                    else text = buf.toString(charset);
                 }
                 JSONObject h = new JSONObject();
                 for (Map.Entry<String, List<String>> e : c.getHeaderFields().entrySet()) if (e.getKey() != null && !e.getValue().isEmpty()) h.put(e.getKey(), e.getValue().get(0));
