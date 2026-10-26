@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="SealTheme" parent="android:Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/seal_bg</item>
+        <item name="android:colorAccent">@color/seal_green</item>
+    </style>
+    <style name="SealTheme.Player">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+    <color name="seal_bg">#121418</color>
+    <color name="seal_green">#3CCF91</color>
+</resources>

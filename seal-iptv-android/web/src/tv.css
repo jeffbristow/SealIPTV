@@ -1,0 +1,21 @@
+/* Seal IPTV for Fire TV — tv.css (on top of styles.css): seen from the sofa, used with a remote. */
+html.tv, html.tv body { overflow-x: hidden; max-width: 100vw; }   /* the page fits the TV: never sideways */
+html.tv body { font-size: 15px; }
+html.tv :focus { outline: none; }
+html.tv :focus-visible, html.tv .tvf:focus { outline: 3px solid var(--accent) !important; outline-offset: 2px; border-radius: 8px; }
+html.tv .nav:focus, html.tv .cat:focus, html.tv .channel:focus, html.tv .episode:focus, html.tv .season:focus { background: var(--bg-4); color: var(--text); outline: 3px solid var(--accent); outline-offset: -3px; }
+html.tv .card:focus { outline: none !important; }
+html.tv .card:focus .poster { outline: 3px solid var(--accent); outline-offset: 3px; transform: scale(1.04); transition: transform .12s; }
+html.tv .card:focus .title { color: var(--accent); }
+html.tv .stat:focus { border-color: var(--accent); outline: none !important; }
+html.tv .btn:focus, html.tv .icon-btn:focus, html.tv .star:focus, html.tv .seen-btn:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+html.tv .btn.primary:focus { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent); outline: none; }
+html.tv input:focus, html.tv select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+html.tv .ctx button:focus { background: var(--accent); color: var(--accent-ink); }
+/* no mouse here: things that only showed on hover stay visible */
+html.tv .star { color: var(--text-2); }
+html.tv ::-webkit-scrollbar { width: 6px; height: 6px; }
+html.tv .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+html.tv .tv-hide { display: none !important; }
+html.tv .hint-remote { display: block; }
+.hint-remote { display: none; }

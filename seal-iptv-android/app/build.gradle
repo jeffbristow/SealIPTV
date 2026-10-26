@@ -1,0 +1,63 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Signing key for installable builds: keystore.properties next to settings.gradle
+// (made by make-key.ps1; never share it — Fire TV only installs updates signed with the same key)
+def keyProps = new Properties()
+def keyFile = rootProject.file('keystore.properties')
+if (keyFile.exists()) keyProps.load(new FileInputStream(keyFile))
+
+// The version: the same as the Windows app (seal-iptv/package.json). versionCode goes up
+// only when the Android part changes (new bridge calls): releases with only web changes
+// reach TVs as the web zip (UpdateManager), with no new APK needed.
+def sealVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../seal-iptv/package.json')).version
+
+android {
+    namespace 'com.sealiptv.tv'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.sealiptv.tv'
+        minSdk 25          // Fire OS 6 (Fire TV Stick 2nd gen) and newer
+        targetSdk 34
+        versionCode 4
+        versionName sealVersion
+    }
+
+    signingConfigs {
+        release {
+            if (keyFile.exists()) {
+                storeFile rootProject.file(keyProps['storeFile'])
+                storePassword keyProps['storePassword']
+                keyAlias keyProps['keyAlias']
+                keyPassword keyProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures { buildConfig true }
+    lint { abortOnError false; checkReleaseBuilds false }
+}
+
+dependencies {
+    def media3 = '1.4.1'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+    implementation "androidx.media3:media3-ui:$media3"
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.annotation:annotation:1.9.1'
+}

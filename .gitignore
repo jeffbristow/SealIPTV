@@ -1,0 +1,19 @@
+# never in git: keys, server config, builds
+*.pem
+*.jks
+*.keystore
+keystore/
+keystore.properties
+seal-iptv-server/config.php
+seal-iptv-data/
+
+# builds and downloads
+node_modules/
+dist/
+seal-iptv-android/.gradle/
+seal-iptv-android/build/
+seal-iptv-android/app/build/
+seal-iptv-android/local.properties
+seal-iptv-android/app/src/main/assets/www/
+*.log
+.claude/

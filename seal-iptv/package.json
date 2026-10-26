@@ -1,0 +1,63 @@
+{
+  "name": "seal-iptv",
+  "productName": "Seal IPTV",
+  "version": "1.1.0",
+  "updateMinInstalled": "1.1.0",
+  "description": "IPTV player for Windows: Xtream Codes and M3U playlists, favorites, watched marks, resume, and a VPN guard",
+  "main": "src/main/bootstrap.js",
+  "author": "Jeff Bristow",
+  "homepage": "https://github.com/jeffbristow/SealIPTV",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/m3u-test.js && node test/xtream-test.js && node test/library-test.js && node test/vpn-test.js && node test/store-test.js && node test/language-test.js && node test/parental-test.js && node test/sync-test.js && node test/artwork-test.js && node test/update-test.js",
+    "fake-server": "node devtest/fake-xtream.js",
+    "icons": "node devtest/make-icons.js",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "hls.js": "^1.6.13",
+    "mpegts.js": "^1.8.0"
+  },
+  "devDependencies": {
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "resedit": "^2.0.3"
+  },
+  "build": {
+    "appId": "com.sealiptv.player",
+    "productName": "Seal IPTV",
+    "copyright": "Seal IPTV",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!node_modules/**/*.map",
+      "!node_modules/**/src/**",
+      "!node_modules/**/*.{mjs,mts,ts}",
+      "!node_modules/**/README*",
+      "!node_modules/hls.js/dist/{hls.js,hls-demo.js,hls.light*}",
+      "!node_modules/mpegts.js/{d.ts,types}/**",
+      "!node_modules/mpegts.js/{webpack.config.js,tsconfig.json}"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "publish": null,
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Seal IPTV",
+      "artifactName": "SealIPTV-Setup-${version}.${ext}"
+    },
+    "afterPack": "build/afterPack.js"
+  }
+}

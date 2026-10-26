@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- streams, posters and logos come from the provider: any http(s) source; scripts only from the app -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; media-src * blob: data:; connect-src *; worker-src 'self' blob:">
+<title>Seal IPTV</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand"><img src="logo.svg" alt=""><div><b>Seal IPTV</b><span id="profileName" class="muted small"></span></div></div>
+    <nav id="nav">
+      <button class="nav" data-view="home"><span class="ico">🏠</span>Home</button>
+      <button class="nav" data-view="live"><span class="ico">📺</span>Live TV<span class="count" id="nLive"></span></button>
+      <button class="nav" data-view="movies"><span class="ico">🎬</span>Movies<span class="count" id="nMovies"></span></button>
+      <button class="nav" data-view="series"><span class="ico">🎞️</span>Series<span class="count" id="nSeries"></span></button>
+      <button class="nav" data-view="favorites"><span class="ico">⭐</span>Favorites</button>
+      <div class="nav-sep"></div>
+      <button class="nav" data-view="settings"><span class="ico">⚙️</span>Settings</button>
+    </nav>
+    <div class="side-foot">
+      <button id="lockBtn" class="vpn-pill hidden" title="Locked categories are open. Click to lock them again."><span>🔓</span><span class="txt">Locked categories open · Lock</span></button>
+      <button id="vpnPill" class="vpn-pill hidden" title="VPN status — click to check again"><span class="dot"></span><span class="txt"></span></button>
+      <select id="profileSel" title="Playlist"></select>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <h1 id="viewTitle">Home</h1>
+      <div class="search"><input id="search" type="search" placeholder="Search" spellcheck="false"></div>
+      <button id="hiddenSearchBtn" class="btn ghost small hidden" title="Also search categories you've hidden (needs the parental PIN)">🙈 Include hidden</button>
+      <select id="sortSel" class="hidden" title="Sort">
+        <option value="">Playlist order</option>
+        <option value="added">Recently added</option>
+        <option value="az">A – Z</option>
+        <option value="rating">Rating</option>
+        <option value="year">Year</option>
+      </select>
+      <span class="spacer"></span>
+      <span id="refreshInfo" class="muted small"></span>
+      <button id="refreshBtn" class="btn ghost" title="Reload the playlist from the provider">⟳ Reload</button>
+    </header>
+    <section id="view"></section>
+  </main>
+</div>
+
+<!-- Player -->
+<div id="player" class="hidden">
+  <video id="video" playsinline></video>
+  <canvas id="pCanvas" class="hidden"></canvas>
+  <div id="pSubsBox" class="p-subs hidden"></div>
+  <div class="p-osd hidden" id="pOsd"></div>
+  <div class="p-sync hidden" id="pSync">
+    <div class="row"><b>Audio sync</b><span class="spacer"></span><span class="small muted" id="psDevice"></span></div>
+    <input type="range" id="psSlider" min="-500" max="1000" step="10" value="0">
+    <div class="row small muted"><span>Sound early</span><span class="spacer"></span><span>Sound late (Bluetooth)</span></div>
+    <div class="row gap" style="margin-top:8px"><button class="p-btn" id="psMinus">− 10</button><b id="psValue" class="sync-value"></b><button class="p-btn" id="psPlus">+ 10</button><span class="spacer"></span><button class="p-btn" id="psZero">Reset</button><button class="p-btn" id="psTest">Sync test…</button></div>
+    <div class="small" id="psDesc" style="margin-top:8px"></div>
+    <div class="small faint" style="margin-top:4px">Keys: [ and ] change it by 10 ms (with Shift: 50 ms). Saved for this audio device.</div>
+  </div>
+  <div class="p-msg hidden" id="pMsg"></div>
+  <div class="p-next hidden" id="pNext"></div>
+  <div class="p-top">
+    <button class="p-btn" id="pBack" title="Back (Esc)">←</button>
+    <div style="min-width:0">
+      <div class="t" id="pTitle"></div>
+      <div class="s" id="pSub"></div>
+    </div>
+    <span class="spacer"></span>
+    <span class="live-badge hidden" id="pLive">LIVE</span>
+  </div>
+  <div class="p-bottom">
+    <input type="range" class="p-seek" id="pSeek" min="0" max="1000" value="0">
+    <div class="p-ctrl">
+      <button class="p-btn hidden" id="pPrevCh" title="Previous channel (Page Up)">⏮</button>
+      <button class="p-btn" id="pPlay" title="Play / pause (Space)">⏸</button>
+      <button class="p-btn hidden" id="pNextCh" title="Next channel (Page Down)">⏭</button>
+      <button class="p-btn" id="pBack10" title="Back 10 seconds (←)">↺ 10</button>
+      <button class="p-btn" id="pFwd30" title="Forward 30 seconds (→)">30 ↻</button>
+      <span class="p-time" id="pTime">0:00</span>
+      <span class="spacer"></span>
+      <button class="p-btn hidden" id="pNextEp" title="Next episode (N)">Next episode ⏭</button>
+      <select id="pAudio" class="hidden" title="Audio"></select>
+      <select id="pSubs" class="hidden" title="Subtitles"></select>
+      <button class="p-btn" id="pSyncBtn" title="Audio sync — for Bluetooth sound that's late ([ and ])">⏱ Sync</button>
+      <button class="p-btn" id="pMute" title="Mute (M)">🔊</button>
+      <input type="range" class="p-vol" id="pVol" min="0" max="100" value="100">
+      <button class="p-btn" id="pVlc" title="Open in VLC">VLC</button>
+      <button class="p-btn" id="pFull" title="Full screen (F)">⛶</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic dialog -->
+<div id="dlgModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="dlgTitle"></h3><button class="icon-btn" id="dlgX">✕</button></div>
+    <div id="dlgBody"></div>
+    <div class="modal-foot"><button id="dlgExtra" class="btn ghost hidden"></button><span class="spacer"></span><button id="dlgCancel" class="btn ghost">Cancel</button><button id="dlgOk" class="btn primary">OK</button></div>
+  </div>
+</div>
+<div id="ctxMenu" class="ctx hidden"></div>
+<div id="busy" class="busy hidden"><div class="spinner"></div><div id="busyText"></div></div>
+<div id="toasts"></div>
+
+<script src="../../node_modules/hls.js/dist/hls.min.js"></script>
+<script src="../../node_modules/mpegts.js/dist/mpegts.js"></script>
+<script src="app.js"></script>
+<script src="avsync.js"></script>
+<script src="player.js"></script>
+</body>
+</html>
