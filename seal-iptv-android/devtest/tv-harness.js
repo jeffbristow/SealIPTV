@@ -165,6 +165,39 @@ app.whenReady().then(async () => {
     await js("window.api.invoke = window.__realInvoke; document.querySelector('#updBar') && document.querySelector('#updBar').remove(); Upd.info = null; 0");
     log('real update check on an APK without the update bridge', await js("call('update:check').then(() => 'no error?', e => e.message)"));
 
+    // my own category: made on the TV, a movie put in it with the remote (☰ Menu), synced
+    await js("call('lists:save', null, { name: 'Kids', icon: '🧸' }).then(id => { window.__kid = id; return loadLists(); }).then(() => go('movies'))");
+    await sleep(1500);
+    await js("document.querySelector('#grid .card').focus()");
+    await js('window.__tvMenu()');
+    await sleep(300);
+    log('☰ Menu on a poster', await js("[...document.querySelectorAll('#ctxMenu button')].map(b => b.textContent).join(' | ')"));
+    await js('window.__tvOk()');
+    await sleep(600);
+    await shot('t9-pick-category');
+    await js("document.querySelector('.list-pick input').focus()");
+    await js('window.__tvOk()');
+    await js("document.querySelector('#dlgOk').focus()");
+    await js('window.__tvOk()');
+    await sleep(600);
+    await js("go('list', __kid)");
+    await sleep(800);
+    await shot('t10-my-category');
+    log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
+    log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
+
+    // screensaver: any remote key only ends it
+    await js('Saver.start()');
+    await sleep(1200);
+    await shot('t11-screensaver');
+    log('screensaver up', await js('String(Saver.showing())'));
+    await key('Down');
+    log('Down while up ->', await js('JSON.stringify({ showing: Saver.showing(), view: state.view })'));
+    await js('Saver.start()');
+    log('OK while up -> handled', await js('window.__tvOk()'));
+    await js('Saver.start()');
+    log('Back while up ->', await js('JSON.stringify({ handled: window.__tvBack(), view: state.view, showing: Saver.showing() })'));
+
     // Back on Home with nothing to go back to -> Android may leave
     await js("state.history = []; go('home', null, { push: false })");
     await sleep(500);

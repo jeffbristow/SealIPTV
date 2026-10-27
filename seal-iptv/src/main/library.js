@@ -13,6 +13,9 @@
  *   2. Favorites
  *   3. Watched
  *   4. Resume points
+ *   5. Category choices
+ *   6. My categories (the user's own: Kids, Date night …)
+ *   7. Sync
  * ===================================================================== */
 const fs = require('fs');
 const path = require('path');
@@ -51,7 +54,7 @@ class Library {
     let d = this.cache.get(pid);
     if (d) return d;
     try { d = JSON.parse(fs.readFileSync(this._file(pid), 'utf8')); } catch { d = {}; }
-    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {} };
+    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {}, lists: d.lists || {}, listed: d.listed || {} };
     this.cache.set(pid, d);
     return d;
   }
@@ -254,11 +257,73 @@ class Library {
   }
 
   /* =================================================================
-   * 6. SYNC (sync.js)
+   * 6. MY CATEGORIES — the user's own, next to Movies / Series in the menu
+   *    lists:  "<list id>" -> { name, icon, at }
+   *    listed: "<list id>/<key>" -> meta + at   (key = live:1, movie:9, series:4)
    * ================================================================= */
-  /** A record from another PC: type fav | seen | pos | cat; d null = removed. */
+  /** [{ id, name, icon, count }], in the order they were made */
+  lists(pid) {
+    const d = this._get(pid), n = {};
+    for (const k of Object.keys(d.listed)) { const lid = k.slice(0, k.indexOf('/')); n[lid] = (n[lid] || 0) + 1; }
+    return Object.entries(d.lists).sort((a, b) => (a[1].at || 0) - (b[1].at || 0))
+      .map(([id, l]) => ({ id, name: l.name, icon: l.icon || '', count: n[id] || 0 }));
+  }
+
+  /** a new category (id null) or a new name / icon for one; returns its id */
+  saveList(pid, id, { name, icon } = {}) {
+    const d = this._get(pid);
+    name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!name) throw new Error('Give the category a name.');
+    if (id && !d.lists[id]) throw new Error('That category is gone (removed on another device?).');
+    if (!id) do id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); while (d.lists[id]);
+    const l = d.lists[id] = { ...(d.lists[id] || {}), name, icon: String(icon || '').slice(0, 8), at: (d.lists[id] && d.lists[id].at) || this._now() };
+    this._changed(pid);
+    this._emit('list', pid, id, l);
+    return id;
+  }
+
+  /** the category and everything in it */
+  removeList(pid, id) {
+    const d = this._get(pid);
+    for (const k of Object.keys(d.listed)) if (k.startsWith(id + '/')) { delete d.listed[k]; this._emit('listed', pid, k, null); }
+    delete d.lists[id];
+    this._changed(pid);
+    this._emit('list', pid, id, null);
+  }
+
+  /** put a channel / movie / series in a category, or take it out */
+  setListed(pid, lid, key, on, meta) {
+    const d = this._get(pid);
+    if (!d.lists[lid]) throw new Error('That category is gone (removed on another device?).');
+    const k = lid + '/' + key;
+    if (on) d.listed[k] = { ...cleanMeta(meta), at: this._now() };
+    else if (d.listed[k]) delete d.listed[k];
+    else return false;
+    this._changed(pid);
+    this._emit('listed', pid, k, d.listed[k]);
+    return !!on;
+  }
+
+  /** what's in a category: [{ key, kind, id, name, image … }], A–Z */
+  listItems(pid, lid) {
+    const d = this._get(pid);
+    return Object.entries(d.listed).filter(([k]) => k.startsWith(lid + '/'))
+      .map(([k, m]) => { const key = k.slice(lid.length + 1); return { key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }; })
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+  }
+
+  /** the ids of the categories a key is in */
+  listsOf(pid, key) {
+    const d = this._get(pid);
+    return Object.keys(d.lists).filter(lid => d.listed[lid + '/' + key]);
+  }
+
+  /* =================================================================
+   * 7. SYNC (sync.js)
+   * ================================================================= */
+  /** A record from another PC: type fav | seen | pos | cat | list | listed; d null = removed. */
   applyRecord(type, pid, key, d) {
-    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats' }[type];
+    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats', list: 'lists', listed: 'listed' }[type];
     if (!map || !pid || !key) return;
     const L = this._get(pid);
     if (d && typeof d === 'object') {
@@ -266,6 +331,8 @@ class Library {
       if (type === 'seen') delete L.progress[key];
     } else {
       delete L[map][key];
+      // a category removed: what was in it goes too (those removals come as records as well)
+      if (type === 'list') for (const k of Object.keys(L.listed)) if (k.startsWith(key + '/')) delete L.listed[k];
     }
     this._changed(pid);
   }
@@ -273,7 +340,7 @@ class Library {
   /** The same playlist under two ids (set up on two PCs before syncing): move one library into the other. */
   mergeInto(from, to) {
     const a = this._get(from), b = this._get(to);
-    for (const map of ['favorites', 'watched', 'progress']) {
+    for (const map of ['favorites', 'watched', 'progress', 'lists', 'listed']) {
       for (const [k, v] of Object.entries(a[map])) if (!b[map][k] || (v.at || 0) > (b[map][k].at || 0)) b[map][k] = v;
     }
     for (const [k, v] of Object.entries(a.cats)) if (!b.cats[k]) b.cats[k] = v;

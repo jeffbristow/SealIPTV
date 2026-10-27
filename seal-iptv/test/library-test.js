@@ -70,6 +70,35 @@ try {
   lib.applyRecord('fav', S, 'movie:6', { name: 'From the other PC', at: 1 });
   ok(ids('custom') === '1,2,3,4,5,6', 'a synced favorite without a place goes at the end');
   ok(lib.favorites(S, 'live', 'custom').length === 0 && ids('added').startsWith('5,'), 'other kinds and sorts unaffected');
+
+  // my own categories (Kids …)
+  const K = 'p5';
+  sent.length = 0;
+  assert.throws(() => lib.saveList(K, null, { name: '   ' }), /name/);
+  const kids = lib.saveList(K, null, { name: '  Kids  ', icon: '🧸' });
+  const xmas = lib.saveList(K, null, { name: 'Christmas' });
+  ok(lib.lists(K).map(l => l.name).join() === 'Kids,Christmas' && lib.lists(K)[0].icon === '🧸', 'categories of my own, in the order made');
+  lib.setListed(K, kids, 'series:4', true, { name: 'Bluey', image: 'http://x/b.jpg' });
+  lib.setListed(K, kids, 'movie:9', true, { name: 'Aladdin' });
+  lib.setListed(K, kids, 'live:1', true, { name: 'Cartoon Channel' });
+  lib.setListed(K, xmas, 'movie:9', true, { name: 'Aladdin' });
+  ok(lib.listItems(K, kids).map(i => i.key).join() === 'movie:9,series:4,live:1' && lib.listItems(K, kids)[1].image === 'http://x/b.jpg', 'channels, movies and series in it, A–Z');
+  ok(lib.listsOf(K, 'movie:9').sort().join() === [kids, xmas].sort().join() && lib.lists(K)[0].count === 3, 'one title in two categories');
+  ok(sent.some(([n, d]) => n === `list:${K}:${kids}` && d.name === 'Kids') && sent.some(([n]) => n === `listed:${K}:${kids}/series:4`), 'synced: the category and what\'s in it');
+  lib.saveList(K, kids, { name: 'Kids & family', icon: '🎈' });
+  ok(lib.lists(K)[0].name === 'Kids & family' && lib.lists(K)[0].id === kids, 'renamed, same category');
+  lib.setListed(K, kids, 'movie:9', false);
+  ok(lib.listItems(K, kids).length === 2 && lib.listItems(K, xmas).length === 1, 'taken out of one, still in the other');
+  sent.length = 0;
+  lib.removeList(K, kids);
+  ok(lib.lists(K).length === 1 && lib.listsOf(K, 'series:4').length === 0, 'a deleted category takes its titles with it');
+  ok(sent.filter(([n, d]) => d === null && n.startsWith(`listed:${K}:${kids}/`)).length === 2 && sent.some(([n, d]) => n === `list:${K}:${kids}` && d === null), '… and every device is told');
+  assert.throws(() => lib.setListed(K, kids, 'movie:1', true, {}), /gone/);
+  lib.applyRecord('list', K, 'other1', { name: 'From the TV', at: Date.now() });
+  lib.applyRecord('listed', K, 'other1/movie:7', { name: 'Up', at: 1 });
+  ok(lib.lists(K).some(l => l.name === 'From the TV' && l.count === 1), 'a category made on another device');
+  lib.applyRecord('list', K, 'other1', null);
+  ok(!lib.lists(K).some(l => l.id === 'other1') && !Object.keys(lib._get(K).listed).some(k => k.startsWith('other1/')), 'deleted on another device: gone here, with its titles');
   lib.onChange = null;
   lib.flush();
 } finally {

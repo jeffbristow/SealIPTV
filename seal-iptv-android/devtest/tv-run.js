@@ -35,7 +35,7 @@ fs.writeFileSync(path.join(web, 'config.php'), `<?php if (!defined('SEALIPTV')) 
     const sync = new SyncService({ dataDir: dir, store, library, appVersion: 'test' });
     const r = await sync.connect({ server: 'http://127.0.0.1:8798/', username: 'jeff', passphrase: 'my long vault passphrase', deviceName: 'PC' });
     const p = store.listProfiles()[0];
-    console.log('Windows read the TV\'s vault', JSON.stringify({ items: r.items, playlist: p && p.name, login: p && store.getProfile(p.id).password === 'demo', watched: p && library.flags(p.id, ['movie:2001'])['movie:2001'].watched, avSync: store.getSettings().playback.avSync }));
+    console.log('Windows read the TV\'s vault', JSON.stringify({ items: r.items, playlist: p && p.name, login: p && store.getProfile(p.id).password === 'demo', watched: p && library.flags(p.id, ['movie:2001'])['movie:2001'].watched, avSync: store.getSettings().playback.avSync, lists: p && library.lists(p.id).map(l => l.name + ':' + l.count) }));
   } catch (e) { console.log('RUN ERROR', e.message); }
   finally { php.kill(); tv.kill(); setTimeout(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* busy */ } }, 400); }
 })();

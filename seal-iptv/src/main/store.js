@@ -65,12 +65,15 @@ const DEFAULTS = {
   updates: {
     check: true             // look for a new version on GitHub when the app starts (updater.js)
   },
+  // the logo bouncing around after this long with nothing playing (per device: not synced)
+  screensaver: { on: true, minutes: 5 },
   // how Favorites are listed, per kind: 'added' (newest first) | 'name' (A–Z) | 'custom'
   favorites: { live: 'added', movie: 'added', series: 'added' },
   // Collections (franchises.js): 'release' | 'story' order
   collections: { order: 'release' }
 };
 const FAV_SORTS = ['added', 'name', 'custom'];
+const SAVER_MINUTES = [2, 5, 10, 15, 30, 60];
 
 const LIVE_FORMATS = ['auto', 'm3u8', 'ts'];
 /* Settings that sync between PCs (sync.js), by group. The rest is per PC
@@ -260,6 +263,10 @@ class Store {
       if (typeof a.tmdbKey === 'string') s.artwork.tmdbKey = a.tmdbKey.replace(/\s+/g, '').slice(0, 400);
     }
     if (patch.updates && typeof patch.updates.check === 'boolean') s.updates.check = patch.updates.check;
+    if (patch.screensaver) {
+      if (typeof patch.screensaver.on === 'boolean') s.screensaver.on = patch.screensaver.on;
+      if (SAVER_MINUTES.includes(Number(patch.screensaver.minutes))) s.screensaver.minutes = Number(patch.screensaver.minutes);
+    }
     if (patch.collections && ['release', 'story'].includes(patch.collections.order)) s.collections.order = patch.collections.order;
     if (patch.favorites) for (const k of ['live', 'movie', 'series']) if (FAV_SORTS.includes(patch.favorites[k])) s.favorites[k] = patch.favorites[k];
     // patch.parental is ignored on purpose: that goes through parental.js (needs the PIN)

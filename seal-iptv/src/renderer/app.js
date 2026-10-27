@@ -230,13 +230,15 @@ const state = {
   refreshing: false,
   parental: { hasPin: false, unlocked: false, autoAdult: true, unlockMinutes: 0 },
   sync: { connected: false },
+  lists: [],          // my own categories (lists:all): [{ id, name, icon, count }]
+  listEdit: '',       // the category whose titles are being removed
   hostname: ''
 };
 const profile = () => state.profiles.find(p => p.id === state.settings.activeProfile) || null;
 
 async function start() {
   const r = await call('app:init');
-  Object.assign(state, { version: r.version, settings: r.settings, profiles: r.profiles, summary: r.catalog, vpn: r.vpn, dataDir: r.dataDir, parental: r.parental, sync: r.sync, hostname: r.hostname });
+  Object.assign(state, { version: r.version, settings: r.settings, profiles: r.profiles, summary: r.catalog, vpn: r.vpn, dataDir: r.dataDir, parental: r.parental, sync: r.sync, lists: r.lists || [], hostname: r.hostname });
   window.api.on('sync:applied', types => refreshAll(types).catch(() => {}));
   window.api.on('sync:status', s => { state.sync = s; if (state.view === 'settings') drawSyncPanel(); });
   updateLockBtn();
@@ -244,6 +246,7 @@ async function start() {
   window.api.on('catalog:step', t => { if (state.refreshing) { busyText(t); } });
   wireChrome();
   renderProfiles();
+  renderMyNav();
   updateVpn();
   updateCounts();
   go('home', null, { push: false });
@@ -274,6 +277,7 @@ function go(view, arg = null, { push = true } = {}) {
   if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg });
   if (state.history.length > 50) state.history.shift();
   if (view !== state.view) state.favArrange = '';
+  if (view !== state.view || arg !== state.arg) state.listEdit = '';
   state.view = view;
   state.arg = arg;
   render();
@@ -292,8 +296,8 @@ function sortDefaultLabel() {
 
 function render() {
   const v = state.view;
-  $$('.nav').forEach(b => b.classList.toggle('active', b.dataset.view === v || (v === 'movie' && b.dataset.view === 'movies') || (v === 'show' && b.dataset.view === 'series') || (v === 'collection' && b.dataset.view === 'collections')));
-  $('#viewTitle').textContent = TITLES[v] || '';
+  $$('.nav').forEach(b => b.classList.toggle('active', (b.dataset.view === v && (v !== 'list' || b.dataset.arg === state.arg)) || (v === 'movie' && b.dataset.view === 'movies') || (v === 'show' && b.dataset.view === 'series') || (v === 'collection' && b.dataset.view === 'collections')));
+  $('#viewTitle').textContent = v === 'list' ? ((listOf(state.arg) || {}).name || '') : TITLES[v] || '';
   const browse = ['live', 'movies', 'series'].includes(v);
   show($('#sortSel'), v === 'movies' || v === 'series');
   if (browse) $('#sortSel').value = state.sec[v].sort || '';
@@ -307,7 +311,7 @@ function render() {
   view.innerHTML = '';
   view.scrollTop = 0;
   if (!profile() && v !== 'settings') return renderWelcome(view);
-  ({ home: renderHome, live: renderLive, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
+  ({ home: renderHome, live: renderLive, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
   if (TV && window.tvFocusFirst) window.tvFocusFirst();
 }
 
@@ -377,7 +381,8 @@ async function useProfile(id) {
     state.summary = r.summary;
     state.sec = { live: { cat: '', sort: '' }, movies: { cat: '', sort: '' }, series: { cat: '', sort: '' } };
     state.history = [];
-    renderProfiles(); updateCounts();
+    state.lists = await call('lists:all').catch(() => []);
+    renderProfiles(); renderMyNav(); updateCounts();
     go('home', null, { push: false });
     if (r.stale) autoRefresh();
   } catch (e) { fail(e); }
@@ -527,8 +532,8 @@ async function toggleHiddenSearch() {
 /** After another PC changed something: reload what the window shows. */
 async function refreshAll(types = []) {
   const r = await call('app:init');
-  Object.assign(state, { settings: r.settings, profiles: r.profiles, summary: r.catalog, parental: r.parental, sync: r.sync });
-  renderProfiles(); updateCounts(); updateLockBtn(); updateVpn();
+  Object.assign(state, { settings: r.settings, profiles: r.profiles, summary: r.catalog, parental: r.parental, sync: r.sync, lists: r.lists || [] });
+  renderProfiles(); renderMyNav(); updateCounts(); updateLockBtn(); updateVpn();
   // a playlist that came from another PC: download its channels here
   if (profile() && state.summary && !state.summary.fetchedAt && !state.refreshing) autoRefresh();
   if (!$('#player').classList.contains('hidden') || !$('#dlgModal').classList.contains('hidden')) return;
@@ -538,7 +543,7 @@ async function refreshAll(types = []) {
   }
   // resume points alone don't change the lists; everything else (or pages that show them) is drawn again
   const onlyPos = types.length && types.every(t => t === 'pos');
-  if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'collection'].includes(state.view)) render();
+  if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'collection', 'list'].includes(state.view)) render();
 }
 // the PIN may run out (Settings → "Stay unlocked"): check now and then
 setInterval(async () => {
@@ -684,8 +689,10 @@ async function renderHome(view) {
     call('lib:continue'), call('lib:favorites', 'live'), call('lib:favorites', 'movie'), call('lib:favorites', 'series'),
     call('catalog:recent', 'movies'), call('catalog:recent', 'series')
   ].map(p => p.catch(() => [])));
+  const mine = await Promise.all(state.lists.map(l => call('lists:items', l.id).catch(() => [])));
   if (!home.isConnected) return;
   if (cont.length) home.appendChild(shelf('Continue watching', cont, continueCard, { wide: true }));
+  state.lists.forEach((l, i) => { if (mine[i].length) home.appendChild(shelf(`${l.icon || LIST_ICONS[0]} ${l.name}`, mine[i].slice(0, 30), listCard, { more: () => go('list', l.id) })); });
   if (favLive.length) home.appendChild(shelf('Favorite channels', favLive.slice(0, 30), f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }), { more: () => { state.sec.live.cat = '*fav'; go('live'); } }));
   if (favMovies.length) home.appendChild(shelf('Favorite movies', favMovies.slice(0, 30), f => posterCard({ kind: 'movie', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.movies.cat = '*fav'; go('movies'); } }));
   if (favSeries.length) home.appendChild(shelf('Favorite series', favSeries.slice(0, 30), f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.series.cat = '*fav'; go('series'); } }));
@@ -776,6 +783,7 @@ function channelRow(it, i) {
     e.target.textContent = it.fav ? '★' : '☆';
     if (state.live.sel === it) selectChannel(it, el);
   };
+  el.oncontextmenu = e => { e.preventDefault(); cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo, cat: it.cat }); };
   return el;
 }
 
@@ -794,10 +802,11 @@ async function selectChannel(it, el) {
   const i = state.live.items.indexOf(it);
   box.innerHTML = `<div class="big-logo">${pic(it.logo, it.name)}</div>
     <h2 style="font-size:18px">${esc(it.name)}</h2><p class="muted small">${esc(it.catName || '')}</p>
-    <div class="actions"><button class="btn primary" id="liPlay">▶ Watch</button><button class="btn" id="liFav">${it.fav ? '★ Favorite' : '☆ Favorite'}</button><button class="btn ghost" id="liVlc" title="${OTHER_PLAYER}">${TV ? 'Other app' : 'VLC'}</button></div>
+    <div class="actions"><button class="btn primary" id="liPlay">▶ Watch</button><button class="btn" id="liFav">${it.fav ? '★ Favorite' : '☆ Favorite'}</button><button class="btn" id="liList" title="Put it in one of your own categories">＋ Category</button><button class="btn ghost" id="liVlc" title="${OTHER_PLAYER}">${TV ? 'Other app' : 'VLC'}</button></div>
     <div id="liEpg"><p class="muted small">Loading what's on…</p></div>`;
   $('#liPlay').onclick = () => playChannel(i);
   $('#liVlc').onclick = () => openExternal({ kind: 'live', id: it.id, title: it.name });
+  $('#liList').onclick = () => pickLists('live:' + it.id, { name: it.name, image: it.logo, cat: it.cat });
   $('#liFav').onclick = async () => {
     await toggleFav(it, 'live', { name: it.name, image: it.logo, cat: it.cat });
     $('#liFav').textContent = it.fav ? '★ Favorite' : '☆ Favorite';
@@ -819,6 +828,7 @@ function channelCard(it) {
   const img = el.querySelector('img');
   if (img) img.style.objectFit = 'contain';
   el.onclick = () => Player.play({ kind: 'live', id: it.id, name: it.name, image: it.logo });
+  el.oncontextmenu = e => { e.preventDefault(); cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo }); };
   return el;
 }
 
@@ -870,6 +880,7 @@ function posterCard(it, opts = {}) {
       ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
     <div class="title" title="${esc(opts.title || it.name)}">${esc(opts.title || it.name)}</div><div class="sub">${esc(sub)}</div></div>`);
   el.onclick = opts.onClick || (() => go(it.kind === 'series' ? 'show' : 'movie', it.id));
+  if (it.kind === 'movie' || it.kind === 'series') el.oncontextmenu = e => { e.preventDefault(); cardMenu(e, it.kind, { id: it.id, name: it.name, image: it.poster || it.image, cat: it.cat }); };
   return el;
 }
 
@@ -924,6 +935,7 @@ async function renderMovie(view) {
       add('▶ Play', () => Player.play(req), 'btn primary big');
     }
     add(m.fav ? '★ Favorite' : '☆ Favorite', async () => { await toggleFav(m, 'movie', { name, image: poster, cat: m.cat }); draw(); });
+    add('＋ Category', () => pickLists('movie:' + m.id, { name, image: poster, cat: m.cat }));
     add(m.watched ? '✓ Watched' : '○ Mark as watched', async () => {
       try { m.watched = await call('lib:watched', 'movie:' + m.id, !m.watched, { name, image: poster }); if (m.watched) m.pos = 0; draw(); }
       catch (e) { fail(e); }
@@ -1001,6 +1013,7 @@ async function renderShow(view) {
     if (nx) add(`▶ ${nx.pos ? 'Resume' : queue.indexOf(nx) === 0 ? 'Play' : 'Continue'} ${epLabel(nx.season, nx.episode)}`, () => Player.play(nx, { queue, start: nx.pos || 0 }), 'btn primary big');
     else if (queue.length) add('↺ Watch again from the start', () => Player.play(queue[0], { queue, start: 0 }), 'btn big');
     add(d.fav ? '★ Favorite' : '☆ Favorite', async () => { await toggleFav(d, 'series', { name, image: poster, cat: d.cat }); drawActions(); });
+    add('＋ Category', () => pickLists('series:' + d.id, { name, image: poster, cat: d.cat }));
     const inSeason = queue.filter(q => q.season === season);
     if (inSeason.length) {
       const allSeen = inSeason.every(q => q.watched);
@@ -1226,6 +1239,165 @@ async function renderCollection(view, focus) {
   if (f) f.focus();
 }
 
+/* ---- My categories (main/library.js): the user's own — Kids, Date night … — in the menu, synced ---- */
+const LIST_ICONS = ['🗂️', '🧸', '🎈', '❤️', '🍿', '🏆', '🎄', '🎃', '🎵', '🌙', '🔥', '⭐'];
+const listOf = id => state.lists.find(l => l.id === id) || null;
+
+/** The sidebar: one entry per category, then "＋ New category". */
+function renderMyNav() {
+  const box = $('#myNav');
+  box.innerHTML = '';
+  for (const l of state.lists) {
+    const b = h(`<button class="nav" data-view="list" data-arg="${esc(l.id)}"><span class="ico">${esc(l.icon || LIST_ICONS[0])}</span><span class="nav-name">${esc(l.name)}</span></button>`);
+    b.onclick = () => { state.q = ''; $('#search').value = ''; go('list', l.id); };
+    b.oncontextmenu = e => { e.preventDefault(); listMenu(e, l); };
+    box.appendChild(b);
+  }
+  if (profile()) {
+    const add = h('<button class="nav nav-add" title="Make a category of your own and put any channels, movies and series in it"><span class="ico">＋</span>New category</button>');
+    add.onclick = () => editList(null);
+    box.appendChild(add);
+  }
+  $$('#myNav .nav').forEach(b => b.classList.toggle('active', state.view === 'list' && b.dataset.arg === state.arg));
+}
+
+async function loadLists() {
+  state.lists = await call('lists:all').catch(() => state.lists);
+  renderMyNav();
+}
+
+/** A new category (l null) or a new name / icon for one. Resolves the id, or null. */
+async function editList(l, { open = true } = {}) {
+  let icon = (l && l.icon) || LIST_ICONS[0];
+  const id = await dialog({
+    title: l ? 'Rename category' : 'New category',
+    html: `${l ? '' : '<p class="muted small">Your own category in the menu, next to Movies and Series. Put any channels, movies and series in it: Kids, Date night, Christmas … It syncs to your other devices.</p>'}
+      <label for="lName">Name</label><input type="text" id="lName" maxlength="40" value="${esc(l ? l.name : '')}" placeholder="Kids" spellcheck="false">
+      <label style="margin-top:10px">Icon</label><div class="icon-pick" id="lIcons">${LIST_ICONS.map(i => `<button type="button" data-i="${i}" class="${i === icon ? 'active' : ''}">${i}</button>`).join('')}</div>
+      <div class="error" id="lErr"></div>`,
+    okText: l ? 'Save' : 'Create',
+    onOpen: () => $$('#lIcons button').forEach(b => b.onclick = () => { icon = b.dataset.i; $$('#lIcons button').forEach(x => x.classList.toggle('active', x === b)); }),
+    onOk: async () => {
+      try { return await call('lists:save', l ? l.id : null, { name: $('#lName').value, icon }); }
+      catch (e) { $('#lErr').textContent = e.message; return false; }
+    }
+  });
+  if (!id) return null;
+  await loadLists();
+  if (!l && open) go('list', id);
+  else if (state.view === 'list' || state.view === 'home') render();
+  return id;
+}
+
+async function removeList(l) {
+  if (!(await confirmBox('Delete category', `Delete "${l.name}"? The channels, movies and series in it stay in your playlist; only the category goes, on all your devices.`, 'Delete'))) return;
+  try { await call('lists:remove', l.id); } catch (e) { return fail(e); }
+  await loadLists();
+  toast(`"${l.name}" is deleted.`);
+  if (state.view === 'list' && state.arg === l.id) { state.history = state.history.filter(x => !(x.view === 'list' && x.arg === l.id)); go('home', null, { push: false }); }
+  else if (state.view === 'home') render();
+}
+
+function listMenu(ev, l) {
+  showMenu(ev, [{ label: '✏️ Rename…', run: () => editList(l) }, { label: '🗑️ Delete category…', run: () => removeList(l) }]);
+}
+
+/** "＋ Category": tick the categories a channel / movie / series is in (key live:1, movie:9, series:4). */
+async function pickLists(key, meta) {
+  let had;
+  try { had = new Set(await call('lists:of', key)); } catch (e) { return fail(e); }
+  const r = await dialog({
+    title: 'Categories',
+    html: `<p class="muted small">Put <b>${esc(meta.name)}</b> in your own categories:</p>
+      <div class="list-pick">${state.lists.map(l => `<label class="check"><input type="checkbox" data-l="${esc(l.id)}" ${had.has(l.id) ? 'checked' : ''}> ${esc(l.icon || LIST_ICONS[0])} ${esc(l.name)}</label>`).join('') || '<p class="muted small">You have no categories of your own yet.</p>'}</div>
+      <label for="lNew" style="margin-top:12px">${state.lists.length ? 'Or a new category' : 'A new category'}</label><input type="text" id="lNew" maxlength="40" placeholder="Kids" spellcheck="false">
+      <div class="error" id="lErr"></div>`,
+    okText: 'Save',
+    onOk: async () => {
+      try {
+        const want = new Map($$('.list-pick input').map(c => [c.dataset.l, c.checked]));
+        const name = $('#lNew').value.trim();
+        if (name) want.set(await call('lists:save', null, { name, icon: LIST_ICONS[0] }), true);
+        const added = [], removed = [];
+        for (const [lid, on] of want) {
+          if (on === had.has(lid)) continue;
+          await call('lists:set', lid, key, on, meta);
+          (on ? added : removed).push(lid);
+        }
+        return { added, removed, made: !!name };
+      } catch (e) { $('#lErr').textContent = e.message; return false; }
+    }
+  });
+  if (!r) return;
+  if (r.made) await loadLists(); else state.lists = await call('lists:all').catch(() => state.lists);
+  const names = ids => ids.map(id => `"${(listOf(id) || {}).name}"`).join(', ');
+  if (r.added.length) toast(`Added "${meta.name}" to ${names(r.added)}.`);
+  else if (r.removed.length) toast(`Took "${meta.name}" out of ${names(r.removed)}.`);
+  if (state.view === 'list' || state.view === 'home') render();
+}
+
+/** Right-click (☰ Menu on Fire TV) on a channel, movie or series. */
+function cardMenu(ev, kind, it) {
+  const key = `${kind}:${it.id}`, meta = { name: it.name, image: it.image, cat: it.cat };
+  const items = [{ label: '＋ Add to a category…', run: () => pickLists(key, meta) }];
+  const l = state.view === 'list' && listOf(state.arg);
+  if (l) items.push({ label: `✕ Take out of "${l.name}"`, run: async () => {
+    try { await call('lists:set', l.id, key, false); } catch (e) { return fail(e); }
+    toast(`Took "${it.name}" out of "${l.name}".`);
+    render();
+  } });
+  showMenu(ev, items);
+}
+
+/** A card for anything in a category. */
+const listCard = it => it.kind === 'live' ? channelCard({ id: it.id, name: it.name, logo: it.image })
+  : posterCard({ kind: it.kind, id: it.id, name: it.name, poster: it.image, cat: it.cat, sub: it.kind === 'series' ? 'Series' : 'Movie' });
+
+async function renderList(view) {
+  const l = listOf(state.arg);
+  if (!l) return go('home', null, { push: false });
+  const page = h('<div class="home"></div>');
+  view.appendChild(page);
+  let items;
+  try { items = await call('lists:items', l.id); } catch (e) { return fail(e); }
+  if (!page.isConnected) return;
+  const editing = state.listEdit === l.id && items.length > 0;
+  const bar = h(`<div class="list-bar"><span class="muted small">${items.length ? `${items.length} title${items.length === 1 ? '' : 's'}` : ''}</span><span class="spacer"></span>
+    ${items.length ? `<button class="btn small${editing ? ' primary' : ''}" data-edit>${editing ? 'Done' : '✕ Take titles out'}</button>` : ''}
+    <button class="btn small ghost" data-rename>✏️ Rename</button><button class="btn small ghost" data-del>🗑️ Delete category</button></div>`);
+  const eb = bar.querySelector('[data-edit]');
+  if (eb) eb.onclick = () => { state.listEdit = editing ? '' : l.id; render(); setTimeout(() => { const b = $('.list-bar [data-edit]'); if (b) b.focus(); }, 30); };
+  bar.querySelector('[data-rename]').onclick = () => editList(l);
+  bar.querySelector('[data-del]').onclick = () => removeList(l);
+  page.appendChild(bar);
+  if (!items.length) {
+    page.appendChild(h(`<div class="empty">Nothing in ${esc(l.name)} yet.<br><span class="small">Open a channel, movie or series and choose <b>＋ Category</b>, or ${TV ? 'select one and press ☰ Menu' : 'right-click one'} → Add to a category.</span></div>`));
+    return;
+  }
+  for (const [kind, title] of [['live', 'Channels'], ['movie', 'Movies'], ['series', 'Series']]) {
+    const its = items.filter(x => x.kind === kind);
+    if (!its.length) continue;
+    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span></div>${editing ? `<p class="muted small fav-hint">${TV ? 'Press OK' : 'Click'} on a title to take it out of ${esc(l.name)}.</p>` : ''}</div>`));
+    const g = h('<div class="grid" style="padding-top:0"></div>');
+    for (const it of its) {
+      const c = listCard(it);
+      if (editing) {
+        c.classList.add('removing');
+        c.querySelector('.poster').appendChild(h('<span class="badge rm">✕</span>'));
+        c.onclick = async () => {
+          try { await call('lists:set', l.id, it.key, false); } catch (e) { return fail(e); }
+          const next = c.nextElementSibling || c.previousElementSibling;
+          c.remove();
+          if (!g.children.length) return render();
+          if (next) next.focus();
+        };
+      }
+      g.appendChild(c);
+    }
+    page.appendChild(g);
+  }
+}
+
 async function renderSearch(view) {
   const page = h('<div class="home"></div>');
   view.appendChild(page);
@@ -1370,11 +1542,13 @@ function renderSettings(view) {
   syncVpnUi(); fillAdapters(); updateVpnBox();
 
   /* ---- playback ---- */
-  const pb = s.playback, net = s.network;
+  const pb = s.playback, net = s.network, sv = s.screensaver || {};
   const pp = h(`<div class="panel"><h2>Playback</h2>
     <label class="check"><input type="checkbox" id="pAuto" ${pb.autoWatched ? 'checked' : ''}> Mark movies and episodes as watched when I reach
       <select id="pPct" style="width:auto;margin-left:4px">${[80, 85, 90, 95].map(n => `<option value="${n}" ${pb.watchedPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="pNext" ${pb.autoNext ? 'checked' : ''}> Play the next episode automatically</label>
+    <label class="check"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}> Screensaver: the Seal IPTV logo moves around the screen after
+      <select id="pSaverMin" style="width:auto;margin:0 4px">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing</label>
     <div class="two-col">
       <div><label for="pResume">When I open something I've started</label><select id="pResume">
         <option value="ask" ${pb.resume === 'ask' ? 'selected' : ''}>Ask whether to resume</option>
@@ -1400,6 +1574,8 @@ function renderSettings(view) {
   pp.querySelector('#pAuto').onchange = e => saveSettings({ playback: { autoWatched: e.target.checked } });
   pp.querySelector('#pPct').onchange = e => saveSettings({ playback: { watchedPercent: Number(e.target.value) } });
   pp.querySelector('#pNext').onchange = e => saveSettings({ playback: { autoNext: e.target.checked } });
+  pp.querySelector('#pSaver').onchange = e => saveSettings({ screensaver: { on: e.target.checked } });
+  pp.querySelector('#pSaverMin').onchange = e => saveSettings({ screensaver: { minutes: Number(e.target.value) } });
   pp.querySelector('#pResume').onchange = e => saveSettings({ playback: { resume: e.target.value } });
   pp.querySelector('#pUa').onchange = e => { show(pp.querySelector('#pUaCustom'), e.target.value === 'custom'); saveSettings({ network: { userAgent: e.target.value } }); };
   pp.querySelector('#pUaCustom').onchange = e => saveSettings({ network: { customUserAgent: e.target.value } });
@@ -1821,5 +1997,71 @@ const Upd = {
     }
   }
 };
+
+/* =================================================================
+ * 15. SCREENSAVER — the logo bouncing around the screen when nothing
+ *     has played and nobody has touched anything for a while
+ *     (Settings → Playback; per device). Any key, click or mouse move
+ *     ends it; that key isn't used for anything else. Fire TV: tvnav.js
+ *     asks sealWake() first for OK / Back / ☰ Menu.
+ * ================================================================= */
+const Saver = (() => {
+  const SPEED = 70;   // px per second
+  let last = Date.now(), el = null, raf = 0, mx = -1, my = -1;
+  const minutes = () => { const s = state.settings && state.settings.screensaver; return !s || s.on === false ? 0 : Number(s.minutes) || 5; };
+  // a video that's playing (paused counts as nothing playing; Fire TV: the player is Android's, open = playing)
+  const playing = () => typeof Player !== 'undefined' && Player.isOpen() && (TV || !$('#video').paused);
+
+  function begin() {
+    el = h('<div id="saver"><img src="logo.svg" alt=""></div>');
+    document.body.appendChild(el);
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const img = el.firstElementChild;
+    const size = 180;
+    let x = Math.random() * Math.max(0, innerWidth - size), y = Math.random() * Math.max(0, innerHeight - size);
+    let dx = Math.random() < 0.5 ? -1 : 1, dy = Math.random() < 0.5 ? -1 : 1, t0 = 0;
+    const step = t => {
+      const dt = t0 ? Math.min(0.1, (t - t0) / 1000) : 0;
+      t0 = t;
+      const maxX = Math.max(0, innerWidth - size), maxY = Math.max(0, innerHeight - size);
+      x += dx * SPEED * dt; y += dy * SPEED * dt;
+      if (x <= 0) { x = 0; dx = 1; } else if (x >= maxX) { x = maxX; dx = -1; }
+      if (y <= 0) { y = 0; dy = 1; } else if (y >= maxY) { y = maxY; dy = -1; }
+      img.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  /** someone's here: true when the screensaver was showing (and is gone now) */
+  function wake() {
+    last = Date.now();
+    if (!el) return false;
+    cancelAnimationFrame(raf);
+    el.remove();
+    el = null;
+    if (TV && window.tvFocusFirst) window.tvFocusFirst();
+    return true;
+  }
+  window.sealWake = wake;
+
+  setInterval(() => {
+    if (playing()) last = Date.now();
+    const m = minutes();
+    if (!el && m && Date.now() - last > m * 60000) begin();
+  }, 5000);
+  // the key / click that ends it does nothing else
+  const swallow = e => { if (wake()) { e.preventDefault(); e.stopImmediatePropagation(); } };
+  for (const ev of ['keydown', 'mousedown', 'wheel', 'touchstart']) window.addEventListener(ev, swallow, { capture: true, passive: false });
+  // Chrome sends mouse moves when the page changes under a still mouse: only a real move counts
+  window.addEventListener('mousemove', e => {
+    const first = mx < 0;
+    if (!first && Math.abs(e.screenX - mx) + Math.abs(e.screenY - my) < 6) return;
+    mx = e.screenX; my = e.screenY;
+    if (!first || !el) wake();
+  }, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+  return { wake, showing: () => !!el, start: begin };
+})();
 
 start().catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; });

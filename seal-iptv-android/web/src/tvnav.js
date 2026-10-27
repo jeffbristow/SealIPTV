@@ -7,7 +7,9 @@
  *             text box + keyboard opens, and what you type is put in the field (__tvText)
  *   Back      close the dialog / menu, go back, else leave the app
  *             (Android asks window.__tvBack(); false = nothing to go back to)
- *   ☰ Menu    the right-click menu of what's selected (categories: hide / lock)
+ *   ☰ Menu    the right-click menu of what's selected (categories: hide / lock; a poster:
+ *             add to one of my categories)
+ *   Any key while the screensaver is up only ends it (app.js sealWake()).
  * Text boxes keep ← → for the cursor; ↑ ↓ leave them.
  * ===================================================================== */
 'use strict';
@@ -57,7 +59,7 @@
     a.click();
     return true;
   }
-  window.__tvOk = () => ok(document.activeElement);
+  window.__tvOk = () => (window.sealWake && window.sealWake()) || ok(document.activeElement);
 
   /** Where focus may go: the open dialog / menu / player overlay, else the page. */
   function scope() {
@@ -129,6 +131,7 @@
 
   /* Back — Android calls this; returns false when there's nothing left to go back to */
   window.__tvBack = () => {
+    if (window.sealWake && window.sealWake()) return true;   // the screensaver was up: this press only ends it
     const menu = document.querySelector('#ctxMenu:not(.hidden)');
     if (menu) { menu.classList.add('hidden'); return true; }
     const dlg = document.querySelector('#dlgModal:not(.hidden)');
@@ -144,6 +147,7 @@
 
   /* ☰ Menu — the selected thing's right-click menu */
   window.__tvMenu = () => {
+    if (window.sealWake && window.sealWake()) return true;   // the screensaver was up: this press only ends it
     const a = document.activeElement;
     if (!a || a === document.body) return false;
     const r = a.getBoundingClientRect();

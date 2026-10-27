@@ -113,6 +113,26 @@ const PASS = 'correct horse battery staple';
     await B.sync.sync(); await A.sync.sync(); await B.sync.sync();
     ok(A.store.getSettings().playback.watchedPercent === 80 && B.store.getSettings().playback.watchedPercent === 80, 'conflict on a setting: the newer one wins on both');
 
+    /* ---- my own categories (Kids …) ---- */
+    const kids = A.library.saveList(pA.id, null, { name: 'Kids', icon: '🧸' });
+    A.library.setListed(pA.id, kids, 'series:77', true, { name: 'Bluey' });
+    A.library.setListed(pA.id, kids, 'live:101', true, { name: 'Cartoons' });
+    await A.sync.sync(); await B.sync.sync();
+    ok(B.library.lists(pA.id).some(l => l.id === kids && l.name === 'Kids' && l.count === 2), 'a category made on A, with what\'s in it, appears on B');
+    B.library.setListed(pA.id, kids, 'live:101', false);
+    B.library.saveList(pA.id, kids, { name: 'Kids & family', icon: '🧸' });
+    await B.sync.sync(); await A.sync.sync();
+    ok(A.library.listItems(pA.id, kids).map(i => i.key).join() === 'series:77' && A.library.lists(pA.id)[0].name === 'Kids & family', 'taken out and renamed on B -> the same on A');
+    // a device that had an older Seal IPTV skipped these records while pulling: it reads the vault once more
+    B.library.applyRecord('list', pA.id, kids, null);
+    for (const k of Object.keys(B.sync.state.known)) if (/^list(ed)?:/.test(k)) delete B.sync.state.known[k];
+    B.sync.state.pullVersion = 1;
+    await B.sync.sync();
+    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 2, 'after updating from an older version: the categories are fetched again');
+    A.library.removeList(pA.id, kids);
+    await A.sync.sync(); await B.sync.sync();
+    ok(!B.library.lists(pA.id).length && !Object.keys(B.library._get(pA.id).listed).length, 'a category deleted on A goes on B, with its titles');
+
     /* ---- clear history, delete a playlist ---- */
     A.library.clearHistory(pA.id);
     await A.sync.sync(); await B.sync.sync();
