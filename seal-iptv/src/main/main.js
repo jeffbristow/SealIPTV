@@ -251,14 +251,15 @@ function registerIpc() {
   handle('lib:progress', (key, pos, dur, meta) => library.setProgress(pid(), key, pos, dur, meta));
   handle('lib:clearProgress', key => library.clearProgress(pid(), key));
   handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.visibleKey(pid(), p.key, p)).slice(0, 20));
-  handle('lib:favorites', kind => library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f)));
-  handle('lib:arrangeFavorites', (kind, keys) => library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f)));
+  handle('lib:favorites', kind => catalog.withLogos(pid(), library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f))));
+  handle('lib:arrangeFavorites', (kind, keys) => catalog.withLogos(pid(), library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f))));
   handle('lists:all', () => library.lists(pid()));
   handle('lists:save', (id, o) => library.saveList(pid(), id, o));
   handle('lists:remove', id => library.removeList(pid(), id));
-  handle('lists:items', id => library.listItems(pid(), id).filter(f => catalog.visibleKey(pid(), f.key, f)));
+  handle('lists:items', id => catalog.withLogos(pid(), library.listItems(pid(), id).filter(f => catalog.visibleKey(pid(), f.key, f))));
   handle('lists:of', key => library.listsOf(pid(), key));
   handle('lists:set', (id, key, on, meta) => library.setListed(pid(), id, key, on, meta));
+  handle('lists:title', (id, key, title) => library.setListedTitle(pid(), id, key, title));
   handle('collections:list', q => catalog.collections(pid(), q));
   handle('collections:get', (id, order) => catalog.collection(pid(), id, order));
 

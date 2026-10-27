@@ -296,20 +296,35 @@ class Library {
     const d = this._get(pid);
     if (!d.lists[lid]) throw new Error('That category is gone (removed on another device?).');
     const k = lid + '/' + key;
-    if (on) d.listed[k] = { ...cleanMeta(meta), at: this._now() };
-    else if (d.listed[k]) delete d.listed[k];
+    const old = d.listed[k];
+    if (on) d.listed[k] = { ...cleanMeta(meta), ...(old && old.title ? { title: old.title } : {}), at: this._now() };
+    else if (old) delete d.listed[k];
     else return false;
     this._changed(pid);
     this._emit('listed', pid, k, d.listed[k]);
     return !!on;
   }
 
-  /** what's in a category: [{ key, kind, id, name, image … }], A–Z */
+  /** the name it's shown with in this category only ("NBC" for "FL | Fort Myers | NBC WBBH"); '' = its own name */
+  setListedTitle(pid, lid, key, title) {
+    const d = this._get(pid);
+    const k = lid + '/' + key, it = d.listed[k];
+    if (!it) throw new Error('That isn\'t in this category any more.');
+    title = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (title && title !== it.name) it.title = title; else delete it.title;
+    it.at = this._now();
+    this._changed(pid);
+    this._emit('listed', pid, k, it);
+    return it.title || '';
+  }
+
+  /** what's in a category: [{ key, kind, id, name, title?, image … }], A–Z by the name shown */
   listItems(pid, lid) {
     const d = this._get(pid);
+    const shown = m => String(m.title || m.name || '');
     return Object.entries(d.listed).filter(([k]) => k.startsWith(lid + '/'))
       .map(([k, m]) => { const key = k.slice(lid.length + 1); return { key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }; })
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+      .sort((a, b) => shown(a).localeCompare(shown(b), undefined, { numeric: true, sensitivity: 'base' }));
   }
 
   /** the ids of the categories a key is in */

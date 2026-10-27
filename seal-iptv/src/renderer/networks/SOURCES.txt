@@ -1,0 +1,14 @@
+Network logos shown for US local stations (src/main/networks.js), 250 px PNG renderings of these
+Wikimedia Commons files (https://commons.wikimedia.org/wiki/File:<name>). The logos are the
+networks' trademarks; they're shown only to identify each network's stations.
+
+abc.png        ABC-2021-LOGO.svg
+cbs.png        CBS_logo_(2020).svg
+cw.png         The_CW_2024.svg
+fox.png        Fox_Broadcasting_Company_logo_(2019).svg
+ion.png        Ion_logo.svg
+mnt.png        MyNetworkTV_2D_Logo.svg
+nbc.png        NBC_logo_2022_(vertical).svg
+pbs.png        PBS_logo_2019.svg
+telemundo.png  Telemundo_logo_2018.svg
+univision.png  Logo_Univision_2019.svg

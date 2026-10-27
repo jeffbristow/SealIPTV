@@ -117,7 +117,8 @@ const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://
 const artKey = a => `${a.kind}|${a.name}|${Number(a.year) || ''}`;
 const artKnown = new Map();
 /** <img> that falls back to initials (see the error listener below); art: { kind, name, year } */
-const pic = (src, name, cls = 'pi', art = null) => (src = (art && artKnown.get(artKey(art))) || src, src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
+/* a network's logo that comes with the app (main/networks.js: US local stations) sits on a light tile: several are black */
+const pic = (src, name, cls = 'pi', art = null) => (src = (art && artKnown.get(artKey(art))) || src, src ? `<img class="${cls}${/^networks\//.test(src) ? ' net-logo' : ''}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
   if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);
@@ -231,7 +232,8 @@ const state = {
   parental: { hasPin: false, unlocked: false, autoAdult: true, unlockMinutes: 0 },
   sync: { connected: false },
   lists: [],          // my own categories (lists:all): [{ id, name, icon, count }]
-  listEdit: '',       // the category whose titles are being removed
+  listEdit: '',       // the category whose titles are being edited (renamed / taken out)
+  listFocus: '',      // after a rename there: the title to put the focus back on
   hostname: ''
 };
 const profile = () => state.profiles.find(p => p.id === state.settings.activeProfile) || null;
@@ -1341,7 +1343,7 @@ function cardMenu(ev, kind, it) {
   const key = `${kind}:${it.id}`, meta = { name: it.name, image: it.image, cat: it.cat };
   const items = [{ label: '＋ Add to a category…', run: () => pickLists(key, meta) }];
   const l = state.view === 'list' && listOf(state.arg);
-  if (l) items.push({ label: `✕ Take out of "${l.name}"`, run: async () => {
+  if (l) items.push({ label: `✏️ Rename in "${l.name}"…`, run: () => renameListed(l, { key, name: it.name, shown: it.name }) }, { label: `✕ Take out of "${l.name}"`, run: async () => {
     try { await call('lists:set', l.id, key, false); } catch (e) { return fail(e); }
     toast(`Took "${it.name}" out of "${l.name}".`);
     render();
@@ -1349,9 +1351,26 @@ function cardMenu(ev, kind, it) {
   showMenu(ev, items);
 }
 
-/** A card for anything in a category. */
-const listCard = it => it.kind === 'live' ? channelCard({ id: it.id, name: it.name, logo: it.image })
-  : posterCard({ kind: it.kind, id: it.id, name: it.name, poster: it.image, cat: it.cat, sub: it.kind === 'series' ? 'Series' : 'Movie' });
+/** The name a title is shown with in one category only (FL | Fort Myers | NBC WBBH -> NBC). it: { key, name, shown } */
+async function renameListed(l, it) {
+  const title = await dialog({
+    title: `Rename in ${l.name}`,
+    html: `<p class="muted small">Only how it's shown in <b>${esc(l.name)}</b>; everywhere else it keeps its name${it.name && it.name !== it.shown ? ` (<b>${esc(it.name)}</b>)` : ''}. Leave it empty for that name again.</p>
+      <label for="ltName">Name</label><input type="text" id="ltName" maxlength="80" value="${esc(it.shown)}" spellcheck="false"><div class="error" id="ltErr"></div>`,
+    okText: 'Save',
+    onOk: async () => {
+      try { return { v: await call('lists:title', l.id, it.key, $('#ltName').value) }; }
+      catch (e) { $('#ltErr').textContent = e.message; return false; }
+    }
+  });
+  if (!title) return;
+  state.listFocus = it.key;
+  render();
+}
+
+/** A card for anything in a category: with the name given to it there, if any. */
+const listCard = it => it.kind === 'live' ? channelCard({ id: it.id, name: it.title || it.name, logo: it.image })
+  : posterCard({ kind: it.kind, id: it.id, name: it.title || it.name, poster: it.image, cat: it.cat, sub: it.kind === 'series' ? 'Series' : 'Movie' });
 
 async function renderList(view) {
   const l = listOf(state.arg);
@@ -1363,7 +1382,7 @@ async function renderList(view) {
   if (!page.isConnected) return;
   const editing = state.listEdit === l.id && items.length > 0;
   const bar = h(`<div class="list-bar"><span class="muted small">${items.length ? `${items.length} title${items.length === 1 ? '' : 's'}` : ''}</span><span class="spacer"></span>
-    ${items.length ? `<button class="btn small${editing ? ' primary' : ''}" data-edit>${editing ? 'Done' : '✕ Take titles out'}</button>` : ''}
+    ${items.length ? `<button class="btn small${editing ? ' primary' : ''}" data-edit>${editing ? 'Done' : '✏️ Edit titles'}</button>` : ''}
     <button class="btn small ghost" data-rename>✏️ Rename</button><button class="btn small ghost" data-del>🗑️ Delete category</button></div>`);
   const eb = bar.querySelector('[data-edit]');
   if (eb) eb.onclick = () => { state.listEdit = editing ? '' : l.id; render(); setTimeout(() => { const b = $('.list-bar [data-edit]'); if (b) b.focus(); }, 30); };
@@ -1377,25 +1396,36 @@ async function renderList(view) {
   for (const [kind, title] of [['live', 'Channels'], ['movie', 'Movies'], ['series', 'Series']]) {
     const its = items.filter(x => x.kind === kind);
     if (!its.length) continue;
-    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span></div>${editing ? `<p class="muted small fav-hint">${TV ? 'Press OK' : 'Click'} on a title to take it out of ${esc(l.name)}.</p>` : ''}</div>`));
+    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span></div>${editing ? `<p class="muted small fav-hint">✏️ gives a title another name in ${esc(l.name)} only; ✕ takes it out.</p>` : ''}</div>`));
     const g = h('<div class="grid" style="padding-top:0"></div>');
     for (const it of its) {
       const c = listCard(it);
+      c.dataset.key = it.key;
       if (editing) {
-        c.classList.add('removing');
-        c.querySelector('.poster').appendChild(h('<span class="badge rm">✕</span>'));
-        c.onclick = async () => {
-          try { await call('lists:set', l.id, it.key, false); } catch (e) { return fail(e); }
+        c.onclick = null;
+        c.tabIndex = -1;
+        c.classList.add('arranging');
+        const tools = h('<div class="list-tools arrange"><button data-ren title="Rename in this category">✏️ Rename</button><button data-rm title="Take it out of this category">✕ Remove</button></div>');
+        tools.querySelector('[data-ren]').onclick = e => { e.stopPropagation(); renameListed(l, { key: it.key, name: it.name, shown: it.title || it.name }); };
+        tools.querySelector('[data-rm]').onclick = async e => {
+          e.stopPropagation();
+          try { await call('lists:set', l.id, it.key, false); } catch (err) { return fail(err); }
           const next = c.nextElementSibling || c.previousElementSibling;
           c.remove();
           if (!g.children.length) return render();
-          if (next) next.focus();
+          const b = next && next.querySelector('[data-rm]');
+          if (b) b.focus();
         };
+        c.querySelector('.poster').after(tools);
       }
       g.appendChild(c);
     }
     page.appendChild(g);
   }
+  // after a rename: back on the same title (it may have moved: A–Z by the new name)
+  const back = state.listFocus && page.querySelector(`[data-key="${CSS.escape(state.listFocus)}"]`);
+  state.listFocus = '';
+  if (back) { const b = back.querySelector('[data-ren]') || back; b.focus(); b.scrollIntoView({ block: 'nearest' }); }
 }
 
 async function renderSearch(view) {

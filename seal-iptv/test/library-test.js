@@ -90,6 +90,14 @@ try {
   lib.setListed(K, kids, 'movie:9', false);
   ok(lib.listItems(K, kids).length === 2 && lib.listItems(K, xmas).length === 1, 'taken out of one, still in the other');
   sent.length = 0;
+  ok(lib.setListedTitle(K, kids, 'live:1', '  Toons  ') === 'Toons' && lib.listItems(K, kids).map(i => i.title || i.name).join() === 'Bluey,Toons', 'a channel renamed in one category only: shown and sorted by that name');
+  ok(lib.listItems(K, kids).find(i => i.key === 'live:1').name === 'Cartoon Channel' && sent.some(([n, d]) => n === `listed:${K}:${kids}/live:1` && d.title === 'Toons'), '… its own name kept, and the new one synced');
+  lib.setListed(K, kids, 'live:1', true, { name: 'Cartoon Channel' });
+  ok(lib.listItems(K, kids).find(i => i.key === 'live:1').title === 'Toons', 'added again: keeps the name it was given');
+  lib.setListedTitle(K, kids, 'live:1', '');
+  ok(!lib.listItems(K, kids).find(i => i.key === 'live:1').title, 'emptied: its own name again');
+  assert.throws(() => lib.setListedTitle(K, xmas, 'live:1', 'X'), /isn't in/);
+  sent.length = 0;
   lib.removeList(K, kids);
   ok(lib.lists(K).length === 1 && lib.listsOf(K, 'series:4').length === 0, 'a deleted category takes its titles with it');
   ok(sent.filter(([n, d]) => d === null && n.startsWith(`listed:${K}:${kids}/`)).length === 2 && sent.some(([n, d]) => n === `list:${K}:${kids}` && d === null), '… and every device is told');

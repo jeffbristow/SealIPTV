@@ -5,7 +5,7 @@
  *   core.js       the shared logic (../../seal-iptv/src/main) + shims/, one file
  *   index.html    the Windows app's page with the TV parts instead of the
  *                 web players (hls.js / mpegts.js / player.js)
- *   app.js, avsync.js, styles.css, logo.svg, icon.png   copied from Windows
+ *   app.js, avsync.js, styles.css, logo.svg, icon.png, networks/   copied from Windows
  *   tvnav.js, player-tv.js, tv.css, tvflag.js            the TV parts
  *   version.json  { version, minNative }: the version (seal-iptv/package.json) and
  *                 the oldest APK (versionCode) these pages work with — raise
@@ -39,6 +39,8 @@ esbuild.buildSync({
 });
 
 for (const f of ['app.js', 'avsync.js', 'styles.css', 'logo.svg', 'icon.png']) fs.copyFileSync(path.join(WIN, f), path.join(OUT, f));
+// network logos for US local stations (main/networks.js)
+fs.cpSync(path.join(WIN, 'networks'), path.join(OUT, 'networks'), { recursive: true, filter: f => !f.endsWith('.txt') });
 for (const f of ['tvnav.js', 'player-tv.js', 'tv.css']) fs.copyFileSync(path.join(__dirname, 'src', f), path.join(OUT, f));
 fs.writeFileSync(path.join(OUT, 'tvflag.js'), "window.SEAL_TV = true; document.documentElement.classList.add('tv');\n");
 

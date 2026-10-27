@@ -320,9 +320,13 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 .icon-pick button { font-size: 20px; width: 42px; height: 38px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
 .icon-pick button.active { border-color: var(--accent); background: var(--bg-4); }
 .list-pick { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
-.card.removing .poster { outline: 2px dashed var(--red); outline-offset: -2px; }
-.badge.rm { right: 6px; color: var(--red); }
 
 /* ---------- Screensaver: the logo bouncing around ---------- */
 #saver { position: fixed; inset: 0; z-index: 10000; background: #000; cursor: none; }
 #saver img { position: absolute; left: 0; top: 0; width: 180px; height: 180px; will-change: transform; }
+
+/* ---------- network logos (US local stations) ---------- */
+img.net-logo { background: #f2f3f5; border-radius: 6px; padding: 4px; box-sizing: border-box; }
+.card img.net-logo { padding: 10px 16px; border-radius: 10px; }
+.card .list-tools { position: static; background: none; padding: 6px 0 0; justify-content: flex-start; gap: 4px; flex-wrap: wrap; }
+.card .list-tools button { width: auto; padding: 0 8px; white-space: nowrap; font-size: 13px; background: var(--bg-3); color: var(--text); }

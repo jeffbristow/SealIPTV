@@ -21,6 +21,7 @@ const { parseM3U, buildCatalog, seriesInfoFromShow } = require('./m3u');
 const { categoryLanguage, titleLanguage, languageName } = require('./language');
 const { isAdult } = require('./parental');
 const franchises = require('./franchises');
+const { networkLogo } = require('./networks');
 
 const SECTIONS = ['live', 'movies', 'series'];
 const KIND = { live: 'live', movies: 'movie', series: 'series' };
@@ -347,10 +348,25 @@ class Catalog {
     return { total: items.length, items: out };
   }
 
-  /** Adds fav / watched / progress and the category name; drops internal fields. */
+  /** Adds fav / watched / progress and the category name; drops internal fields. US local stations get their network's logo (networks.js). */
   _decorate(pid, kind, items, c) {
     const flags = this.library.flags(pid, items.map(i => kind + ':' + i.id));
-    return items.map(({ _q, _core, _foreign, url, ua, episodes, ...i }) => ({ ...i, kind, catName: c._catNames.get(i.cat) || '', ...flags[kind + ':' + i.id] }));
+    return items.map(({ _q, _core, _foreign, url, ua, episodes, ...i }) => {
+      const catName = c._catNames.get(i.cat) || '';
+      const net = kind === 'live' && networkLogo(i.name, catName);
+      return { ...i, ...(net ? { logo: net } : {}), kind, catName, ...flags[kind + ':' + i.id] };
+    });
+  }
+
+  /** Favorites / my categories (saved with the picture they had then): channels with their network's logo too. */
+  withLogos(pid, list) {
+    const c = this.get(pid);
+    return list.map(f => {
+      if (!String(f.key || '').startsWith('live:')) return f;
+      const i = c._byId.live.get(String(f.id));
+      const net = i ? networkLogo(i.name, c.live._catNames.get(i.cat)) : networkLogo(f.name);
+      return net ? { ...f, image: net } : f;
+    });
   }
 
   item(pid, section, id) {
