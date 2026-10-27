@@ -112,11 +112,12 @@ const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') 
 const KEEPS_IMAGES = location.protocol === 'file:';
 const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u) : u);
 /* Windows: pictures looked up by title (Art below) remembered for this run, so a page drawn again
-   shows them at once instead of initials -> asking -> swapping in. */
+   shows them at once instead of initials -> asking -> swapping in. Also used instead of the
+   provider's own picture: there's only one when that one was missing or broken. */
 const artKey = a => `${a.kind}|${a.name}|${Number(a.year) || ''}`;
 const artKnown = new Map();
 /** <img> that falls back to initials (see the error listener below); art: { kind, name, year } */
-const pic = (src, name, cls = 'pi', art = null) => (src = src || (art && artKnown.get(artKey(art))), src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
+const pic = (src, name, cls = 'pi', art = null) => (src = (art && artKnown.get(artKey(art))) || src, src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
   if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);

@@ -10,6 +10,11 @@
  *
  * At most MAX_BYTES on disk: the ones not shown for longest go first.
  * Only pictures are kept (checked by their first bytes).
+ *
+ * Addresses that failed (a provider's picture server that hangs for 20 s
+ * and drops the connection, a missing file …) are remembered for
+ * RETRY_AFTER, kept in failed.json: asked again they fail at once, so the
+ * window shows initials and looks the title up instead of waiting again.
  * ===================================================================== */
 const fs = require('fs');
 const fsp = fs.promises;
@@ -19,6 +24,9 @@ const crypto = require('crypto');
 const MAX_BYTES = 600 * 1024 * 1024;
 const MAX_ONE = 8 * 1024 * 1024;
 const DAY = 86400000;
+const TIMEOUT = 10000;                 // a picture that takes longer: failed
+const RETRY_AFTER = 6 * 3600000;       // a failed address is tried again after this
+const MAX_FAILED = 20000;
 
 /** the picture's type from its first bytes, or '' when it isn't one */
 function sniff(b) {
@@ -49,6 +57,35 @@ class ImageCache {
     this.pending = new Map();
     this.size = null;            // bytes on disk (counted on first use)
     this.trimming = null;
+    this.failedFile = path.join(dir, 'failed.json');
+    this.failed = null;          // url -> when it failed
+    this.failedTimer = null;
+  }
+
+  _failedList() {
+    if (this.failed) return this.failed;
+    this.failed = new Map();
+    try { for (const [u, t] of Object.entries(JSON.parse(fs.readFileSync(this.failedFile, 'utf8')))) this.failed.set(u, t); } catch { /* none yet */ }
+    return this.failed;
+  }
+
+  _fail(url) {
+    const m = this._failedList();
+    m.delete(url);
+    m.set(url, Date.now());
+    if (m.size > MAX_FAILED) m.delete(m.keys().next().value);
+    clearTimeout(this.failedTimer);
+    this.failedTimer = setTimeout(() => this.flushFailed(), 3000);
+  }
+
+  flushFailed() {
+    clearTimeout(this.failedTimer);
+    if (!this.failed) return;
+    try {
+      fs.mkdirSync(this.dir, { recursive: true });
+      fs.writeFileSync(this.failedFile + '.tmp', JSON.stringify(Object.fromEntries(this.failed)));
+      fs.renameSync(this.failedFile + '.tmp', this.failedFile);
+    } catch { /* remembered for this run anyway */ }
   }
 
   file(url) { return path.join(this.dir, crypto.createHash('sha1').update(url).digest('hex')); }
@@ -65,6 +102,8 @@ class ImageCache {
         return { status: 200, type, body };
       }
     } catch { /* not kept yet */ }
+    const failedAt = this._failedList().get(url);
+    if (failedAt && Date.now() - failedAt < RETRY_AFTER) return { status: 404, type: 'text/plain', body: Buffer.alloc(0) };
     if (!this.allowed()) return { status: 403, type: 'text/plain', body: Buffer.alloc(0) };
     if (this.pending.has(url)) return this.pending.get(url);
     const job = this._download(url, f).finally(() => this.pending.delete(url));
@@ -73,12 +112,16 @@ class ImageCache {
   }
 
   async _download(url, f) {
-    let res;
-    try { res = await this.fetch(url); } catch { return { status: 502, type: 'text/plain', body: Buffer.alloc(0) }; }
-    if (!res.ok) return { status: res.status || 502, type: 'text/plain', body: Buffer.alloc(0) };
-    const body = Buffer.from(await res.arrayBuffer());
+    const failed = status => { if (this.allowed()) this._fail(url); return { status, type: 'text/plain', body: Buffer.alloc(0) }; };
+    let res, body;
+    try {
+      res = await this.fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
+      if (!res.ok) return failed(res.status || 502);
+      body = Buffer.from(await res.arrayBuffer());
+    } catch { return failed(502); }   // no answer in time, connection dropped …
     const type = sniff(body);
-    if (!type) return { status: 415, type: 'text/plain', body: Buffer.alloc(0) };   // not a picture (an error page …)
+    if (!type) return failed(415);   // not a picture (an error page …)
+    if (this.failed && this.failed.delete(url)) { clearTimeout(this.failedTimer); this.failedTimer = setTimeout(() => this.flushFailed(), 3000); }   // works again
     if (body.length <= MAX_ONE) {
       try {
         await fsp.mkdir(this.dir, { recursive: true });

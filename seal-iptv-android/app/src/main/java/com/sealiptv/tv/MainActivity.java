@@ -9,8 +9,9 @@
  *   OK     -> window.__tvOk() (form fields: Android's text box + keyboard)
  * Pages: the built-in ones (assets/www), or a newer downloaded version
  * (files/web/<version>, UpdateManager) served as /update/<version>/.
- * Posters / logos load straight from the provider, unless the VPN guard
- * says no (NativeBridge.blocked) — then they're refused here.
+ * Posters / logos: kept in the app's storage the first time (ImageCache),
+ * shown from there after that; nothing new is fetched while the VPN guard
+ * says no (NativeBridge.blocked) — those requests are refused here.
  * ===================================================================== */
 package com.sealiptv.tv;
 
@@ -49,6 +50,7 @@ public class MainActivity extends Activity {
     static volatile String webVersion;   // the pages running now (UpdateManager compares releases with it)
     private WebView web;
     private NativeBridge bridge;
+    private ImageCache images;
     private long lastBack = 0;
     private AudioDeviceCallback audioCallback;
     private ConnectivityManager.NetworkCallback netCallback;
@@ -77,6 +79,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
 
+        images = new ImageCache(this);
         final WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/update/", new WebViewAssetLoader.InternalStoragePathHandler(this, UpdateManager.webDir(this))).build();
@@ -85,10 +88,15 @@ public class MainActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 if ("appassets.androidplatform.net".equals(u.getHost())) return assets.shouldInterceptRequest(u);
+                boolean image = isImage(req);
+                if (image) {
+                    WebResourceResponse kept = images.kept(u.toString());
+                    if (kept != null) return kept;
+                }
                 if (bridge != null && bridge.blocked) {
                     return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked: VPN is off", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
                 }
-                return null;
+                return image ? images.get(u.toString(), bridge != null ? bridge.guardUa : null) : null;   // null: the WebView loads it
             }
 
             @Override
@@ -107,6 +115,16 @@ public class MainActivity extends Activity {
 
         watchNetwork();
         watchAudio();
+    }
+
+    /** a picture the page shows (<img>, CSS background): GET from the web, Accept: image/… */
+    private static boolean isImage(WebResourceRequest req) {
+        String s = req.getUrl().getScheme();
+        if (!"GET".equals(req.getMethod()) || !("http".equals(s) || "https".equals(s))) return false;
+        for (java.util.Map.Entry<String, String> h : req.getRequestHeaders().entrySet()) {
+            if ("accept".equalsIgnoreCase(h.getKey())) return h.getValue() != null && h.getValue().startsWith("image/");
+        }
+        return false;
     }
 
     /* VPN up / down, Wi-Fi changes -> 'network' (core.js checks the VPN again) */

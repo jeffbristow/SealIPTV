@@ -37,7 +37,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const VERSION = process.env.SEAL_IPTV_RUNNING_VERSION || app.getVersion();
 const UA = { seal: `SealIPTV/${VERSION}`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 
-let store, library, catalog, vpn, win, parental, sync, artwork, updater;
+let store, library, catalog, vpn, win, parental, sync, artwork, updater, imageCache;
 
 function userAgent() {
   const n = store.getSettings().network;
@@ -402,11 +402,11 @@ app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(
 // posters / logos as sealimg://img/?u=<address>: kept on disk (imagecache.js)
 protocol.registerSchemesAsPrivileged([{ scheme: 'sealimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 function registerImages() {
-  const cache = new ImageCache({ dir: path.join(app.getPath('userData'), 'images'), fetch: u => session.defaultSession.fetch(u), allowed: () => vpn.allowed() });
+  imageCache = new ImageCache({ dir: path.join(app.getPath('userData'), 'images'), fetch: (u, o) => session.defaultSession.fetch(u, o), allowed: () => vpn.allowed() });
   protocol.handle('sealimg', async req => {
     let u = '';
     try { u = new URL(req.url).searchParams.get('u') || ''; } catch { /* bad address */ }
-    const r = await cache.get(u);
+    const r = await imageCache.get(u);
     return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.type, 'Cache-Control': 'max-age=86400' } });
   });
 }
@@ -419,5 +419,5 @@ app.whenReady().then(() => {
   registerUpdates();
   createWindow();
 });
-app.on('before-quit', () => { try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); } catch { /* nothing to save */ } });
+app.on('before-quit', () => { try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); } catch { /* nothing to save */ } try { imageCache.flushFailed(); } catch { /* nothing to save */ } });
 app.on('window-all-closed', () => app.quit());

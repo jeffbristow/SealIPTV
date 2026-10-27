@@ -41,8 +41,14 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     ok(calls.filter(u => u.endsWith('x.png')).length === 1, 'the same picture asked twice at once: fetched once');
     r = await c.get('http://provider.example.org/missing.jpg');
     ok(r.status === 404, 'not there: the provider\'s answer (the window shows initials)');
+    const k = calls.length;
+    r = await c.get('http://provider.example.org/missing.jpg');
+    ok(r.status === 404 && calls.length === k, 'a failed address asked again: "not found" at once, the provider isn\'t asked again');
+    c.flushFailed();
+    r = await new ImageCache({ dir, fetch: fake }).get('http://provider.example.org/missing.jpg');
+    ok(r.status === 404 && calls.length === k, 'remembered after a restart too (failed.json)');
     r = await c.get('http://provider.example.org/html.jpg');
-    const n = fs.readdirSync(dir).length;
+    const n = fs.readdirSync(dir).filter(f => /^[0-9a-f]{40}$/.test(f)).length;
     ok(r.status === 415 && n === 2, 'an error page instead of a picture: not shown, not kept');
     ok((await c.get('file:///C:/Windows/win.ini')).status === 400 && (await c.get('')).status === 400, 'only web addresses');
     net = false;
@@ -56,7 +62,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     fs.utimesSync(old, past, past);
     for (let i = 10; i < 14; i++) await small.get(`http://provider.example.org/p/${i}.jpg`);
     await small.trim();
-    const left = fs.readdirSync(dir).filter(f => !f.endsWith('.tmp'));
+    const left = fs.readdirSync(dir).filter(f => /^[0-9a-f]{40}$/.test(f));
     ok(!fs.existsSync(old) && left.reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0) <= 10000, 'over the limit: the oldest go first, down below it');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
