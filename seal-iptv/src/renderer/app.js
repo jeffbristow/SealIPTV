@@ -1089,7 +1089,20 @@ async function renderFavorites(view, focus) {
 
 /* ---- Collections (main/franchises.js): Marvel, Star Wars … in release or story order ---- */
 function collectionCard(c) {
-  return posterCard({ name: c.name, poster: c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { onClick: () => go('collection', c.id) });
+  // the cover title's poster (looked up like any other when the playlist has none) …
+  const cv = c.cover || {};
+  const el = posterCard({ name: cv.name || c.name, kind: cv.kind, year: cv.year, poster: c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { title: c.name, onClick: () => go('collection', c.id) });
+  const ini = el.querySelector('.poster > .initials');
+  if (ini) ini.textContent = initials(c.name);
+  else el.querySelector('.poster > .pi').dataset.i = initials(c.name);
+  // … until the collection's own poster comes back (TMDB, with a key; artwork.js remembers it)
+  if (c.art && state.settings.artwork && state.settings.artwork.lookup) {
+    call('art:find', [{ kind: 'collection', name: c.art }]).then(([u]) => {
+      const p = u && el.querySelector('.poster > .pi, .poster > .initials');
+      if (p) p.replaceWith(h(`<img class="pi" src="${esc(u)}" data-i="${esc(initials(c.name))}" alt="">`));
+    }).catch(() => { /* keep the cover */ });
+  }
+  return el;
 }
 
 async function renderCollections(view) {

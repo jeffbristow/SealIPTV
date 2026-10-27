@@ -33,6 +33,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     if (u.host === 'api.themoviedb.org') {
       if (tmdbStatus !== 200) return { ok: false, status: tmdbStatus, json: async () => ({}) };
       const q = u.searchParams.get('query');
+      if (u.pathname.endsWith('/search/collection')) return json({ results: q === 'Star Wars Collection' ? [{ name: 'Star Wars: The Clone Wars Collection', poster_path: '/cw.jpg' }, { name: 'Star Wars Collection', poster_path: '/sw.jpg' }] : [] });
       if (q === 'Inception') return json({ results: [{ title: 'Inception', release_date: '2010-07-15', poster_path: '/inc.jpg' }] });
       if (q === 'Dark') return json({ results: [{ name: 'Dark', first_air_date: '2017-12-01', poster_path: '/dark.jpg' }] });
       if (q === 'The Matrix') return json({ results: [{ title: 'The Matrix', release_date: '1999-03-30', poster_path: '/m.jpg' }] });
@@ -64,6 +65,9 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     ok(r[0] === 'https://image.tmdb.org/t/p/w342/inc.jpg', 'movie from TMDB with a key');
     ok(r[1] === 'https://image.tmdb.org/t/p/w342/dark.jpg', 'a series TVmaze missed: asked again at TMDB once a key is set');
     ok(calls.filter(c => c.includes('themoviedb')).every(c => c.includes('api_key=0123')), 'v3 key goes in the address');
+
+    r = await art.find([{ kind: 'collection', name: 'Star Wars Collection' }, { kind: 'collection', name: 'Nothing Collection' }]);
+    ok(r[0] === 'https://image.tmdb.org/t/p/w342/sw.jpg' && r[1] === null, 'a collection poster (Collections): the one with the same name');
 
     allowed = false;
     r = await art.find([{ kind: 'movie', name: 'Something New' }]);

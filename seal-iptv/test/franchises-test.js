@@ -79,6 +79,8 @@ try {
   const list = cat.collections(P);
   const mc = list.find(x => x.id === 'mcu');
   ok(mc && mc.total === mcu.items.length && list.every(x => x.have > 0), 'Collections lists only the ones the playlist has something from');
+  ok(mc.poster === 'http://x/im.jpg' && mc.cover.name === 'The Avengers' && mc.art === 'The Avengers Collection', 'a collection picture: the cover title (The Avengers), else the first one the playlist has a poster for; the TMDB collection with a key');
+  ok(all.every(f => f.cover !== null) && all.filter(f => f.art).length >= 15, 'every collection has a cover title, nearly all a TMDB collection');
   ok(cat.collections(P, 'star wars').map(x => x.id).join() === 'starwars', 'Collections search');
   let col = cat.collection(P, 'mcu', 'release');
   ok(col.items.length === mcu.items.length && col.items[0].title === 'Iron Man' && col.items[0].item.id === 'm2' && col.items[0].versions.length === 2, 'every title listed in order; the version with a poster is opened');

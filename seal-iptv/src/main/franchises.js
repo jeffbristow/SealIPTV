@@ -43,7 +43,9 @@ function prepare(data) {
     };
     const story = f.story ? f.story.map(ref) : null;
     if (story && (story.length !== items.length || new Set(story).size !== items.length)) throw new Error(`${f.id}: the story order must list every title once`);
-    return { id: f.id, name: f.name, words: [f.name, ...(f.words || [])].map(w => w.toLowerCase()), storyNote: f.storyNote || '', items, release, story };
+    // the card's picture: art = a TMDB collection (with a key), cover = the title whose poster stands in
+    const cover = f.cover ? ref(f.cover) : null;
+    return { id: f.id, name: f.name, words: [f.name, ...(f.words || [])].map(w => w.toLowerCase()), storyNote: f.storyNote || '', art: f.art || '', cover, items, release, story };
   });
 }
 

@@ -122,8 +122,8 @@ class Artwork {
   }
 
   async one(q, tmdbKey) {
-    const kind = q && q.kind === 'movie' ? 'movie' : 'series';
-    const { title, year } = cleanTitle(q && q.name, q && q.year);
+    const kind = q && ['movie', 'collection'].includes(q.kind) ? q.kind : 'series';
+    const { title, year } = kind === 'collection' ? { title: String(q.name || '').trim(), year: 0 } : cleanTitle(q && q.name, q && q.year);
     if (title.length < 2) return null;
     const key = `${kind}|${norm(title)}|${year || ''}`;
     const items = this._load();
@@ -131,12 +131,12 @@ class Artwork {
     if (c && c.u) return c.u;
     // a miss is asked again after 14 days, or straight away once there's a TMDB key it didn't have
     if (c && Date.now() - c.t < MISS_DAYS * DAY && (c.k || !tmdbKey)) return null;
-    if (kind === 'movie' && !tmdbKey) return null;
+    if (kind !== 'series' && !tmdbKey) return null;
     if (this.pending.has(key)) return this.pending.get(key);
     const job = (async () => {
       let url = null;
       if (kind === 'series') url = await this.tvmaze(title, year);
-      if (!url && tmdbKey) url = await this.tmdb(kind === 'movie' ? 'movie' : 'tv', title, year, tmdbKey);
+      if (!url && tmdbKey) url = kind === 'collection' ? await this.tmdbCollection(title, tmdbKey) : await this.tmdb(kind === 'movie' ? 'movie' : 'tv', title, year, tmdbKey);
       items[key] = url ? { u: url, t: Date.now() } : { u: '', t: Date.now(), k: tmdbKey ? 1 : 0 };
       this._changed();
       return url;
@@ -194,6 +194,21 @@ class Artwork {
       best = pick(list, title, 0);
     }
     return best ? best.img : null;
+  }
+
+  /** A collection's poster (Collections: "Star Wars Collection"): the same name, else one whose name has it in. */
+  async tmdbCollection(name, apiKey) {
+    const bearer = !/^[0-9a-f]{32}$/i.test(apiKey);
+    let url = `https://api.themoviedb.org/3/search/collection?query=${encodeURIComponent(name)}`;
+    if (!bearer) url += '&api_key=' + encodeURIComponent(apiKey);
+    let r;
+    try { r = await this._json('tmdb', 60, url, bearer ? { Authorization: 'Bearer ' + apiKey } : {}); }
+    catch (e) { if (e.status === 401) { const x = new Error('The TMDB key wasn\'t accepted.'); x.code = 'TMDB_KEY'; throw x; } throw e; }
+    const list = (r && Array.isArray(r.results) ? r.results : []).filter(c => c.poster_path);
+    const bare = s => norm(String(s || '').replace(/\bcollection\b/gi, ''));
+    const want = bare(name);
+    const best = list.find(c => bare(c.name) === want) || list.find(c => want && bare(c.name).includes(want));
+    return best ? 'https://image.tmdb.org/t/p/w342' + best.poster_path : null;
   }
 
   /** Settings → "Test key": -> true, or throws with the reason. */

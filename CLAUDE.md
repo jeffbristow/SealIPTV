@@ -35,7 +35,8 @@ seal-iptv/
     updater.js             GitHub releases: signed update.json, download + check the .sealiptv package
     franchises.js/.json    Collections: hand-kept franchise list (release dates, story order, shows),
                            matched to the playlist by cleaned title + year; add new films to the .json
-    artwork.js             missing posters by title: TVmaze (series), TMDB (key; movies + series), artwork.json cache
+                           (art = TMDB collection poster for the card, cover = stand-in title)
+    artwork.js             missing posters by title: TVmaze (series), TMDB (key; movies, series, collections), artwork.json cache
     main.js                window, network guard, ipc handlers, VLC, dev screenshots
     preload.js             window.api.invoke(channel, …) whitelist + events
     store.js               settings + playlists (seal-iptv.json; passwords via safeStorage)

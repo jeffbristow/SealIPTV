@@ -384,10 +384,15 @@ class Catalog {
     return (f, e) => (m.get(f.id + ':' + e.i) || []).filter(i => this._visible(i, rules[e.kind], open));
   }
 
-  /** The collections the playlist has something from: [{ id, name, have, total, poster }]; q = search text */
+  /**
+   * The collections the playlist has something from: [{ id, name, have, total, poster, art, cover }]; q = search text.
+   * poster: the cover title's from the playlist, else the first one's. art: the TMDB collection the
+   * window looks up (artwork.js) and shows instead; cover: { kind, name, year } to look up when there's no poster.
+   */
   collections(pid, q = '') {
     const get = this._franchiseItems(pid);
     const out = [];
+    const posterOf = its => (its.find(i => i.poster) || {}).poster || '';
     for (const f of franchises.all()) {
       if (q && !franchises.matchesQuery(f, q)) continue;
       let have = 0, poster = '';
@@ -395,9 +400,11 @@ class Catalog {
         const its = get(f, f.items[n]);
         if (!its.length) continue;
         have++;
-        if (!poster) poster = (its.find(i => i.poster) || {}).poster || '';
+        if (!poster) poster = posterOf(its);
       }
-      if (have) out.push({ id: f.id, name: f.name, have, total: f.items.length, poster });
+      const c = f.cover === null ? null : f.items[f.cover];
+      if (c) poster = posterOf(get(f, c)) || poster;
+      if (have) out.push({ id: f.id, name: f.name, have, total: f.items.length, poster, art: f.art, cover: c && { kind: c.kind, name: c.t, year: c.y } });
     }
     return out;
   }

@@ -1,8 +1,9 @@
 {
-  "about": "Collections (franchises.js). items: release date d, title t, other titles alt, k 'series' for shows (default movie). story: the same titles in story order (left out = release order only); a title used twice is written 'series:Title' / 'movie:Title' or 'Title (year)'. Add new films here; they ship with the next release.",
+  "about": "Collections (franchises.js). art: the TMDB collection whose poster is the card (with a TMDB key); cover: the title whose poster is used otherwise. items: release date d, title t, other titles alt, k 'series' for shows (default movie). story: the same titles in story order (left out = release order only); a title used twice is written 'series:Title' / 'movie:Title' or 'Title (year)'. Add new films here; they ship with the next release.",
   "franchises": [
     {
       "id": "mcu", "name": "Marvel Cinematic Universe", "words": ["marvel", "mcu", "avengers", "marvel cinematic universe"],
+      "art": "The Avengers Collection", "cover": "The Avengers",
       "storyNote": "Disney+ timeline order",
       "items": [
         { "t": "Iron Man", "d": "2008-05-02" },
@@ -74,6 +75,7 @@
     },
     {
       "id": "starwars", "name": "Star Wars", "words": ["star wars", "starwars", "skywalker", "jedi"],
+      "art": "Star Wars Collection", "cover": "Star Wars: A New Hope",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Star Wars: A New Hope", "d": "1977-05-25", "alt": ["Star Wars", "A New Hope", "Star Wars: Episode IV - A New Hope"] },
@@ -112,6 +114,7 @@
     },
     {
       "id": "startrek", "name": "Star Trek", "words": ["star trek", "startrek", "trek", "enterprise"],
+      "art": "Star Trek: The Original Series Collection", "cover": "Star Trek: The Original Series",
       "storyNote": "the order of the story's timeline (the 2009–2016 films are an alternate timeline, placed where it splits off)",
       "items": [
         { "t": "Star Trek: The Original Series", "d": "1966-09-08", "k": "series", "alt": ["Star Trek", "Star Trek TOS"] },
@@ -153,6 +156,7 @@
     },
     {
       "id": "wizarding", "name": "Harry Potter & Fantastic Beasts", "words": ["harry potter", "potter", "wizarding world", "fantastic beasts", "hogwarts"],
+      "art": "Harry Potter Collection", "cover": "Harry Potter and the Philosopher's Stone",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Harry Potter and the Philosopher's Stone", "d": "2001-11-16", "alt": ["Harry Potter and the Sorcerer's Stone"] },
@@ -176,6 +180,7 @@
     },
     {
       "id": "middleearth", "name": "The Lord of the Rings & The Hobbit", "words": ["lord of the rings", "lotr", "hobbit", "middle earth", "middle-earth", "tolkien"],
+      "art": "The Lord of the Rings Collection", "cover": "The Lord of the Rings: The Fellowship of the Ring",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "The Lord of the Rings: The Fellowship of the Ring", "d": "2001-12-19", "alt": ["The Fellowship of the Ring"] },
@@ -195,6 +200,7 @@
     },
     {
       "id": "dceu", "name": "DC Extended Universe", "words": ["dc", "dceu", "justice league", "dc extended universe", "dc comics"],
+      "cover": "Justice League",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Man of Steel", "d": "2013-06-14" },
@@ -223,6 +229,7 @@
     },
     {
       "id": "xmen", "name": "X-Men", "words": ["x-men", "xmen", "x men", "wolverine", "deadpool", "mutants"],
+      "art": "X-Men Collection", "cover": "X-Men",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "X-Men", "d": "2000-07-14" },
@@ -246,6 +253,7 @@
     },
     {
       "id": "bond", "name": "James Bond", "words": ["james bond", "bond", "007"],
+      "art": "James Bond Collection", "cover": "Dr. No",
       "items": [
         { "t": "Dr. No", "d": "1962-10-05" },
         { "t": "From Russia with Love", "d": "1963-10-10" },
@@ -276,6 +284,7 @@
     },
     {
       "id": "fast", "name": "Fast & Furious", "words": ["fast and furious", "fast & furious", "fast furious", "fast saga"],
+      "art": "The Fast and the Furious Collection", "cover": "The Fast and the Furious",
       "storyNote": "the order of the story's timeline (Tokyo Drift takes place after Fast & Furious 6)",
       "items": [
         { "t": "The Fast and the Furious", "d": "2001-06-22" },
@@ -297,6 +306,7 @@
     },
     {
       "id": "mission", "name": "Mission: Impossible", "words": ["mission impossible", "mission: impossible", "ethan hunt"],
+      "art": "Mission: Impossible Collection", "cover": "Mission: Impossible",
       "items": [
         { "t": "Mission: Impossible", "d": "1996-05-22" },
         { "t": "Mission: Impossible 2", "d": "2000-05-24", "alt": ["Mission: Impossible II", "M:I-2"] },
@@ -310,6 +320,7 @@
     },
     {
       "id": "jurassic", "name": "Jurassic Park & Jurassic World", "words": ["jurassic", "jurassic park", "jurassic world", "dinosaurs"],
+      "art": "Jurassic Park Collection", "cover": "Jurassic Park",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Jurassic Park", "d": "1993-06-11" },
@@ -329,6 +340,7 @@
     },
     {
       "id": "alien", "name": "Alien", "words": ["alien", "aliens", "xenomorph", "prometheus"],
+      "art": "Alien Collection", "cover": "Alien",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Alien", "d": "1979-05-25" },
@@ -344,6 +356,7 @@
     },
     {
       "id": "predator", "name": "Predator", "words": ["predator", "predators"],
+      "art": "Predator Collection", "cover": "Predator",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Predator", "d": "1987-06-12" },
@@ -358,6 +371,7 @@
     },
     {
       "id": "apes", "name": "Planet of the Apes", "words": ["planet of the apes", "apes", "caesar"],
+      "art": "Planet of the Apes (Original) Collection", "cover": "Planet of the Apes (1968)",
       "storyNote": "the order of the story's timeline (the newer films first; the 1968–1973 films and the 2001 film are their own stories)",
       "items": [
         { "t": "Planet of the Apes", "d": "1968-04-03" },
@@ -379,6 +393,7 @@
     },
     {
       "id": "terminator", "name": "Terminator", "words": ["terminator", "skynet"],
+      "art": "The Terminator Collection", "cover": "The Terminator",
       "items": [
         { "t": "The Terminator", "d": "1984-10-26", "alt": ["Terminator"] },
         { "t": "Terminator 2: Judgment Day", "d": "1991-07-03", "alt": ["Terminator 2", "T2: Judgment Day"] },
@@ -392,6 +407,7 @@
     },
     {
       "id": "johnwick", "name": "John Wick", "words": ["john wick", "wick", "continental"],
+      "art": "John Wick Collection", "cover": "John Wick",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "John Wick", "d": "2014-10-24" },
@@ -405,6 +421,7 @@
     },
     {
       "id": "indy", "name": "Indiana Jones", "words": ["indiana jones", "indy"],
+      "art": "Indiana Jones Collection", "cover": "Raiders of the Lost Ark",
       "storyNote": "the order of the story's timeline",
       "items": [
         { "t": "Raiders of the Lost Ark", "d": "1981-06-12", "alt": ["Indiana Jones and the Raiders of the Lost Ark"] },
