@@ -82,7 +82,10 @@ const www = path.join(TV, 'app', 'src', 'main', 'assets', 'www');
 const webInfo = JSON.parse(fs.readFileSync(path.join(www, 'version.json'), 'utf8'));
 if (webInfo.version !== V) { console.error('The Fire TV pages are version ' + webInfo.version); process.exit(1); }
 const tvZip = path.join(OUT, `SealIPTV-TV-${V}.zip`);
-execFileSync(TAR, ['-a', '-c', '-f', tvZip, '-C', www, '.']);
+// by name, not '.': a "./" entry is the TV's own unpack folder, which it refuses as damaged
+execFileSync(TAR, ['-a', '-c', '-f', tvZip, '-C', www, ...fs.readdirSync(www)]);
+const badEntries = execFileSync(TAR, ['-t', '-f', tvZip]).toString().split(/\r?\n/).filter(l => l && (/^(\.\/|\/|\.$)/.test(l) || l.split('/').includes('..')));
+if (badEntries.length) { console.error('The Fire TV package has entries the TV refuses: ' + badEntries.join(', ')); process.exit(1); }
 const versionCode = Number((fs.readFileSync(path.join(TV, 'app', 'build.gradle'), 'utf8').match(/versionCode\s+(\d+)/) || [])[1]);
 
 step('Sync server');
