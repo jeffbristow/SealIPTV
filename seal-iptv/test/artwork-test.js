@@ -87,6 +87,25 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     r = await again.find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
     ok(r[0] === 'https://image.tmdb.org/t/p/w342/inc.jpg' && calls.length === n, 'remembered after a restart (artwork.json)');
 
+    // the pictures themselves, kept so the site doesn't send them again
+    const pic = 'data:image/jpeg;base64,' + Buffer.from('fake jpeg bytes').toString('base64');
+    const incUrl = 'https://image.tmdb.org/t/p/w342/inc.jpg';
+    ok(!art.keep('https://elsewhere/x.jpg', pic) && !art.keep(incUrl, 'data:text/html;base64,PGI+') && !art.keep(incUrl, 'javascript:alert(1)'), 'keep: only pictures it found, only images');
+    ok(art.keep(incUrl, pic), 'keep: a found picture is kept');
+    const m = calls.length;
+    r = await art.find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
+    ok(r[0] === pic && calls.length === m, 'a kept picture comes from the disk, nothing asked of the site');
+    art.flush();
+    r = await new Artwork({ dir, getSettings: () => settings, fetch: fake }).find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
+    ok(r[0] === pic && calls.length === m, 'still kept after a restart or an update (same data folder)');
+    const pfile = path.join(dir, 'posters', fs.readdirSync(path.join(dir, 'posters'))[0]);
+    fs.unlinkSync(pfile);
+    r = await art.find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
+    ok(r[0] === incUrl, 'the kept file gone: the address again (the window keeps it again)');
+    art.keep(incUrl, pic);
+    art.clear();
+    ok(!fs.existsSync(pfile), '"Look up again" removes the kept pictures too');
+
     tmdbStatus = 401;
     await assert.rejects(() => art.testTmdb('bad-key-eyJ'), /wasn't accepted/);
     ok(true, 'a wrong TMDB key is reported');

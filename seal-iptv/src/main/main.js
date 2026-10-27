@@ -281,6 +281,7 @@ function registerIpc() {
 
   /* ---- posters the provider doesn't have (artwork.js) ---- */
   handle('art:find', list => artwork.find(list));
+  handle('art:keep', (url, data) => artwork.keep(url, data));
   handle('art:testKey', key => artwork.testTmdb(key));
   handle('art:clear', () => artwork.clear());
 

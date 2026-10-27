@@ -11,7 +11,7 @@ const CHANNELS = new Set([
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
   'sync:status', 'sync:probe', 'sync:connect', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',
   'play:prepare', 'play:stopped', 'play:external', 'play:findVlc', 'play:netlog',
-  'art:find', 'art:testKey', 'art:clear',
+  'art:find', 'art:keep', 'art:testKey', 'art:clear',
   'update:check', 'update:install', 'update:restart', 'update:openPage'
 ]);
 const EVENTS = new Set(['vpn:status', 'catalog:step', 'sync:applied', 'sync:status', 'update:progress']);

@@ -37,6 +37,7 @@ seal-iptv/
                            matched to the playlist by cleaned title + year; add new films to the .json
                            (art = TMDB collection poster for the card, cover = stand-in title)
     artwork.js             missing posters by title: TVmaze (series), TMDB (key; movies, series, collections), artwork.json cache
+                           + the pictures themselves in posters/ (data: text files; the window sends them: art:keep)
     main.js                window, network guard, ipc handlers, VLC, dev screenshots
     preload.js             window.api.invoke(channel, …) whitelist + events
     store.js               settings + playlists (seal-iptv.json; passwords via safeStorage)

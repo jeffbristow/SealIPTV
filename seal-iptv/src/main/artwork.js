@@ -10,7 +10,9 @@
  * blocks the network, or when "Fill in missing posters" is off.
  *
  * Answers are kept in artwork.json (found: kept; not found: asked again
- * after 14 days), so each title is looked up once.
+ * after 14 days), so each title is looked up once. The pictures themselves
+ * are kept too (posters/, sent by the window once it has one: keep), so
+ * TMDB / TVmaze send each one once; they stay through updates.
  *
  * Sections:
  *   1. Titles: "EN | Breaking Bad (2008) [4K]" -> "Breaking Bad", 2008
@@ -19,6 +21,7 @@
  * ===================================================================== */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 /* =================================================================
  * 1. TITLES
@@ -62,6 +65,8 @@ function pick(results, title, year) {
  * ================================================================= */
 const MISS_DAYS = 14;
 const DAY = 86400000;
+const MAX_KEPT = 2000;        // pictures kept on disk (~55 KB each, ~110 MB), the oldest go first
+const MAX_PICTURE = 700000;   // characters of one picture (data: address)
 
 class Artwork {
   /**
@@ -72,6 +77,7 @@ class Artwork {
    * @param o.fetch        fetch implementation (tests pass a fake)
    */
   constructor({ dir, getSettings, allowed, userAgent, fetch: fetchImpl }) {
+    this.dir = dir;
     this.file = path.join(dir, 'artwork.json');
     this.getSettings = getSettings;
     this.allowed = allowed || (() => true);
@@ -98,20 +104,67 @@ class Artwork {
     clearTimeout(this.timer);
     if (!this.items) return;
     const keys = Object.keys(this.items);
-    if (keys.length > 20000) for (const k of keys.slice(0, keys.length - 20000)) delete this.items[k];   // oldest first
+    if (keys.length > 20000) for (const k of keys.slice(0, keys.length - 20000)) { this._drop(this.items[k].f); delete this.items[k]; }   // oldest first
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     fs.writeFileSync(this.file + '.tmp', JSON.stringify({ v: 1, items: this.items }));
     fs.renameSync(this.file + '.tmp', this.file);
   }
 
   /** Forget everything found (Settings → "Look up again"). */
-  clear() { this.items = {}; this.flush(); }
+  clear() {
+    for (const c of Object.values(this._load())) this._drop(c.f);
+    this.items = {};
+    this.flush();
+  }
+
+  /* ---- the pictures (posters/<sha1 of the address>.txt: a data: address; text, for the Fire TV's files) ---- */
+  _drop(f) { if (f) try { fs.unlinkSync(path.join(this.dir, f)); } catch { /* gone already */ } }
+
+  /** the kept picture, else the address (the picture is then asked for again and kept) */
+  _picture(c) {
+    if (c.f) {
+      try {
+        const s = String(fs.readFileSync(path.join(this.dir, c.f), 'utf8'));
+        if (s.startsWith('data:image/')) return s;
+      } catch { /* gone: fetched again */ }
+      delete c.f;
+      this._changed();
+    }
+    return c.u;
+  }
+
+  /**
+   * The window has the picture found for url (as data:image/…;base64): keep it.
+   * Only pictures this found are kept. -> true when kept
+   */
+  keep(url, data) {
+    if (typeof url !== 'string' || typeof data !== 'string' || data.length > MAX_PICTURE || !/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) return false;
+    const items = this._load();
+    const mine = Object.values(items).filter(c => c.u === url);
+    if (!mine.length) return false;
+    const f = 'posters/' + crypto.createHash('sha1').update(url).digest('hex') + '.txt';
+    fs.mkdirSync(path.join(this.dir, 'posters'), { recursive: true });
+    fs.writeFileSync(path.join(this.dir, f), data);
+    const now = Date.now();
+    for (const c of mine) { c.f = f; c.ft = now; }
+    // too many: the ones kept longest ago go (a later look shows them from the site again, and keeps them again)
+    const kept = new Map();
+    for (const c of Object.values(items)) if (c.f && (!kept.has(c.f) || kept.get(c.f) < c.ft)) kept.set(c.f, c.ft || 0);
+    if (kept.size > MAX_KEPT) {
+      const old = new Set([...kept].sort((a, b) => a[1] - b[1]).slice(0, kept.size - Math.floor(MAX_KEPT * 0.9)).map(x => x[0]));
+      for (const c of Object.values(items)) if (old.has(c.f)) { delete c.f; delete c.ft; }
+      for (const x of old) this._drop(x);
+    }
+    this._changed();
+    return true;
+  }
 
   /* =================================================================
    * 3. LOOKING UP
    * ================================================================= */
   /**
-   * list: [{ kind: 'movie' | 'series', name, year }] -> [url | null] (same order).
+   * list: [{ kind: 'movie' | 'series' | 'collection', name, year }] -> [url | null] (same order):
+   * data:image/… once the picture is kept, else its address on the site (the window then sends it: keep).
    * At most 60 at a time; the window asks for what's on screen.
    */
   async find(list) {
@@ -128,7 +181,7 @@ class Artwork {
     const key = `${kind}|${norm(title)}|${year || ''}`;
     const items = this._load();
     const c = items[key];
-    if (c && c.u) return c.u;
+    if (c && c.u) return this._picture(c);
     // a miss is asked again after 14 days, or straight away once there's a TMDB key it didn't have
     if (c && Date.now() - c.t < MISS_DAYS * DAY && (c.k || !tmdbKey)) return null;
     if (kind !== 'series' && !tmdbKey) return null;

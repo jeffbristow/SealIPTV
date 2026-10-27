@@ -111,8 +111,22 @@ const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') 
 const pic = (src, name, cls = 'pi', art = null) => (src ? `<img class="${cls}" loading="lazy" src="${esc(src)}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
+  if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);
   if (t.tagName === 'IMG' && t.dataset.i !== undefined) t.replaceWith(h(`<span class="initials"${artAttrs(t.dataset.ak && { kind: t.dataset.ak, name: t.dataset.an, year: t.dataset.ay })}>${esc(t.dataset.i)}</span>`));
 }, true);
+/* A kept picture (artwork.js) comes as a data: address of ~50 KB. A long grid never lets go of its
+   cards, so it's shown as a blob: instead (a few bytes in the page), let go of once it's drawn: the
+   picture then takes no more memory than one from the web. */
+function artSrc(u) {
+  const m = /^data:(image\/[a-z]+);base64,(.*)$/.exec(u || '');
+  if (!m) return u;
+  try {
+    const bin = atob(m[2]), b = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([b], { type: m[1] }));
+  } catch { return u; }
+}
+document.addEventListener('load', e => { const t = e.target; if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src); }, true);
 
 /* Posters the provider doesn't have (or whose link is broken): looked up by title — TVmaze,
    TMDB with a key — for the ones on screen, a batch at a time (artwork.js remembers them). */
@@ -136,8 +150,32 @@ const Art = (() => {
     try { urls = await call('art:find', list); } catch { return; }
     urls.forEach((u, i) => {
       const el = els[i];
-      if (u && el.isConnected) el.replaceWith(h(`<img class="pi" src="${esc(u)}" data-i="${esc(el.textContent)}" alt="">`));
+      if (u && el.isConnected) el.replaceWith(h(`<img class="pi" src="${esc(artSrc(u))}" data-i="${esc(el.textContent)}" alt="">`));
+      keep(u);
     });
+  }
+  /* A picture found on the site (not one already kept: those come as data:): fetched once more
+     (from the browser's cache, mostly) and handed to artwork.js to keep, so it isn't asked for again. */
+  let keeping = Promise.resolve();
+  const tried = new Set();
+  function keep(u) {
+    if (!u || !/^https:\/\//.test(u) || tried.has(u)) return;
+    tried.add(u);
+    keeping = keeping.then(() => new Promise(done => {
+      const x = new XMLHttpRequest();
+      x.open('GET', u);
+      x.responseType = 'blob';
+      x.timeout = 20000;
+      x.onload = () => {
+        if (x.status !== 200 || !/^image\//.test((x.response && x.response.type) || '')) return done();
+        const r = new FileReader();
+        r.onload = () => call('art:keep', u, r.result).catch(() => {}).then(done);
+        r.onerror = done;
+        r.readAsDataURL(x.response);
+      };
+      x.onerror = x.ontimeout = done;
+      x.send();
+    }));
   }
   function scan() {
     scanning = false;
@@ -146,7 +184,7 @@ const Art = (() => {
     for (const el of document.querySelectorAll('.initials[data-ak]:not([data-aq])')) { el.dataset.aq = '1'; if (io) io.observe(el); else queue(el); }
   }
   new MutationObserver(() => { if (!scanning) { scanning = true; requestAnimationFrame(scan); } }).observe(document.documentElement, { childList: true, subtree: true });
-  return { scan };
+  return { scan, keep };
 })();
 
 const fmtTime = s => {
@@ -1099,7 +1137,8 @@ function collectionCard(c) {
   if (c.art && state.settings.artwork && state.settings.artwork.lookup) {
     call('art:find', [{ kind: 'collection', name: c.art }]).then(([u]) => {
       const p = u && el.querySelector('.poster > .pi, .poster > .initials');
-      if (p) p.replaceWith(h(`<img class="pi" src="${esc(u)}" data-i="${esc(initials(c.name))}" alt="">`));
+      if (p) p.replaceWith(h(`<img class="pi" src="${esc(artSrc(u))}" data-i="${esc(initials(c.name))}" alt="">`));
+      Art.keep(u);
     }).catch(() => { /* keep the cover */ });
   }
   return el;
