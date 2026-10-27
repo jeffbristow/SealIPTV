@@ -145,6 +145,13 @@ class Library {
     return this.favorites(pid, kind, 'custom');
   }
 
+  /** ids of the series that have an episode watched or started (Collections: where you are) */
+  seriesStarted(pid) {
+    const d = this._get(pid), out = new Set();
+    for (const map of [d.watched, d.progress]) for (const v of Object.values(map)) if (v && v.seriesId) out.add(String(v.seriesId));
+    return out;
+  }
+
   /* =================================================================
    * 3. WATCHED
    * ================================================================= */

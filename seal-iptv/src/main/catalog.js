@@ -20,6 +20,7 @@ const { Xtream } = require('./xtream');
 const { parseM3U, buildCatalog, seriesInfoFromShow } = require('./m3u');
 const { categoryLanguage, titleLanguage, languageName } = require('./language');
 const { isAdult } = require('./parental');
+const franchises = require('./franchises');
 
 const SECTIONS = ['live', 'movies', 'series'];
 const KIND = { live: 'live', movies: 'movie', series: 'series' };
@@ -364,6 +365,69 @@ class Catalog {
     const out = {};
     for (const s of SECTIONS) out[s] = this.list(pid, { section: s, q, limit });
     return out;
+  }
+
+  /* =================================================================
+   * COLLECTIONS (franchises.js): Marvel, Star Wars … in order
+   * ================================================================= */
+  /** Matches per catalogue load (a reload makes a new one). */
+  _franchiseMatches(pid) {
+    const c = this.get(pid);
+    if (!c._fr) c._fr = franchises.match(c.movies.items, c.series.items);
+    return c._fr;
+  }
+
+  /** entry -> its versions that may be shown now (hidden / locked categories left out) */
+  _franchiseItems(pid) {
+    const m = this._franchiseMatches(pid), open = this.parental.isUnlocked();
+    const rules = { movie: this.rules(pid, 'movies'), series: this.rules(pid, 'series') };
+    return (f, e) => (m.get(f.id + ':' + e.i) || []).filter(i => this._visible(i, rules[e.kind], open));
+  }
+
+  /** The collections the playlist has something from: [{ id, name, have, total, poster }]; q = search text */
+  collections(pid, q = '') {
+    const get = this._franchiseItems(pid);
+    const out = [];
+    for (const f of franchises.all()) {
+      if (q && !franchises.matchesQuery(f, q)) continue;
+      let have = 0, poster = '';
+      for (const n of f.release) {
+        const its = get(f, f.items[n]);
+        if (!its.length) continue;
+        have++;
+        if (!poster) poster = (its.find(i => i.poster) || {}).poster || '';
+      }
+      if (have) out.push({ id: f.id, name: f.name, have, total: f.items.length, poster });
+    }
+    return out;
+  }
+
+  /**
+   * One collection in order ('release' | 'story'). Every title is listed; item is
+   * null when the playlist doesn't have it. next: the place to go on from (the
+   * title after the last one watched or started; one half watched itself).
+   */
+  collection(pid, id, order = 'release') {
+    const f = franchises.byId(id);
+    if (!f) return null;
+    const c = this.get(pid), get = this._franchiseItems(pid);
+    const started = this.library.seriesStarted(pid);
+    order = order === 'story' && f.story ? 'story' : 'release';
+    const items = (order === 'story' ? f.story : f.release).map((n, at) => {
+      const e = f.items[n], section = e.kind === 'series' ? 'series' : 'movies';
+      const its = get(f, e);
+      const versions = its.length ? this._decorate(pid, e.kind, its, c[section]) : [];
+      for (const v of versions) v.started = e.kind === 'series' ? started.has(String(v.id)) : !!(v.watched || v.pos);
+      // the version to open: one already started, else one with a poster
+      const best = versions.find(v => v.started) || versions.find(v => v.poster) || versions[0] || null;
+      return { n: at + 1, title: e.t, year: e.y, kind: e.kind, item: best, versions: versions.map(v => ({ id: v.id, name: v.name })) };
+    });
+    let last = -1;
+    items.forEach((x, i) => { if (x.item && x.item.started) last = i; });
+    let next = -1;
+    if (last >= 0 && items[last].kind === 'movie' && !items[last].item.watched) next = last;
+    else next = items.findIndex((x, i) => i > last && x.item);
+    return { id: f.id, name: f.name, order, hasStory: !!f.story, storyNote: f.storyNote, have: items.filter(x => x.item).length, total: items.length, items, next };
   }
 
   /** Recently added movies / series (Home). */

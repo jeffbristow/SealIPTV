@@ -436,7 +436,7 @@ const Player = (() => {
     hideMsg();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     // the page behind shows progress / watched marks: draw it again
-    if (wasOpen && reason !== 'vpn' && ['home', 'movie', 'show', 'favorites'].includes(state.view)) render();
+    if (wasOpen && reason !== 'vpn' && ['home', 'movie', 'show', 'favorites', 'collection'].includes(state.view)) render();
   }
 
   function showMsg(html) { const m = $('#pMsg'); m.innerHTML = html; show(m, true); root.classList.remove('idle'); }

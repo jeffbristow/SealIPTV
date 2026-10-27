@@ -220,7 +220,7 @@ async function autoRefresh() {
 /* =================================================================
  * 3. NAVIGATION, TOP BAR, SEARCH
  * ================================================================= */
-const TITLES = { home: 'Home', live: 'Live TV', movies: 'Movies', series: 'Series', favorites: 'Favorites', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
+const TITLES = { home: 'Home', live: 'Live TV', movies: 'Movies', series: 'Series', favorites: 'Favorites', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
 
 function go(view, arg = null, { push = true } = {}) {
   if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg });
@@ -244,7 +244,7 @@ function sortDefaultLabel() {
 
 function render() {
   const v = state.view;
-  $$('.nav').forEach(b => b.classList.toggle('active', b.dataset.view === v || (v === 'movie' && b.dataset.view === 'movies') || (v === 'show' && b.dataset.view === 'series')));
+  $$('.nav').forEach(b => b.classList.toggle('active', b.dataset.view === v || (v === 'movie' && b.dataset.view === 'movies') || (v === 'show' && b.dataset.view === 'series') || (v === 'collection' && b.dataset.view === 'collections')));
   $('#viewTitle').textContent = TITLES[v] || '';
   const browse = ['live', 'movies', 'series'].includes(v);
   show($('#sortSel'), v === 'movies' || v === 'series');
@@ -259,7 +259,7 @@ function render() {
   view.innerHTML = '';
   view.scrollTop = 0;
   if (!profile() && v !== 'settings') return renderWelcome(view);
-  ({ home: renderHome, live: renderLive, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
+  ({ home: renderHome, live: renderLive, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
   if (TV && window.tvFocusFirst) window.tvFocusFirst();
 }
 
@@ -379,7 +379,7 @@ function onVpnStatus(s) {
     vpnBlocked(s);
   }
   // posters / logos were blocked while the VPN was off: show them now
-  if (s.ok && wasOk === false && ['home', 'live', 'movies', 'series', 'favorites', 'movie', 'show'].includes(state.view) && $('#player').classList.contains('hidden')) render();
+  if (s.ok && wasOk === false && ['home', 'live', 'movies', 'series', 'favorites', 'collections', 'collection', 'movie', 'show'].includes(state.view) && $('#player').classList.contains('hidden')) render();
   if (state.view === 'settings') updateVpnBox();
 }
 
@@ -490,7 +490,7 @@ async function refreshAll(types = []) {
   }
   // resume points alone don't change the lists; everything else (or pages that show them) is drawn again
   const onlyPos = types.length && types.every(t => t === 'pos');
-  if (!onlyPos || ['home', 'movie', 'show', 'favorites'].includes(state.view)) render();
+  if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'collection'].includes(state.view)) render();
 }
 // the PIN may run out (Settings → "Stay unlocked"): check now and then
 setInterval(async () => {
@@ -797,6 +797,18 @@ function renderBrowse(view) {
     state.sec[section].cat === '*fav' ? `No favorite ${section} yet. Open one and click ☆ Favorite.` : state.q ? `No ${section} match your search.` : `No ${section} here.`);
   catList(section, $('#cats'), () => { scroller.scrollTop = 0; $('#sortSel').options[0].textContent = sortDefaultLabel(); load(); });
   load();
+  if (state.q) {
+    call('collections:list', state.q).then(cols => {
+      if (!cols.length || !grid.isConnected) return;
+      const hint = h('<div class="col-hint"></div>');
+      for (const c of cols) {
+        const b = h(`<button class="btn small">📚 ${esc(c.name)} in order <span class="faint">· ${c.have} of ${c.total}</span></button>`);
+        b.onclick = () => go('collection', c.id);
+        hint.appendChild(b);
+      }
+      scroller.insertBefore(hint, grid);
+    }).catch(() => { /* no collections then */ });
+  }
 }
 
 /** Poster card for a movie or series (it.kind 'movie' | 'series'), or anything with name/poster. */
@@ -808,7 +820,7 @@ function posterCard(it, opts = {}) {
     <div class="poster">${pic(it.poster || it.image, it.name, 'pi', { kind: it.kind, name: it.name, year: it.year })}
       ${it.fav ? '<span class="badge fav">★</span>' : ''}${it.watched ? '<span class="badge seen">✓ Watched</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}
       ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
-    <div class="title" title="${esc(it.name)}">${esc(it.name)}</div><div class="sub">${esc(sub)}</div></div>`);
+    <div class="title" title="${esc(opts.title || it.name)}">${esc(opts.title || it.name)}</div><div class="sub">${esc(sub)}</div></div>`);
   el.onclick = opts.onClick || (() => go(it.kind === 'series' ? 'show' : 'movie', it.id));
   return el;
 }
@@ -1075,13 +1087,95 @@ async function renderFavorites(view, focus) {
   if (f) f.focus();
 }
 
+/* ---- Collections (main/franchises.js): Marvel, Star Wars … in release or story order ---- */
+function collectionCard(c) {
+  return posterCard({ name: c.name, poster: c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { onClick: () => go('collection', c.id) });
+}
+
+async function renderCollections(view) {
+  const page = h('<div class="home"></div>');
+  view.appendChild(page);
+  const list = await call('collections:list').catch(e => { fail(e); return null; });
+  if (!list || !page.isConnected) return;
+  if (!list.length) {
+    page.appendChild(h('<div class="empty">None of the collections are in your playlist yet.<br><span class="small">Marvel, Star Wars, Star Trek, Harry Potter and more show up here when the playlist has their movies or shows.</span></div>'));
+    return;
+  }
+  page.appendChild(h('<div class="shelf"><p class="muted small col-note">The big franchises, movies and the shows that go with them, in the order they came out or in story order.</p></div>'));
+  const g = h('<div class="grid" style="padding-top:0"></div>');
+  list.forEach(c => g.appendChild(collectionCard(c)));
+  page.appendChild(g);
+}
+
+/** Opens a collection's movie or show; with several versions (4K, HD …) asks which. */
+async function openCollectionEntry(x) {
+  const open = id => go(x.kind === 'series' ? 'show' : 'movie', id);
+  if (x.versions.length < 2) return open(x.item.id);
+  let pick = null;
+  await dialog({
+    title: x.title, okText: 'Cancel', hideCancel: true,
+    html: `<p class="muted small">Your playlist has ${x.versions.length} versions of this ${x.kind === 'series' ? 'show' : 'movie'}.</p><div class="versions">${x.versions.map((v, i) => `<button class="btn" data-i="${i}">${esc(v.name)}</button>`).join('')}</div>`,
+    onOpen: () => {
+      const bs = $$('#dlgBody .versions button');
+      bs.forEach(b => { b.onclick = () => { pick = x.versions[b.dataset.i]; $('#dlgOk').click(); }; });
+      setTimeout(() => bs[0] && bs[0].focus(), 60);
+    }
+  });
+  if (pick) open(pick.id);
+}
+
+async function renderCollection(view, focus) {
+  const page = h('<div class="home"></div>');
+  view.appendChild(page);
+  const col = await call('collections:get', state.arg, (state.settings.collections || {}).order || 'release').catch(e => { fail(e); return null; });
+  if (!page.isConnected) return;
+  if (!col) { page.appendChild(h('<div class="empty">This collection isn\'t there any more.</div>')); return; }
+  const next = col.items[col.next];
+  const head = h(`<div class="shelf"><div class="shelf-head"><h2>${esc(col.name)}</h2><span class="muted small">${col.have} of ${col.total} in your playlist</span>
+    ${col.hasStory ? `<div class="seg"><button data-o="release" class="${col.order === 'release' ? 'active' : ''}">Release order</button><button data-o="story" class="${col.order === 'story' ? 'active' : ''}">Story order</button></div>` : ''}
+    ${next ? `<button class="btn primary small col-next"${col.hasStory ? '' : ' style="margin-left:auto"'}>▶ Next up: ${esc(next.title)}</button>` : ''}</div>
+    <p class="muted small col-note">${col.order === 'story' ? `Story order: ${esc(col.storyNote)}.` : 'In the order they came out.'} Greyed out: not in your playlist.</p></div>`);
+  head.querySelectorAll('.seg button').forEach(b => b.onclick = async () => {
+    if (b.dataset.o === col.order) return;
+    await saveSettings({ collections: { order: b.dataset.o } });
+    view.innerHTML = '';
+    renderCollection(view, `.seg [data-o="${b.dataset.o}"]`);
+  });
+  if (next) head.querySelector('.col-next').onclick = () => openCollectionEntry(next);
+  page.appendChild(head);
+  const g = h('<div class="grid" style="padding-top:0"></div>');
+  col.items.forEach((x, i) => {
+    const title = `${x.n} · ${x.title}`;
+    let el;
+    if (x.item) {
+      const sub = [x.year, x.kind === 'series' ? 'Series' : '', x.versions.length > 1 ? `${x.versions.length} versions` : ''].filter(Boolean).join(' · ');
+      el = posterCard({ ...x.item, name: x.title, year: x.year, sub }, { title, onClick: () => openCollectionEntry(x) });
+      if (i === col.next) { el.classList.add('next'); el.querySelector('.poster').appendChild(h('<span class="badge nextup">Next up</span>')); }
+    } else {
+      el = h(`<div class="card missing" title="Not in your playlist"><div class="poster">${pic('', x.title, 'pi', { kind: x.kind, name: x.title, year: x.year })}</div>
+        <div class="title">${esc(title)}</div><div class="sub">${esc([x.year, x.kind === 'series' ? 'Series' : '', 'Not in your playlist'].filter(Boolean).join(' · '))}</div></div>`);
+    }
+    g.appendChild(el);
+  });
+  page.appendChild(g);
+  const f = focus && page.querySelector(focus);
+  if (f) f.focus();
+}
+
 async function renderSearch(view) {
   const page = h('<div class="home"></div>');
   view.appendChild(page);
   if (!state.q) return;
-  const r = await call('catalog:search', state.q).catch(e => { fail(e); return null; });
+  const [r, cols] = await Promise.all([call('catalog:search', state.q).catch(e => { fail(e); return null; }), call('collections:list', state.q).catch(() => [])]);
   if (!r || !page.isConnected) return;
   const total = r.live.total + r.movies.total + r.series.total;
+  if (cols.length) {
+    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>Collections</h2><span class="muted small">${cols.length}</span></div></div>`));
+    const g = h('<div class="grid" style="padding-top:8px"></div>');
+    cols.forEach(c => g.appendChild(collectionCard(c)));
+    page.appendChild(g);
+  }
+  if (!total && cols.length) return;
   if (!total) { page.appendChild(h(`<div class="empty">Nothing matches "${esc(state.q)}".</div>`)); return; }
   const block = (title, res, make, section) => {
     if (!res.total) return;

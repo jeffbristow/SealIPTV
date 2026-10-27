@@ -1,0 +1,423 @@
+{
+  "about": "Collections (franchises.js). items: release date d, title t, other titles alt, k 'series' for shows (default movie). story: the same titles in story order (left out = release order only); a title used twice is written 'series:Title' / 'movie:Title' or 'Title (year)'. Add new films here; they ship with the next release.",
+  "franchises": [
+    {
+      "id": "mcu", "name": "Marvel Cinematic Universe", "words": ["marvel", "mcu", "avengers", "marvel cinematic universe"],
+      "storyNote": "Disney+ timeline order",
+      "items": [
+        { "t": "Iron Man", "d": "2008-05-02" },
+        { "t": "The Incredible Hulk", "d": "2008-06-13" },
+        { "t": "Iron Man 2", "d": "2010-05-07" },
+        { "t": "Thor", "d": "2011-05-06" },
+        { "t": "Captain America: The First Avenger", "d": "2011-07-22" },
+        { "t": "The Avengers", "d": "2012-05-04", "alt": ["Marvel's The Avengers", "Avengers Assemble"] },
+        { "t": "Iron Man 3", "d": "2013-05-03" },
+        { "t": "Thor: The Dark World", "d": "2013-11-08" },
+        { "t": "Captain America: The Winter Soldier", "d": "2014-04-04" },
+        { "t": "Guardians of the Galaxy", "d": "2014-08-01" },
+        { "t": "Avengers: Age of Ultron", "d": "2015-05-01" },
+        { "t": "Ant-Man", "d": "2015-07-17" },
+        { "t": "Captain America: Civil War", "d": "2016-05-06" },
+        { "t": "Doctor Strange", "d": "2016-11-04" },
+        { "t": "Guardians of the Galaxy Vol. 2", "d": "2017-05-05", "alt": ["Guardians of the Galaxy 2"] },
+        { "t": "Spider-Man: Homecoming", "d": "2017-07-07" },
+        { "t": "Thor: Ragnarok", "d": "2017-11-03" },
+        { "t": "Black Panther", "d": "2018-02-16" },
+        { "t": "Avengers: Infinity War", "d": "2018-04-27" },
+        { "t": "Ant-Man and the Wasp", "d": "2018-07-06" },
+        { "t": "Captain Marvel", "d": "2019-03-08" },
+        { "t": "Avengers: Endgame", "d": "2019-04-26" },
+        { "t": "Spider-Man: Far From Home", "d": "2019-07-02" },
+        { "t": "WandaVision", "d": "2021-01-15", "k": "series" },
+        { "t": "The Falcon and the Winter Soldier", "d": "2021-03-19", "k": "series" },
+        { "t": "Loki", "d": "2021-06-09", "k": "series" },
+        { "t": "Black Widow", "d": "2021-07-09" },
+        { "t": "What If...?", "d": "2021-08-11", "k": "series", "alt": ["Marvel's What If"] },
+        { "t": "Shang-Chi and the Legend of the Ten Rings", "d": "2021-09-03", "alt": ["Shang-Chi"] },
+        { "t": "Eternals", "d": "2021-11-05", "alt": ["The Eternals"] },
+        { "t": "Hawkeye", "d": "2021-11-24", "k": "series" },
+        { "t": "Spider-Man: No Way Home", "d": "2021-12-17" },
+        { "t": "Moon Knight", "d": "2022-03-30", "k": "series" },
+        { "t": "Doctor Strange in the Multiverse of Madness", "d": "2022-05-06" },
+        { "t": "Ms. Marvel", "d": "2022-06-08", "k": "series" },
+        { "t": "Thor: Love and Thunder", "d": "2022-07-08" },
+        { "t": "She-Hulk: Attorney at Law", "d": "2022-08-18", "k": "series", "alt": ["She-Hulk"] },
+        { "t": "Werewolf by Night", "d": "2022-10-07" },
+        { "t": "Black Panther: Wakanda Forever", "d": "2022-11-11" },
+        { "t": "The Guardians of the Galaxy Holiday Special", "d": "2022-11-25" },
+        { "t": "Ant-Man and the Wasp: Quantumania", "d": "2023-02-17" },
+        { "t": "Guardians of the Galaxy Vol. 3", "d": "2023-05-05", "alt": ["Guardians of the Galaxy 3"] },
+        { "t": "Secret Invasion", "d": "2023-06-21", "k": "series" },
+        { "t": "The Marvels", "d": "2023-11-10" },
+        { "t": "Echo", "d": "2024-01-09", "k": "series" },
+        { "t": "Deadpool & Wolverine", "d": "2024-07-26" },
+        { "t": "Agatha All Along", "d": "2024-09-18", "k": "series" },
+        { "t": "Captain America: Brave New World", "d": "2025-02-14" },
+        { "t": "Daredevil: Born Again", "d": "2025-03-04", "k": "series" },
+        { "t": "Thunderbolts*", "d": "2025-05-02", "alt": ["Thunderbolts", "The New Avengers"] },
+        { "t": "Ironheart", "d": "2025-06-24", "k": "series" },
+        { "t": "The Fantastic Four: First Steps", "d": "2025-07-25", "alt": ["Fantastic Four: First Steps"] }
+      ],
+      "story": [
+        "Captain America: The First Avenger", "Captain Marvel", "Iron Man", "Iron Man 2", "The Incredible Hulk", "Thor",
+        "The Avengers", "Thor: The Dark World", "Iron Man 3", "Captain America: The Winter Soldier", "Guardians of the Galaxy",
+        "Guardians of the Galaxy Vol. 2", "Avengers: Age of Ultron", "Ant-Man", "Captain America: Civil War", "Black Widow",
+        "Black Panther", "Spider-Man: Homecoming", "Doctor Strange", "Thor: Ragnarok", "Ant-Man and the Wasp",
+        "Avengers: Infinity War", "Avengers: Endgame", "Loki", "What If...?", "WandaVision", "The Falcon and the Winter Soldier",
+        "Shang-Chi and the Legend of the Ten Rings", "Eternals", "Spider-Man: Far From Home", "Spider-Man: No Way Home",
+        "Doctor Strange in the Multiverse of Madness", "Hawkeye", "Moon Knight", "Black Panther: Wakanda Forever", "Echo",
+        "She-Hulk: Attorney at Law", "Ms. Marvel", "Thor: Love and Thunder", "Werewolf by Night",
+        "The Guardians of the Galaxy Holiday Special", "Ant-Man and the Wasp: Quantumania", "Guardians of the Galaxy Vol. 3",
+        "Secret Invasion", "The Marvels", "Deadpool & Wolverine", "Agatha All Along", "Daredevil: Born Again",
+        "Captain America: Brave New World", "Thunderbolts*", "Ironheart", "The Fantastic Four: First Steps"
+      ]
+    },
+    {
+      "id": "starwars", "name": "Star Wars", "words": ["star wars", "starwars", "skywalker", "jedi"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Star Wars: A New Hope", "d": "1977-05-25", "alt": ["Star Wars", "A New Hope", "Star Wars: Episode IV - A New Hope"] },
+        { "t": "Star Wars: The Empire Strikes Back", "d": "1980-05-21", "alt": ["The Empire Strikes Back"] },
+        { "t": "Star Wars: Return of the Jedi", "d": "1983-05-25", "alt": ["Return of the Jedi"] },
+        { "t": "Star Wars: The Phantom Menace", "d": "1999-05-19", "alt": ["The Phantom Menace"] },
+        { "t": "Star Wars: Attack of the Clones", "d": "2002-05-16", "alt": ["Attack of the Clones"] },
+        { "t": "Star Wars: Revenge of the Sith", "d": "2005-05-19", "alt": ["Revenge of the Sith"] },
+        { "t": "Star Wars: The Clone Wars", "d": "2008-08-15", "alt": ["The Clone Wars"] },
+        { "t": "Star Wars: The Clone Wars", "d": "2008-10-03", "k": "series", "alt": ["The Clone Wars"] },
+        { "t": "Star Wars Rebels", "d": "2014-10-03", "k": "series", "alt": ["Rebels"] },
+        { "t": "Star Wars: The Force Awakens", "d": "2015-12-18", "alt": ["The Force Awakens"] },
+        { "t": "Rogue One: A Star Wars Story", "d": "2016-12-16", "alt": ["Rogue One"] },
+        { "t": "Star Wars: The Last Jedi", "d": "2017-12-15", "alt": ["The Last Jedi"] },
+        { "t": "Solo: A Star Wars Story", "d": "2018-05-25", "alt": ["Solo"] },
+        { "t": "Star Wars Resistance", "d": "2018-10-07", "k": "series" },
+        { "t": "The Mandalorian", "d": "2019-11-12", "k": "series", "alt": ["Star Wars: The Mandalorian"] },
+        { "t": "Star Wars: The Rise of Skywalker", "d": "2019-12-20", "alt": ["The Rise of Skywalker"] },
+        { "t": "Star Wars: The Bad Batch", "d": "2021-05-04", "k": "series", "alt": ["The Bad Batch"] },
+        { "t": "The Book of Boba Fett", "d": "2021-12-29", "k": "series", "alt": ["Star Wars: The Book of Boba Fett"] },
+        { "t": "Obi-Wan Kenobi", "d": "2022-05-27", "k": "series", "alt": ["Star Wars: Obi-Wan Kenobi"] },
+        { "t": "Andor", "d": "2022-09-21", "k": "series", "alt": ["Star Wars: Andor"] },
+        { "t": "Star Wars: Tales of the Jedi", "d": "2022-10-26", "k": "series", "alt": ["Tales of the Jedi"] },
+        { "t": "Ahsoka", "d": "2023-08-22", "k": "series", "alt": ["Star Wars: Ahsoka"] },
+        { "t": "The Acolyte", "d": "2024-06-04", "k": "series", "alt": ["Star Wars: The Acolyte"] },
+        { "t": "Star Wars: Skeleton Crew", "d": "2024-12-02", "k": "series", "alt": ["Skeleton Crew"] }
+      ],
+      "story": [
+        "The Acolyte", "Star Wars: The Phantom Menace", "Star Wars: Attack of the Clones", "movie:Star Wars: The Clone Wars",
+        "series:Star Wars: The Clone Wars", "Star Wars: Tales of the Jedi", "Star Wars: Revenge of the Sith", "Star Wars: The Bad Batch",
+        "Solo: A Star Wars Story", "Obi-Wan Kenobi", "Andor", "Star Wars Rebels", "Rogue One: A Star Wars Story",
+        "Star Wars: A New Hope", "Star Wars: The Empire Strikes Back", "Star Wars: Return of the Jedi", "The Mandalorian",
+        "The Book of Boba Fett", "Ahsoka", "Star Wars: Skeleton Crew", "Star Wars Resistance", "Star Wars: The Force Awakens",
+        "Star Wars: The Last Jedi", "Star Wars: The Rise of Skywalker"
+      ]
+    },
+    {
+      "id": "startrek", "name": "Star Trek", "words": ["star trek", "startrek", "trek", "enterprise"],
+      "storyNote": "the order of the story's timeline (the 2009–2016 films are an alternate timeline, placed where it splits off)",
+      "items": [
+        { "t": "Star Trek: The Original Series", "d": "1966-09-08", "k": "series", "alt": ["Star Trek", "Star Trek TOS"] },
+        { "t": "Star Trek: The Animated Series", "d": "1973-09-08", "k": "series" },
+        { "t": "Star Trek: The Motion Picture", "d": "1979-12-07" },
+        { "t": "Star Trek II: The Wrath of Khan", "d": "1982-06-04", "alt": ["Star Trek 2: The Wrath of Khan", "The Wrath of Khan"] },
+        { "t": "Star Trek III: The Search for Spock", "d": "1984-06-01", "alt": ["Star Trek 3: The Search for Spock", "The Search for Spock"] },
+        { "t": "Star Trek IV: The Voyage Home", "d": "1986-11-26", "alt": ["Star Trek 4: The Voyage Home", "The Voyage Home"] },
+        { "t": "Star Trek: The Next Generation", "d": "1987-09-28", "k": "series", "alt": ["Star Trek TNG"] },
+        { "t": "Star Trek V: The Final Frontier", "d": "1989-06-09", "alt": ["Star Trek 5: The Final Frontier"] },
+        { "t": "Star Trek VI: The Undiscovered Country", "d": "1991-12-06", "alt": ["Star Trek 6: The Undiscovered Country"] },
+        { "t": "Star Trek: Deep Space Nine", "d": "1993-01-03", "k": "series", "alt": ["Star Trek: Deep Space 9", "Star Trek DS9"] },
+        { "t": "Star Trek Generations", "d": "1994-11-18", "alt": ["Star Trek VII: Generations"] },
+        { "t": "Star Trek: Voyager", "d": "1995-01-16", "k": "series" },
+        { "t": "Star Trek: First Contact", "d": "1996-11-22", "alt": ["Star Trek VIII: First Contact"] },
+        { "t": "Star Trek: Insurrection", "d": "1998-12-11", "alt": ["Star Trek IX: Insurrection"] },
+        { "t": "Star Trek: Enterprise", "d": "2001-09-26", "k": "series", "alt": ["Enterprise"] },
+        { "t": "Star Trek: Nemesis", "d": "2002-12-13", "alt": ["Star Trek X: Nemesis"] },
+        { "t": "Star Trek", "d": "2009-05-08" },
+        { "t": "Star Trek Into Darkness", "d": "2013-05-16" },
+        { "t": "Star Trek Beyond", "d": "2016-07-22" },
+        { "t": "Star Trek: Discovery", "d": "2017-09-24", "k": "series" },
+        { "t": "Star Trek: Picard", "d": "2020-01-23", "k": "series" },
+        { "t": "Star Trek: Lower Decks", "d": "2020-08-06", "k": "series" },
+        { "t": "Star Trek: Prodigy", "d": "2021-10-28", "k": "series" },
+        { "t": "Star Trek: Strange New Worlds", "d": "2022-05-05", "k": "series" },
+        { "t": "Star Trek: Section 31", "d": "2025-01-24", "alt": ["Section 31"] },
+        { "t": "Star Trek: Starfleet Academy", "d": "2026-01-15", "k": "series" }
+      ],
+      "story": [
+        "Star Trek: Enterprise", "Star Trek: Discovery", "Star Trek: Strange New Worlds", "Star Trek: The Original Series",
+        "Star Trek: The Animated Series", "Star Trek: The Motion Picture", "Star Trek II: The Wrath of Khan",
+        "Star Trek III: The Search for Spock", "Star Trek IV: The Voyage Home", "Star Trek V: The Final Frontier",
+        "Star Trek VI: The Undiscovered Country", "Star Trek: Section 31", "Star Trek: The Next Generation", "Star Trek Generations",
+        "Star Trek: Deep Space Nine", "Star Trek: First Contact", "Star Trek: Voyager", "Star Trek: Insurrection",
+        "Star Trek: Lower Decks", "Star Trek: Prodigy", "Star Trek: Nemesis", "Star Trek", "Star Trek Into Darkness",
+        "Star Trek Beyond", "Star Trek: Picard", "Star Trek: Starfleet Academy"
+      ]
+    },
+    {
+      "id": "wizarding", "name": "Harry Potter & Fantastic Beasts", "words": ["harry potter", "potter", "wizarding world", "fantastic beasts", "hogwarts"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Harry Potter and the Philosopher's Stone", "d": "2001-11-16", "alt": ["Harry Potter and the Sorcerer's Stone"] },
+        { "t": "Harry Potter and the Chamber of Secrets", "d": "2002-11-15" },
+        { "t": "Harry Potter and the Prisoner of Azkaban", "d": "2004-06-04" },
+        { "t": "Harry Potter and the Goblet of Fire", "d": "2005-11-18" },
+        { "t": "Harry Potter and the Order of the Phoenix", "d": "2007-07-11" },
+        { "t": "Harry Potter and the Half-Blood Prince", "d": "2009-07-15" },
+        { "t": "Harry Potter and the Deathly Hallows: Part 1", "d": "2010-11-19", "alt": ["Harry Potter and the Deathly Hallows Part 1", "Harry Potter and the Deathly Hallows - Part 1", "Harry Potter and the Deathly Hallows 1"] },
+        { "t": "Harry Potter and the Deathly Hallows: Part 2", "d": "2011-07-15", "alt": ["Harry Potter and the Deathly Hallows Part 2", "Harry Potter and the Deathly Hallows - Part 2", "Harry Potter and the Deathly Hallows 2"] },
+        { "t": "Fantastic Beasts and Where to Find Them", "d": "2016-11-18" },
+        { "t": "Fantastic Beasts: The Crimes of Grindelwald", "d": "2018-11-16", "alt": ["Fantastic Beasts 2"] },
+        { "t": "Fantastic Beasts: The Secrets of Dumbledore", "d": "2022-04-15", "alt": ["Fantastic Beasts 3"] }
+      ],
+      "story": [
+        "Fantastic Beasts and Where to Find Them", "Fantastic Beasts: The Crimes of Grindelwald", "Fantastic Beasts: The Secrets of Dumbledore",
+        "Harry Potter and the Philosopher's Stone", "Harry Potter and the Chamber of Secrets", "Harry Potter and the Prisoner of Azkaban",
+        "Harry Potter and the Goblet of Fire", "Harry Potter and the Order of the Phoenix", "Harry Potter and the Half-Blood Prince",
+        "Harry Potter and the Deathly Hallows: Part 1", "Harry Potter and the Deathly Hallows: Part 2"
+      ]
+    },
+    {
+      "id": "middleearth", "name": "The Lord of the Rings & The Hobbit", "words": ["lord of the rings", "lotr", "hobbit", "middle earth", "middle-earth", "tolkien"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "The Lord of the Rings: The Fellowship of the Ring", "d": "2001-12-19", "alt": ["The Fellowship of the Ring"] },
+        { "t": "The Lord of the Rings: The Two Towers", "d": "2002-12-18", "alt": ["The Two Towers"] },
+        { "t": "The Lord of the Rings: The Return of the King", "d": "2003-12-17", "alt": ["The Return of the King"] },
+        { "t": "The Hobbit: An Unexpected Journey", "d": "2012-12-14" },
+        { "t": "The Hobbit: The Desolation of Smaug", "d": "2013-12-13" },
+        { "t": "The Hobbit: The Battle of the Five Armies", "d": "2014-12-17" },
+        { "t": "The Lord of the Rings: The Rings of Power", "d": "2022-09-01", "k": "series", "alt": ["The Rings of Power"] },
+        { "t": "The Lord of the Rings: The War of the Rohirrim", "d": "2024-12-13", "alt": ["The War of the Rohirrim"] }
+      ],
+      "story": [
+        "The Lord of the Rings: The Rings of Power", "The Lord of the Rings: The War of the Rohirrim", "The Hobbit: An Unexpected Journey",
+        "The Hobbit: The Desolation of Smaug", "The Hobbit: The Battle of the Five Armies", "The Lord of the Rings: The Fellowship of the Ring",
+        "The Lord of the Rings: The Two Towers", "The Lord of the Rings: The Return of the King"
+      ]
+    },
+    {
+      "id": "dceu", "name": "DC Extended Universe", "words": ["dc", "dceu", "justice league", "dc extended universe", "dc comics"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Man of Steel", "d": "2013-06-14" },
+        { "t": "Batman v Superman: Dawn of Justice", "d": "2016-03-25", "alt": ["Batman vs Superman: Dawn of Justice", "Batman v Superman"] },
+        { "t": "Suicide Squad", "d": "2016-08-05" },
+        { "t": "Wonder Woman", "d": "2017-06-02" },
+        { "t": "Justice League", "d": "2017-11-17" },
+        { "t": "Aquaman", "d": "2018-12-21" },
+        { "t": "Shazam!", "d": "2019-04-05", "alt": ["Shazam"] },
+        { "t": "Birds of Prey", "d": "2020-02-07", "alt": ["Birds of Prey (and the Fantabulous Emancipation of One Harley Quinn)", "Birds of Prey and the Fantabulous Emancipation of One Harley Quinn"] },
+        { "t": "Wonder Woman 1984", "d": "2020-12-25", "alt": ["WW84"] },
+        { "t": "Zack Snyder's Justice League", "d": "2021-03-18" },
+        { "t": "The Suicide Squad", "d": "2021-08-06" },
+        { "t": "Peacemaker", "d": "2022-01-13", "k": "series" },
+        { "t": "Black Adam", "d": "2022-10-21" },
+        { "t": "Shazam! Fury of the Gods", "d": "2023-03-17", "alt": ["Shazam Fury of the Gods"] },
+        { "t": "The Flash", "d": "2023-06-16" },
+        { "t": "Blue Beetle", "d": "2023-08-18" },
+        { "t": "Aquaman and the Lost Kingdom", "d": "2023-12-22" }
+      ],
+      "story": [
+        "Wonder Woman", "Wonder Woman 1984", "Man of Steel", "Batman v Superman: Dawn of Justice", "Suicide Squad", "Justice League",
+        "Zack Snyder's Justice League", "Aquaman", "Shazam!", "Birds of Prey", "The Suicide Squad", "Peacemaker", "Black Adam",
+        "Shazam! Fury of the Gods", "The Flash", "Blue Beetle", "Aquaman and the Lost Kingdom"
+      ]
+    },
+    {
+      "id": "xmen", "name": "X-Men", "words": ["x-men", "xmen", "x men", "wolverine", "deadpool", "mutants"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "X-Men", "d": "2000-07-14" },
+        { "t": "X2", "d": "2003-05-02", "alt": ["X2: X-Men United", "X-Men 2", "X-Men United"] },
+        { "t": "X-Men: The Last Stand", "d": "2006-05-26", "alt": ["X-Men 3", "X-Men 3: The Last Stand"] },
+        { "t": "X-Men Origins: Wolverine", "d": "2009-05-01" },
+        { "t": "X-Men: First Class", "d": "2011-06-03" },
+        { "t": "The Wolverine", "d": "2013-07-26" },
+        { "t": "X-Men: Days of Future Past", "d": "2014-05-23" },
+        { "t": "Deadpool", "d": "2016-02-12" },
+        { "t": "X-Men: Apocalypse", "d": "2016-05-27" },
+        { "t": "Logan", "d": "2017-03-03" },
+        { "t": "Deadpool 2", "d": "2018-05-18" },
+        { "t": "Dark Phoenix", "d": "2019-06-07", "alt": ["X-Men: Dark Phoenix"] },
+        { "t": "The New Mutants", "d": "2020-08-28" }
+      ],
+      "story": [
+        "X-Men: First Class", "X-Men Origins: Wolverine", "X-Men: Days of Future Past", "X-Men: Apocalypse", "Dark Phoenix",
+        "The New Mutants", "X-Men", "X2", "X-Men: The Last Stand", "The Wolverine", "Deadpool", "Deadpool 2", "Logan"
+      ]
+    },
+    {
+      "id": "bond", "name": "James Bond", "words": ["james bond", "bond", "007"],
+      "items": [
+        { "t": "Dr. No", "d": "1962-10-05" },
+        { "t": "From Russia with Love", "d": "1963-10-10" },
+        { "t": "Goldfinger", "d": "1964-09-17" },
+        { "t": "Thunderball", "d": "1965-12-09" },
+        { "t": "You Only Live Twice", "d": "1967-06-12" },
+        { "t": "On Her Majesty's Secret Service", "d": "1969-12-18" },
+        { "t": "Diamonds Are Forever", "d": "1971-12-14" },
+        { "t": "Live and Let Die", "d": "1973-06-27" },
+        { "t": "The Man with the Golden Gun", "d": "1974-12-19" },
+        { "t": "The Spy Who Loved Me", "d": "1977-07-07" },
+        { "t": "Moonraker", "d": "1979-06-26" },
+        { "t": "For Your Eyes Only", "d": "1981-06-24" },
+        { "t": "Octopussy", "d": "1983-06-06" },
+        { "t": "A View to a Kill", "d": "1985-05-22" },
+        { "t": "The Living Daylights", "d": "1987-06-29" },
+        { "t": "Licence to Kill", "d": "1989-06-13", "alt": ["License to Kill"] },
+        { "t": "GoldenEye", "d": "1995-11-13" },
+        { "t": "Tomorrow Never Dies", "d": "1997-12-09" },
+        { "t": "The World Is Not Enough", "d": "1999-11-19" },
+        { "t": "Die Another Day", "d": "2002-11-18" },
+        { "t": "Casino Royale", "d": "2006-11-14" },
+        { "t": "Quantum of Solace", "d": "2008-10-29" },
+        { "t": "Skyfall", "d": "2012-10-23" },
+        { "t": "Spectre", "d": "2015-10-26" },
+        { "t": "No Time to Die", "d": "2021-09-28" }
+      ]
+    },
+    {
+      "id": "fast", "name": "Fast & Furious", "words": ["fast and furious", "fast & furious", "fast furious", "fast saga"],
+      "storyNote": "the order of the story's timeline (Tokyo Drift takes place after Fast & Furious 6)",
+      "items": [
+        { "t": "The Fast and the Furious", "d": "2001-06-22" },
+        { "t": "2 Fast 2 Furious", "d": "2003-06-06" },
+        { "t": "The Fast and the Furious: Tokyo Drift", "d": "2006-06-16", "alt": ["Tokyo Drift", "Fast & Furious: Tokyo Drift"] },
+        { "t": "Fast & Furious", "d": "2009-04-03", "alt": ["Fast and Furious 4", "Fast & Furious 4"] },
+        { "t": "Fast Five", "d": "2011-04-29", "alt": ["Fast & Furious 5", "Fast and Furious 5"] },
+        { "t": "Fast & Furious 6", "d": "2013-05-24", "alt": ["Furious 6"] },
+        { "t": "Furious 7", "d": "2015-04-03", "alt": ["Fast & Furious 7", "Fast and Furious 7"] },
+        { "t": "The Fate of the Furious", "d": "2017-04-14", "alt": ["Fast & Furious 8", "F8"] },
+        { "t": "Fast & Furious Presents: Hobbs & Shaw", "d": "2019-08-02", "alt": ["Hobbs & Shaw", "Hobbs and Shaw"] },
+        { "t": "F9", "d": "2021-06-25", "alt": ["F9: The Fast Saga", "Fast & Furious 9", "Fast and Furious 9"] },
+        { "t": "Fast X", "d": "2023-05-19", "alt": ["Fast & Furious 10", "Fast X: Part 1"] }
+      ],
+      "story": [
+        "The Fast and the Furious", "2 Fast 2 Furious", "Fast & Furious", "Fast Five", "Fast & Furious 6",
+        "The Fast and the Furious: Tokyo Drift", "Furious 7", "The Fate of the Furious", "Fast & Furious Presents: Hobbs & Shaw", "F9", "Fast X"
+      ]
+    },
+    {
+      "id": "mission", "name": "Mission: Impossible", "words": ["mission impossible", "mission: impossible", "ethan hunt"],
+      "items": [
+        { "t": "Mission: Impossible", "d": "1996-05-22" },
+        { "t": "Mission: Impossible 2", "d": "2000-05-24", "alt": ["Mission: Impossible II", "M:I-2"] },
+        { "t": "Mission: Impossible III", "d": "2006-05-05", "alt": ["Mission: Impossible 3"] },
+        { "t": "Mission: Impossible - Ghost Protocol", "d": "2011-12-16", "alt": ["Ghost Protocol", "Mission: Impossible 4"] },
+        { "t": "Mission: Impossible - Rogue Nation", "d": "2015-07-31", "alt": ["Rogue Nation", "Mission: Impossible 5"] },
+        { "t": "Mission: Impossible - Fallout", "d": "2018-07-27", "alt": ["Mission: Impossible 6"] },
+        { "t": "Mission: Impossible - Dead Reckoning Part One", "d": "2023-07-12", "alt": ["Mission: Impossible - Dead Reckoning", "Mission: Impossible 7", "Dead Reckoning Part One"] },
+        { "t": "Mission: Impossible - The Final Reckoning", "d": "2025-05-23", "alt": ["Mission: Impossible - Dead Reckoning Part Two", "Mission: Impossible 8", "The Final Reckoning"] }
+      ]
+    },
+    {
+      "id": "jurassic", "name": "Jurassic Park & Jurassic World", "words": ["jurassic", "jurassic park", "jurassic world", "dinosaurs"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Jurassic Park", "d": "1993-06-11" },
+        { "t": "The Lost World: Jurassic Park", "d": "1997-05-23", "alt": ["Jurassic Park 2", "Jurassic Park: The Lost World", "The Lost World"] },
+        { "t": "Jurassic Park III", "d": "2001-07-18", "alt": ["Jurassic Park 3"] },
+        { "t": "Jurassic World", "d": "2015-06-12" },
+        { "t": "Jurassic World: Fallen Kingdom", "d": "2018-06-22" },
+        { "t": "Jurassic World: Camp Cretaceous", "d": "2020-09-18", "k": "series" },
+        { "t": "Jurassic World Dominion", "d": "2022-06-10", "alt": ["Jurassic World: Dominion"] },
+        { "t": "Jurassic World: Chaos Theory", "d": "2024-05-24", "k": "series" },
+        { "t": "Jurassic World Rebirth", "d": "2025-07-02", "alt": ["Jurassic World: Rebirth"] }
+      ],
+      "story": [
+        "Jurassic Park", "The Lost World: Jurassic Park", "Jurassic Park III", "Jurassic World", "Jurassic World: Camp Cretaceous",
+        "Jurassic World: Fallen Kingdom", "Jurassic World: Chaos Theory", "Jurassic World Dominion", "Jurassic World Rebirth"
+      ]
+    },
+    {
+      "id": "alien", "name": "Alien", "words": ["alien", "aliens", "xenomorph", "prometheus"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Alien", "d": "1979-05-25" },
+        { "t": "Aliens", "d": "1986-07-18" },
+        { "t": "Alien 3", "d": "1992-05-22", "alt": ["Alien³"] },
+        { "t": "Alien Resurrection", "d": "1997-11-26", "alt": ["Alien: Resurrection"] },
+        { "t": "Prometheus", "d": "2012-06-08" },
+        { "t": "Alien: Covenant", "d": "2017-05-19" },
+        { "t": "Alien: Romulus", "d": "2024-08-16" },
+        { "t": "Alien: Earth", "d": "2025-08-12", "k": "series" }
+      ],
+      "story": ["Prometheus", "Alien: Covenant", "Alien: Earth", "Alien", "Alien: Romulus", "Aliens", "Alien 3", "Alien Resurrection"]
+    },
+    {
+      "id": "predator", "name": "Predator", "words": ["predator", "predators"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Predator", "d": "1987-06-12" },
+        { "t": "Predator 2", "d": "1990-11-21" },
+        { "t": "Predators", "d": "2010-07-09" },
+        { "t": "The Predator", "d": "2018-09-14" },
+        { "t": "Prey", "d": "2022-08-05" },
+        { "t": "Predator: Killer of Killers", "d": "2025-06-06" },
+        { "t": "Predator: Badlands", "d": "2025-11-07" }
+      ],
+      "story": ["Prey", "Predator: Killer of Killers", "Predator", "Predator 2", "Predators", "The Predator", "Predator: Badlands"]
+    },
+    {
+      "id": "apes", "name": "Planet of the Apes", "words": ["planet of the apes", "apes", "caesar"],
+      "storyNote": "the order of the story's timeline (the newer films first; the 1968–1973 films and the 2001 film are their own stories)",
+      "items": [
+        { "t": "Planet of the Apes", "d": "1968-04-03" },
+        { "t": "Beneath the Planet of the Apes", "d": "1970-05-26" },
+        { "t": "Escape from the Planet of the Apes", "d": "1971-05-21" },
+        { "t": "Conquest of the Planet of the Apes", "d": "1972-06-30" },
+        { "t": "Battle for the Planet of the Apes", "d": "1973-06-15" },
+        { "t": "Planet of the Apes", "d": "2001-07-27" },
+        { "t": "Rise of the Planet of the Apes", "d": "2011-08-05" },
+        { "t": "Dawn of the Planet of the Apes", "d": "2014-07-11" },
+        { "t": "War for the Planet of the Apes", "d": "2017-07-14" },
+        { "t": "Kingdom of the Planet of the Apes", "d": "2024-05-10" }
+      ],
+      "story": [
+        "Rise of the Planet of the Apes", "Dawn of the Planet of the Apes", "War for the Planet of the Apes", "Kingdom of the Planet of the Apes",
+        "Planet of the Apes (1968)", "Beneath the Planet of the Apes", "Escape from the Planet of the Apes", "Conquest of the Planet of the Apes",
+        "Battle for the Planet of the Apes", "Planet of the Apes (2001)"
+      ]
+    },
+    {
+      "id": "terminator", "name": "Terminator", "words": ["terminator", "skynet"],
+      "items": [
+        { "t": "The Terminator", "d": "1984-10-26", "alt": ["Terminator"] },
+        { "t": "Terminator 2: Judgment Day", "d": "1991-07-03", "alt": ["Terminator 2", "T2: Judgment Day"] },
+        { "t": "Terminator 3: Rise of the Machines", "d": "2003-07-02", "alt": ["Terminator 3"] },
+        { "t": "Terminator: The Sarah Connor Chronicles", "d": "2008-01-13", "k": "series" },
+        { "t": "Terminator Salvation", "d": "2009-05-21" },
+        { "t": "Terminator Genisys", "d": "2015-07-01" },
+        { "t": "Terminator: Dark Fate", "d": "2019-11-01" },
+        { "t": "Terminator Zero", "d": "2024-08-29", "k": "series" }
+      ]
+    },
+    {
+      "id": "johnwick", "name": "John Wick", "words": ["john wick", "wick", "continental"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "John Wick", "d": "2014-10-24" },
+        { "t": "John Wick: Chapter 2", "d": "2017-02-10", "alt": ["John Wick 2"] },
+        { "t": "John Wick: Chapter 3 - Parabellum", "d": "2019-05-17", "alt": ["John Wick: Chapter 3", "John Wick 3", "John Wick 3: Parabellum", "John Wick: Parabellum"] },
+        { "t": "John Wick: Chapter 4", "d": "2023-03-24", "alt": ["John Wick 4"] },
+        { "t": "The Continental: From the World of John Wick", "d": "2023-09-22", "k": "series", "alt": ["The Continental"] },
+        { "t": "Ballerina", "d": "2025-06-06", "alt": ["From the World of John Wick: Ballerina"] }
+      ],
+      "story": ["The Continental: From the World of John Wick", "John Wick", "John Wick: Chapter 2", "John Wick: Chapter 3 - Parabellum", "Ballerina", "John Wick: Chapter 4"]
+    },
+    {
+      "id": "indy", "name": "Indiana Jones", "words": ["indiana jones", "indy"],
+      "storyNote": "the order of the story's timeline",
+      "items": [
+        { "t": "Raiders of the Lost Ark", "d": "1981-06-12", "alt": ["Indiana Jones and the Raiders of the Lost Ark"] },
+        { "t": "Indiana Jones and the Temple of Doom", "d": "1984-05-23" },
+        { "t": "Indiana Jones and the Last Crusade", "d": "1989-05-24" },
+        { "t": "The Young Indiana Jones Chronicles", "d": "1992-03-04", "k": "series" },
+        { "t": "Indiana Jones and the Kingdom of the Crystal Skull", "d": "2008-05-22" },
+        { "t": "Indiana Jones and the Dial of Destiny", "d": "2023-06-30" }
+      ],
+      "story": [
+        "The Young Indiana Jones Chronicles", "Indiana Jones and the Temple of Doom", "Raiders of the Lost Ark",
+        "Indiana Jones and the Last Crusade", "Indiana Jones and the Kingdom of the Crystal Skull", "Indiana Jones and the Dial of Destiny"
+      ]
+    }
+  ]
+}
