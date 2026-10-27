@@ -36,6 +36,7 @@ seal-iptv/
     franchises.js/.json    Collections: hand-kept franchise list (release dates, story order, shows),
                            matched to the playlist by cleaned title + year; add new films to the .json
                            (art = TMDB collection poster for the card, cover = stand-in title)
+    imagecache.js          Windows: every poster / logo via sealimg://img/?u=… kept in userData/images (600 MB cap)
     artwork.js             missing posters by title: TVmaze (series), TMDB (key; movies, series, collections), artwork.json cache
                            + the pictures themselves in posters/ (data: text files; the window sends them: art:keep)
     main.js                window, network guard, ipc handlers, VLC, dev screenshots

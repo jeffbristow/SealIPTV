@@ -107,8 +107,12 @@ const initials = name => String(name || '?').replace(/[^\p{L}\p{N}\s]/gu, ' ').t
 
 /** A movie's / series' title for looking up a poster the provider doesn't have (Art below). */
 const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') && art.name ? ` data-ak="${art.kind}" data-an="${esc(art.name)}" data-ay="${Number(art.year) || ''}"` : '');
+/* Windows: pictures from the web go through sealimg: — kept on disk the first time (main/imagecache.js),
+   so moving around and starting again doesn't fetch them again. (Fire TV: the address as it is.) */
+const KEEPS_IMAGES = location.protocol === 'file:';
+const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u) : u);
 /** <img> that falls back to initials (see the error listener below); art: { kind, name, year } */
-const pic = (src, name, cls = 'pi', art = null) => (src ? `<img class="${cls}" loading="lazy" src="${esc(src)}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
+const pic = (src, name, cls = 'pi', art = null) => (src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
   if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);
@@ -119,7 +123,7 @@ document.addEventListener('error', e => {
    picture then takes no more memory than one from the web. */
 function artSrc(u) {
   const m = /^data:(image\/[a-z]+);base64,(.*)$/.exec(u || '');
-  if (!m) return u;
+  if (!m) return imgSrc(u);
   try {
     const bin = atob(m[2]), b = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
@@ -159,7 +163,7 @@ const Art = (() => {
   let keeping = Promise.resolve();
   const tried = new Set();
   function keep(u) {
-    if (!u || !/^https:\/\//.test(u) || tried.has(u)) return;
+    if (KEEPS_IMAGES || !u || !/^https:\/\//.test(u) || tried.has(u)) return;   // Windows keeps every picture anyway
     tried.add(u);
     keeping = keeping.then(() => new Promise(done => {
       const x = new XMLHttpRequest();
@@ -886,7 +890,7 @@ async function renderMovie(view) {
   const dur = i.duration || m.dur || 0;
   const meta = [...new Set([i.year || m.year || '', dur ? `${Math.round(dur / 60)} min` : '', i.genre || '', m.catName || ''].filter(Boolean))];
   const rating = i.rating || m.rating;
-  page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(i.backdrop || poster)}')"></div>` : ''}
+  page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(imgSrc(i.backdrop || poster))}')"></div>` : ''}
     <div class="inner">
       <button class="btn ghost small back" id="mBack">← Back</button>
       <div class="head">
@@ -960,7 +964,7 @@ async function renderShow(view) {
   const poster = i.poster || d.poster;
   const queue = episodeQueue(d);
   const meta = [i.year || d.year || '', `${i.seasons.length} season${i.seasons.length === 1 ? '' : 's'}`, `${queue.length} episodes`, i.genre || ''].filter(Boolean);
-  page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(i.backdrop || poster)}')"></div>` : ''}
+  page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(imgSrc(i.backdrop || poster))}')"></div>` : ''}
     <div class="inner">
       <button class="btn ghost small back" id="sBack">← Back</button>
       <div class="head">
@@ -1021,7 +1025,7 @@ async function renderShow(view) {
     for (const q of queue.filter(x => x.season === season)) {
       const pct = q.dur ? Math.min(100, (q.pos / q.dur) * 100) : 0;
       const el = h(`<div class="episode${q.watched ? ' seen' : ''}" tabindex="0">
-        <div class="thumb">${q.image ? `<img class="pi" loading="lazy" src="${esc(q.image)}" data-i="E${q.episode}" alt="">` : `<span>E${q.episode}</span>`}${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
+        <div class="thumb">${q.image ? `<img class="pi" loading="lazy" src="${esc(imgSrc(q.image))}" data-i="E${q.episode}" alt="">` : `<span>E${q.episode}</span>`}${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
         <div class="txt"><div class="t">${q.episode}. ${esc(q.name)}</div>
           <div class="small muted">${q.pos ? esc(fmtLeft(q.pos, q.dur)) : q.watched ? 'Watched' : ''}</div></div>
         <button class="seen-btn${q.watched ? ' on' : ''}" title="${q.watched ? 'Watched — click to mark as not watched' : 'Mark as watched'}">✓</button>

@@ -10,7 +10,7 @@
  *   6. Updates (updater.js; bootstrap.js runs the newest package)
  *   7. Dev: screenshots (SEAL_IPTV_SHOTS)
  * ===================================================================== */
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, session, protocol } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -23,6 +23,7 @@ const { Xtream } = require('./xtream');
 const { Parental } = require('./parental');
 const { SyncService } = require('./sync');
 const { Artwork } = require('./artwork');
+const { ImageCache } = require('./imagecache');
 const { Updater } = require('./updater');
 
 /* =================================================================
@@ -398,9 +399,22 @@ async function runShots(file) {
 
 /* ================================================================= */
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+// posters / logos as sealimg://img/?u=<address>: kept on disk (imagecache.js)
+protocol.registerSchemesAsPrivileged([{ scheme: 'sealimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+function registerImages() {
+  const cache = new ImageCache({ dir: path.join(app.getPath('userData'), 'images'), fetch: u => session.defaultSession.fetch(u), allowed: () => vpn.allowed() });
+  protocol.handle('sealimg', async req => {
+    let u = '';
+    try { u = new URL(req.url).searchParams.get('u') || ''; } catch { /* bad address */ }
+    const r = await cache.get(u);
+    return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.type, 'Cache-Control': 'max-age=86400' } });
+  });
+}
+
 app.whenReady().then(() => {
   init();
   installNetGuard(session.defaultSession);
+  registerImages();
   registerIpc();
   registerUpdates();
   createWindow();

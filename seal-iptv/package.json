@@ -1,7 +1,7 @@
 {
   "name": "seal-iptv",
   "productName": "Seal IPTV",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "updateMinInstalled": "1.1.0",
   "description": "IPTV player for Windows: Xtream Codes and M3U playlists, favorites, watched marks, resume, and a VPN guard",
   "main": "src/main/bootstrap.js",
@@ -10,7 +10,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "start": "electron .",
-    "test": "node test/m3u-test.js && node test/xtream-test.js && node test/library-test.js && node test/vpn-test.js && node test/store-test.js && node test/language-test.js && node test/parental-test.js && node test/sync-test.js && node test/artwork-test.js && node test/franchises-test.js && node test/update-test.js",
+    "test": "node test/m3u-test.js && node test/xtream-test.js && node test/library-test.js && node test/vpn-test.js && node test/store-test.js && node test/language-test.js && node test/parental-test.js && node test/sync-test.js && node test/artwork-test.js && node test/imagecache-test.js && node test/franchises-test.js && node test/update-test.js",
     "fake-server": "node devtest/fake-xtream.js",
     "icons": "node devtest/make-icons.js",
     "dist": "electron-builder --win nsis --x64 --publish never"
