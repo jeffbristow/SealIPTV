@@ -98,20 +98,51 @@ class Library {
    * ================================================================= */
   setFavorite(pid, key, on, meta) {
     const d = this._get(pid);
-    if (on) d.favorites[key] = { ...cleanMeta(meta), at: this._now() };
-    else delete d.favorites[key];
+    if (on) {
+      const f = d.favorites[key] = { ...cleanMeta(meta), at: this._now() };
+      // once the user has arranged this kind, a new favorite goes at the end
+      const orders = this._favs(d, key.slice(0, key.indexOf(':'))).map(([, m]) => m.order).filter(Number.isFinite);
+      if (orders.length) f.order = Math.max(...orders) + 1;
+    } else delete d.favorites[key];
     this._changed(pid);
     this._emit('fav', pid, key, d.favorites[key]);
     return !!on;
   }
 
-  /** kind: 'live' | 'movie' | 'series' — newest first. */
-  favorites(pid, kind) {
+  _favs(d, kind) { return Object.entries(d.favorites).filter(([k]) => !kind || k.startsWith(kind + ':')); }
+
+  /**
+   * kind: 'live' | 'movie' | 'series'. sort: 'added' (newest first) | 'name' (A–Z) |
+   * 'custom' (the user's order: by order; ones without one after, oldest first —
+   * none arranged yet = newest first, as 'added').
+   */
+  favorites(pid, kind, sort = 'added') {
+    const list = this._favs(this._get(pid), kind);
+    const custom = sort === 'custom' && list.some(([, m]) => Number.isFinite(m.order));
+    const by = sort === 'name' ? (a, b) => String(a[1].name || '').localeCompare(String(b[1].name || ''), undefined, { numeric: true, sensitivity: 'base' }) || b[1].at - a[1].at
+      : custom ? (a, b) => (Number.isFinite(a[1].order) ? a[1].order : Infinity) - (Number.isFinite(b[1].order) ? b[1].order : Infinity) || a[1].at - b[1].at
+        : (a, b) => b[1].at - a[1].at;
+    return list.sort(by).map(([key, m]) => ({ key, id: key.slice(key.indexOf(':') + 1), ...m }));
+  }
+
+  /**
+   * The user's order for one kind. keys: the favorites shown, in their new order;
+   * ones not shown (hidden or locked categories) keep their places.
+   * Only the favorites whose place changed are saved (and synced).
+   */
+  arrangeFavorites(pid, kind, keys) {
     const d = this._get(pid);
-    return Object.entries(d.favorites)
-      .filter(([k]) => !kind || k.startsWith(kind + ':'))
-      .sort((a, b) => b[1].at - a[1].at)
-      .map(([key, m]) => ({ key, id: key.slice(key.indexOf(':') + 1), ...m }));
+    const all = this.favorites(pid, kind, 'custom').map(f => f.key);
+    const moved = [...new Set((keys || []).map(String))].filter(k => all.includes(k));
+    const slots = new Set(moved);
+    let n = 0;
+    all.forEach((k, i) => {
+      const key = slots.has(k) ? moved[n++] : k;
+      const f = d.favorites[key];
+      if (f.order !== i) { f.order = i; this._emit('fav', pid, key, f); }
+    });
+    this._changed(pid);
+    return this.favorites(pid, kind, 'custom');
   }
 
   /* =================================================================

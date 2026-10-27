@@ -48,6 +48,29 @@ try {
 
   for (let i = 0; i < 520; i++) lib.setProgress('p3', 'movie:' + i, 100, 1000, {});
   ok(Object.keys(lib._get('p3').progress).length === 500, 'at most 500 resume points');
+
+  // favorites: newest first, A-Z, the user's order (and what gets synced)
+  const S = 'p4', sent = [];
+  lib.onChange = (name, d) => sent.push([name, d]);
+  for (const [id, name] of [['1', 'Zulu'], ['2', 'alpha'], ['3', 'Movie 10'], ['4', 'Movie 9']]) lib.setFavorite(S, 'movie:' + id, true, { name });
+  const ids = sort => lib.favorites(S, 'movie', sort).map(f => f.id).join(',');
+  ok(ids() === '4,3,2,1' && ids('added') === '4,3,2,1', 'favorites: newest first by default');
+  ok(ids('name') === '2,4,3,1', 'favorites A-Z: ignores case, Movie 9 before Movie 10');
+  ok(ids('custom') === '4,3,2,1', 'my order, nothing arranged yet: as newest first');
+  sent.length = 0;
+  lib.arrangeFavorites(S, 'movie', ['movie:2', 'movie:4', 'movie:3', 'movie:1']);
+  ok(ids('custom') === '2,4,3,1' && sent.length === 4 && sent.every(([n, d]) => n.startsWith('fav:p4:movie:') && Number.isFinite(d.order)), 'arranging: saved, and each moved favorite is synced');
+  sent.length = 0;
+  lib.arrangeFavorites(S, 'movie', ['movie:4', 'movie:2', 'movie:3', 'movie:1']);
+  ok(ids('custom') === '4,2,3,1' && sent.length === 2, 'moving one poster sends only the two that changed places');
+  lib.setFavorite(S, 'movie:5', true, { name: 'New' });
+  ok(ids('custom') === '4,2,3,1,5', 'a new favorite goes at the end of my order');
+  lib.arrangeFavorites(S, 'movie', ['movie:1', 'movie:4']);
+  ok(ids('custom') === '1,2,3,4,5', 'favorites not shown (hidden categories) keep their places');
+  lib.applyRecord('fav', S, 'movie:6', { name: 'From the other PC', at: 1 });
+  ok(ids('custom') === '1,2,3,4,5,6', 'a synced favorite without a place goes at the end');
+  ok(lib.favorites(S, 'live', 'custom').length === 0 && ids('added').startsWith('5,'), 'other kinds and sorts unaffected');
+  lib.onChange = null;
   lib.flush();
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });

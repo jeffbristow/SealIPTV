@@ -225,6 +225,7 @@ const TITLES = { home: 'Home', live: 'Live TV', movies: 'Movies', series: 'Serie
 function go(view, arg = null, { push = true } = {}) {
   if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg });
   if (state.history.length > 50) state.history.shift();
+  if (view !== state.view) state.favArrange = '';
   state.view = view;
   state.arg = arg;
   render();
@@ -235,6 +236,12 @@ function back() {
   if (prev) { state.view = prev.view; state.arg = prev.arg; render(); }
 }
 
+/** The sort list's first choice: what "no sort chosen" means right now. */
+function sortDefaultLabel() {
+  const sec = state.sec[state.view];
+  return state.q ? 'Best match' : sec && sec.cat === '*fav' ? 'Favorites order' : 'Playlist order';
+}
+
 function render() {
   const v = state.view;
   $$('.nav').forEach(b => b.classList.toggle('active', b.dataset.view === v || (v === 'movie' && b.dataset.view === 'movies') || (v === 'show' && b.dataset.view === 'series')));
@@ -242,7 +249,7 @@ function render() {
   const browse = ['live', 'movies', 'series'].includes(v);
   show($('#sortSel'), v === 'movies' || v === 'series');
   if (browse) $('#sortSel').value = state.sec[v].sort || '';
-  $('#sortSel').options[0].textContent = state.q ? 'Best match' : 'Playlist order';
+  $('#sortSel').options[0].textContent = sortDefaultLabel();
   show($('#search').parentElement, v !== 'settings');
   $('#search').placeholder = browse ? `Search ${TITLES[v]}` : 'Search channels, movies and series';
   updateHiddenSearchBtn();
@@ -271,7 +278,7 @@ function wireChrome() {
     clearTimeout(t);
     t = setTimeout(() => {
       state.q = $('#search').value.trim();
-      if (['live', 'movies', 'series'].includes(state.view)) { $('#sortSel').options[0].textContent = state.q ? 'Best match' : 'Playlist order'; updateHiddenSearchBtn(); return renderKeepSearch(); }
+      if (['live', 'movies', 'series'].includes(state.view)) { $('#sortSel').options[0].textContent = sortDefaultLabel(); updateHiddenSearchBtn(); return renderKeepSearch(); }
       if (state.q) { if (state.view === 'search') render(); else go('search'); }
       else if (state.view === 'search') back();
     }, 250);
@@ -788,7 +795,7 @@ function renderBrowse(view) {
     offset => call('catalog:list', { section, cat: state.sec[section].cat, q: state.q, sort: state.sec[section].sort, offset, limit: 120 }),
     it => posterCard(it),
     state.sec[section].cat === '*fav' ? `No favorite ${section} yet. Open one and click ☆ Favorite.` : state.q ? `No ${section} match your search.` : `No ${section} here.`);
-  catList(section, $('#cats'), () => { scroller.scrollTop = 0; load(); });
+  catList(section, $('#cats'), () => { scroller.scrollTop = 0; $('#sortSel').options[0].textContent = sortDefaultLabel(); load(); });
   load();
 }
 
@@ -989,7 +996,14 @@ async function renderShow(view) {
 /* =================================================================
  * 10. FAVORITES + SEARCH RESULTS
  * ================================================================= */
-async function renderFavorites(view) {
+const FAV_SORTS = [['added', 'Newest'], ['name', 'A–Z'], ['custom', 'My order']];
+
+/**
+ * Favorites, per kind: newest first, A–Z or the user's own order (Settings
+ * favorites.<kind>, synced). "Arrange" (in My order): drag the cards, or ◀ ▶ on
+ * each card (the TV remote); the new order is saved a moment after the last move.
+ */
+async function renderFavorites(view, focus) {
   const page = h('<div class="home"></div>');
   view.appendChild(page);
   const [live, movies, series] = await Promise.all(['live', 'movie', 'series'].map(k => call('lib:favorites', k).catch(() => [])));
@@ -998,16 +1012,67 @@ async function renderFavorites(view) {
     page.appendChild(h('<div class="empty">No favorites yet.<br><span class="small">Click ☆ on a channel, movie or series to add it here.</span></div>'));
     return;
   }
-  const grid = (title, items, make) => {
+  const redraw = sel => { view.innerHTML = ''; renderFavorites(view, sel); };
+  const grid = (title, kind, items, make) => {
     if (!items.length) return;
-    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${esc(title)}</h2><span class="muted small">${items.length}</span></div></div>`));
+    const sort = (state.settings.favorites || {})[kind] || 'added';
+    const arranging = state.favArrange === kind && sort === 'custom';
+    const head = h(`<div class="shelf" data-fk="${kind}"><div class="shelf-head"><h2>${esc(title)}</h2><span class="muted small">${items.length}</span>
+      <div class="seg fav-sort">${FAV_SORTS.map(([v, t]) => `<button data-v="${v}" class="${sort === v ? 'active' : ''}">${t}</button>`).join('')}</div>
+      ${sort === 'custom' && items.length > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
+      ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
+    head.querySelectorAll('.fav-sort button').forEach(b => b.onclick = async () => {
+      if (b.dataset.v === sort) return;
+      state.favArrange = '';
+      await saveSettings({ favorites: { [kind]: b.dataset.v } });
+      redraw(`[data-fk="${kind}"] [data-v="${b.dataset.v}"]`);
+    });
+    const ab = head.querySelector('[data-arrange]');
+    if (ab) ab.onclick = () => { state.favArrange = arranging ? '' : kind; redraw(`[data-fk="${kind}"] [data-arrange]`); };
+    page.appendChild(head);
     const g = h('<div class="grid" style="padding-top:0"></div>');
-    items.forEach(it => g.appendChild(make(it)));
+    let timer = 0, dragging = null;
+    const save = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => call('lib:arrangeFavorites', kind, [...g.children].map(c => c.dataset.key)).catch(fail), 400);
+    };
+    items.forEach(it => {
+      const c = make(it);
+      if (arranging) {
+        c.dataset.key = it.key;
+        c.onclick = null;
+        c.tabIndex = -1;
+        c.classList.add('arranging');
+        c.draggable = !TV;
+        const bar = h('<div class="arrange"><button title="Move earlier">◀</button><button title="Move later">▶</button></div>');
+        // the neighbor moves, not this card, so the button keeps the focus
+        const [l, r] = bar.querySelectorAll('button');
+        l.onclick = e => { e.stopPropagation(); const p = c.previousElementSibling; if (p) { c.after(p); save(); } l.scrollIntoView({ block: 'nearest' }); };
+        r.onclick = e => { e.stopPropagation(); const n = c.nextElementSibling; if (n) { c.before(n); save(); } r.scrollIntoView({ block: 'nearest' }); };
+        c.querySelector('.poster').appendChild(bar);
+        c.addEventListener('dragstart', e => { dragging = c; c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+        c.addEventListener('dragend', () => { c.classList.remove('dragging'); dragging = null; save(); });
+      }
+      g.appendChild(c);
+    });
+    if (arranging) {
+      g.addEventListener('dragover', e => {
+        if (!dragging) return;
+        e.preventDefault();
+        const t = e.target.closest('.card');
+        if (!t || t === dragging || t.parentNode !== g) return;
+        const box = t.getBoundingClientRect();
+        if (e.clientX > box.left + box.width / 2) t.after(dragging); else t.before(dragging);
+      });
+      g.addEventListener('drop', e => e.preventDefault());
+    }
     page.appendChild(g);
   };
-  grid('Channels', live, f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }));
-  grid('Movies', movies, f => posterCard({ kind: 'movie', id: f.id, name: f.name, poster: f.image, fav: true }));
-  grid('Series', series, f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }));
+  grid('Channels', 'live', live, f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }));
+  grid('Movies', 'movie', movies, f => posterCard({ kind: 'movie', id: f.id, name: f.name, poster: f.image, fav: true }));
+  grid('Series', 'series', series, f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }));
+  const f = focus && page.querySelector(focus);
+  if (f) f.focus();
 }
 
 async function renderSearch(view) {

@@ -39,6 +39,9 @@ try {
   ok(av.def === 1000 && av.devices['Headphones (WH-1000XM4)'] === 230, 'no device name: the default value; kept in range');
   av = st.setSettings({ playback: { avSync: { device: 'Headphones (WH-1000XM4)', forget: true } } }).playback.avSync;
   ok(!('Headphones (WH-1000XM4)' in av.devices), 'a device can be forgotten');
+  const fv = st.setSettings({ favorites: { live: 'custom', movie: 'name', series: 'shuffle' } }).favorites;
+  ok(fv.live === 'custom' && fv.movie === 'name' && fv.series === 'added', 'favorites sort per kind; unknown sorts ignored');
+  ok(st.syncSettings().favorites.movie === 'name', 'the favorites sort syncs');
   st.deleteProfile(p.id);
   ok(st.getSettings().activeProfile === m.id, 'deleting the playlist in use switches to the next');
   const again = new Store(dir, fakeSecure);

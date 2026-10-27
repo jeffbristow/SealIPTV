@@ -261,6 +261,12 @@ class Catalog {
     if (r && r.locked) throw Catalog.lockedError(section, item.cat, this.get(pid)[section]._catNames.get(item.cat) || 'This category');
   }
 
+  /** How Favorites of a kind are listed (Settings: favorites.<kind>). */
+  favSort(kind) {
+    const f = this.store.getSettings && this.store.getSettings().favorites;
+    return (f && f[kind]) || 'added';
+  }
+
   /** Favorites / Continue watching: is what this key points to shown right now? */
   visibleKey(pid, key, meta = {}) {
     const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
@@ -305,9 +311,12 @@ class Catalog {
     // hidden categories never show up in search — unless "search hidden categories too" is on (PIN)
     const allowHidden = !!(q && String(q).trim() && this.parental.searchHidden && this.parental.searchHidden());
     let items = c.items.filter(i => this._visible(i, rules, open, allowHidden));
+    let favAt = null;
     if (cat === '*fav') {
-      const favs = new Set(this.library.favorites(pid, kind).map(f => f.id));
-      items = items.filter(i => favs.has(i.id));
+      // in the order chosen for Favorites, unless another sort is picked
+      const favs = this.library.favorites(pid, kind, this.favSort(kind));
+      favAt = new Map(favs.map((f, n) => [f.id, n]));
+      items = items.filter(i => favAt.has(i.id));
     } else if (cat === '*other') {
       items = items.filter(i => !c._catNames.has(i.cat));
     } else if (cat) {
@@ -315,6 +324,7 @@ class Catalog {
     }
     const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length) items = items.filter(i => words.every(w => i._q.includes(w)));
+    if (favAt && !sort && !words.length) items.sort((a, b) => favAt.get(a.id) - favAt.get(b.id));
     // searching without a chosen sort: best matches first ("From" before "Far From Home")
     if (words.length && !sort) {
       const ranked = items.map(i => ({ i, r: matchRank(i, words) }));

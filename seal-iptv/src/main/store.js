@@ -64,8 +64,11 @@ const DEFAULTS = {
   },
   updates: {
     check: true             // look for a new version on GitHub when the app starts (updater.js)
-  }
+  },
+  // how Favorites are listed, per kind: 'added' (newest first) | 'name' (A–Z) | 'custom'
+  favorites: { live: 'added', movie: 'added', series: 'added' }
 };
+const FAV_SORTS = ['added', 'name', 'custom'];
 
 const LIVE_FORMATS = ['auto', 'm3u8', 'ts'];
 /* Settings that sync between PCs (sync.js), by group. The rest is per PC
@@ -76,6 +79,7 @@ const SYNC_GROUPS = {
   catalog: ['refreshHours'],
   content: ['hideNonEnglish'],
   artwork: ['lookup', 'tmdbKey'],
+  favorites: ['live', 'movie', 'series'],
   vpn: ['required', 'provider'],
   parental: ['pinHash', 'pinSalt', 'autoAdult', 'unlockMinutes']
 };
@@ -253,6 +257,7 @@ class Store {
       if (typeof a.tmdbKey === 'string') s.artwork.tmdbKey = a.tmdbKey.replace(/\s+/g, '').slice(0, 400);
     }
     if (patch.updates && typeof patch.updates.check === 'boolean') s.updates.check = patch.updates.check;
+    if (patch.favorites) for (const k of ['live', 'movie', 'series']) if (FAV_SORTS.includes(patch.favorites[k])) s.favorites[k] = patch.favorites[k];
     // patch.parental is ignored on purpose: that goes through parental.js (needs the PIN)
     if (patch.catalog && Number.isFinite(Number(patch.catalog.refreshHours))) {
       s.catalog.refreshHours = Math.min(168, Math.max(0, Math.round(Number(patch.catalog.refreshHours))));

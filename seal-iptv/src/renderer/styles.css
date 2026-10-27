@@ -121,6 +121,17 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
 .shelf { padding: 14px 22px 4px; }
 .shelf-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .shelf-head h2 { font-size: 16px; margin: 0; }
+.shelf-head .fav-sort { margin-left: auto; align-self: center; }
+.shelf-head .fav-sort button { padding: 4px 11px; font-size: 12px; }
+.shelf-head [data-arrange] { align-self: center; }
+.fav-hint { margin: -4px 0 10px; }
+.card.arranging { cursor: grab; }
+.card.arranging img { pointer-events: none; -webkit-user-drag: none; }
+.card.arranging:hover .poster { outline: none; }
+.card.dragging { opacity: .4; }
+.card .arrange { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: 6px; background: linear-gradient(transparent, rgba(10,12,16,.85)); }
+.card .arrange button { width: 38px; height: 30px; border: 0; border-radius: 7px; background: rgba(255,255,255,.14); color: #fff; font-size: 14px; cursor: pointer; }
+.card .arrange button:hover, .card .arrange button:focus-visible { background: var(--accent); outline: none; }
 .shelf-row { display: grid; grid-auto-flow: column; grid-auto-columns: 150px; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
 .shelf-row.wide { grid-auto-columns: 240px; }
 .stats { display: flex; gap: 12px; padding: 10px 22px 0; flex-wrap: wrap; }
