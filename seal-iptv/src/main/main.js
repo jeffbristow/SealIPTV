@@ -281,7 +281,7 @@ function registerIpc() {
   handle('lib:clearHistory', () => library.clearHistory(pid()));
 
   /* ---- posters the provider doesn't have (artwork.js) ---- */
-  handle('art:find', list => artwork.find(list));
+  handle('art:find', list => artwork.find(list, { addresses: true }));   // shown through sealimg: (kept on disk)
   handle('art:keep', (url, data) => artwork.keep(url, data));
   handle('art:testKey', key => artwork.testTmdb(key));
   handle('art:clear', () => artwork.clear());

@@ -167,21 +167,22 @@ class Artwork {
    * data:image/… once the picture is kept, else its address on the site (the window then sends it: keep).
    * At most 60 at a time; the window asks for what's on screen.
    */
-  async find(list) {
+  async find(list, { addresses = false } = {}) {
     const a = this.getSettings().artwork || {};
     const items = (Array.isArray(list) ? list : []).slice(0, 60);
     if (!a.lookup || !this.allowed()) return items.map(() => null);
-    return Promise.all(items.map(q => this.one(q, a.tmdbKey || '').catch(() => null)));
+    return Promise.all(items.map(q => this.one(q, a.tmdbKey || '', addresses).catch(() => null)));
   }
 
-  async one(q, tmdbKey) {
+  /** addresses: always the site's address, never the kept picture (Windows keeps every picture itself: imagecache.js) */
+  async one(q, tmdbKey, addresses = false) {
     const kind = q && ['movie', 'collection'].includes(q.kind) ? q.kind : 'series';
     const { title, year } = kind === 'collection' ? { title: String(q.name || '').trim(), year: 0 } : cleanTitle(q && q.name, q && q.year);
     if (title.length < 2) return null;
     const key = `${kind}|${norm(title)}|${year || ''}`;
     const items = this._load();
     const c = items[key];
-    if (c && c.u) return this._picture(c);
+    if (c && c.u) return addresses ? c.u : this._picture(c);
     // a miss is asked again after 14 days, or straight away once there's a TMDB key it didn't have
     if (c && Date.now() - c.t < MISS_DAYS * DAY && (c.k || !tmdbKey)) return null;
     if (kind !== 'series' && !tmdbKey) return null;

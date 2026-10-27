@@ -111,8 +111,12 @@ const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') 
    so moving around and starting again doesn't fetch them again. (Fire TV: the address as it is.) */
 const KEEPS_IMAGES = location.protocol === 'file:';
 const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u) : u);
+/* Windows: pictures looked up by title (Art below) remembered for this run, so a page drawn again
+   shows them at once instead of initials -> asking -> swapping in. */
+const artKey = a => `${a.kind}|${a.name}|${Number(a.year) || ''}`;
+const artKnown = new Map();
 /** <img> that falls back to initials (see the error listener below); art: { kind, name, year } */
-const pic = (src, name, cls = 'pi', art = null) => (src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
+const pic = (src, name, cls = 'pi', art = null) => (src = src || (art && artKnown.get(artKey(art))), src ? `<img class="${cls}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
   if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);
@@ -154,6 +158,7 @@ const Art = (() => {
     try { urls = await call('art:find', list); } catch { return; }
     urls.forEach((u, i) => {
       const el = els[i];
+      if (u && KEEPS_IMAGES) artKnown.set(artKey(list[i]), u);
       if (u && el.isConnected) el.replaceWith(h(`<img class="pi" src="${esc(artSrc(u))}" data-i="${esc(el.textContent)}" alt="">`));
       keep(u);
     });
@@ -1133,13 +1138,15 @@ async function renderFavorites(view, focus) {
 function collectionCard(c) {
   // the cover title's poster (looked up like any other when the playlist has none) …
   const cv = c.cover || {};
-  const el = posterCard({ name: cv.name || c.name, kind: cv.kind, year: cv.year, poster: c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { title: c.name, onClick: () => go('collection', c.id) });
+  const own = c.art && artKnown.get(artKey({ kind: 'collection', name: c.art }));   // its own poster, found earlier this run
+  const el = posterCard({ name: cv.name || c.name, kind: cv.kind, year: cv.year, poster: own || c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { title: c.name, onClick: () => go('collection', c.id) });
   const ini = el.querySelector('.poster > .initials');
   if (ini) ini.textContent = initials(c.name);
   else el.querySelector('.poster > .pi').dataset.i = initials(c.name);
   // … until the collection's own poster comes back (TMDB, with a key; artwork.js remembers it)
-  if (c.art && state.settings.artwork && state.settings.artwork.lookup) {
+  if (c.art && !own && state.settings.artwork && state.settings.artwork.lookup) {
     call('art:find', [{ kind: 'collection', name: c.art }]).then(([u]) => {
+      if (u && KEEPS_IMAGES) artKnown.set(artKey({ kind: 'collection', name: c.art }), u);
       const p = u && el.querySelector('.poster > .pi, .poster > .initials');
       if (p) p.replaceWith(h(`<img class="pi" src="${esc(artSrc(u))}" data-i="${esc(initials(c.name))}" alt="">`));
       Art.keep(u);

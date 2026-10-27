@@ -95,6 +95,8 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ '
     const m = calls.length;
     r = await art.find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
     ok(r[0] === pic && calls.length === m, 'a kept picture comes from the disk, nothing asked of the site');
+    r = await art.find([{ kind: 'movie', name: 'Inception', year: 2010 }], { addresses: true });
+    ok(r[0] === incUrl && calls.length === m, 'Windows (addresses): the address, shown through its own picture cache');
     art.flush();
     r = await new Artwork({ dir, getSettings: () => settings, fetch: fake }).find([{ kind: 'movie', name: 'Inception', year: 2010 }]);
     ok(r[0] === pic && calls.length === m, 'still kept after a restart or an update (same data folder)');
