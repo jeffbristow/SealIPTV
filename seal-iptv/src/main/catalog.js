@@ -313,6 +313,14 @@ class Catalog {
     return !!it && this._homeSafeItem(it, this.rules(pid, section));
   }
 
+  /** The poster of the movie / the episode's series, from the playlist (Home falls back to it) */
+  posterFor(pid, key, meta = {}) {
+    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
+    const c = this.get(pid);
+    const it = kind === 'movie' ? c._byId.movies.get(String(id)) : kind === 'episode' || kind === 'series' ? c._byId.series.get(String(kind === 'series' ? id : meta.seriesId)) : null;
+    return (it && it.poster) || '';
+  }
+
   _homeSafeItem(it, rules) {
     const r = rules.get(it.cat);
     if (r && (r.adult || r.locked || r.hidden)) return false;

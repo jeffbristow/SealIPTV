@@ -115,18 +115,24 @@ const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') 
 /* Windows: pictures from the web go through sealimg: — kept on disk the first time (main/imagecache.js),
    so moving around and starting again doesn't fetch them again. (Fire TV: the address as it is.) */
 const KEEPS_IMAGES = location.protocol === 'file:';
-const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u) : u);
+// TVs: the pages are https://appassets…, and newer WebViews block a provider's http:// pictures there (mixed
+// content), so they go through the app's own address too (MainActivity -> ImageCache)
+const TV_IMAGES = location.host === 'appassets.androidplatform.net' && !!(window.SealNative && window.SealNative.imageRoute);   // an older TV app: as before
+const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u)
+  : TV_IMAGES && /^https?:\/\//i.test(u || '') ? 'https://appassets.androidplatform.net/img/?u=' + encodeURIComponent(u) : u);
 /* Windows: pictures looked up by title (Art below) remembered for this run, so a page drawn again
    shows them at once instead of initials -> asking -> swapping in. Also used instead of the
    provider's own picture: there's only one when that one was missing or broken. */
 const artKey = a => `${a.kind}|${a.name}|${Number(a.year) || ''}`;
 const artKnown = new Map();
-/** <img> that falls back to initials (see the error listener below); art: { kind, name, year } */
+/** <img> that falls back to initials (see the error listener below); art: { kind, name, year };
+    fb: another picture to try first if this one doesn't load (an episode's still -> the series poster) */
 /* a network's logo that comes with the app (main/networks.js: US local stations) sits on a light tile: several are black */
-const pic = (src, name, cls = 'pi', art = null) => (src = (art && artKnown.get(artKey(art))) || src, src ? `<img class="${cls}${/^networks\//.test(src) ? ' net-logo' : ''}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
+const pic = (src, name, cls = 'pi', art = null, fb = '') => (src = (art && artKnown.get(artKey(art))) || src || fb, fb = fb && fb !== src ? fb : '', src ? `<img class="${cls}${/^networks\//.test(src) ? ' net-logo' : ''}" loading="lazy" src="${esc(imgSrc(src))}" data-i="${esc(initials(name))}"${fb ? ` data-fb="${esc(imgSrc(fb))}"` : ''}${artAttrs(art)} alt="">` : `<span class="initials"${artAttrs(art)}>${esc(initials(name))}</span>`);
 document.addEventListener('error', e => {
   const t = e.target;
   if (t.tagName === 'IMG' && t.src.startsWith('blob:')) URL.revokeObjectURL(t.src);
+  if (t.tagName === 'IMG' && t.dataset.fb) { const fb = t.dataset.fb; delete t.dataset.fb; t.src = fb; return; }
   if (t.tagName === 'IMG' && t.dataset.i !== undefined) t.replaceWith(h(`<span class="initials"${artAttrs(t.dataset.ak && { kind: t.dataset.ak, name: t.dataset.an, year: t.dataset.ay })}>${esc(t.dataset.i)}</span>`));
 }, true);
 /* A kept picture (artwork.js) comes as a data: address of ~50 KB. A long grid never lets go of its
@@ -796,8 +802,8 @@ function spotlight(p, movie) {
   const line = p ? (ep ? `${epLabel(p.season, p.episode)} · ${esc(p.name || '')} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur))
     : ['New in your playlist', movie.year || '', movie.rating ? `★ ${movie.rating}` : ''].filter(Boolean).join(' · ');
   const el = h(`<section class="spotlight">
-    <div class="spot-bg">${pic(it.image, title, 'pi')}</div>
-    <div class="spot-poster">${pic(it.image, title, 'pi')}</div>
+    <div class="spot-bg">${pic(it.image || it.poster, title, 'pi', null, it.poster)}</div>
+    <div class="spot-poster">${pic(it.poster || it.image, title, 'pi', null, it.image)}</div>
     <div class="spot-body">
       <div class="spot-kicker">${p ? 'Continue watching' : 'Recently added'}</div>
       <h2>${esc(title)}</h2>
@@ -813,7 +819,7 @@ function spotlight(p, movie) {
 function continueCard(p) {
   const name = p.kind === 'episode' ? (p.seriesName || p.name) : p.name;
   const sub = p.kind === 'episode' ? `${epLabel(p.season, p.episode)} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur);
-  const el = posterCard({ name, poster: p.image, pos: p.pos, dur: p.dur, sub }, { wide: true, onClick: () => resumeFromHome(p) });
+  const el = posterCard({ name, poster: p.image || p.poster, fb: p.poster, pos: p.pos, dur: p.dur, sub }, { wide: true, onClick: () => resumeFromHome(p) });
   return el;
 }
 
@@ -987,7 +993,7 @@ function posterCard(it, opts = {}) {
   const pct = it.dur ? Math.min(100, Math.max(2, (it.pos / it.dur) * 100)) : 0;
   const sub = it.sub != null ? it.sub : [it.year || '', it.rating ? `★ ${it.rating}` : ''].filter(Boolean).join(' · ');
   const el = h(`<div class="card${wide ? ' wide' : ''}" tabindex="0">
-    <div class="poster">${pic(it.poster || it.image, it.name, 'pi', { kind: it.kind, name: it.name, year: it.year })}
+    <div class="poster">${pic(it.poster || it.image, it.name, 'pi', { kind: it.kind, name: it.name, year: it.year }, it.fb)}
       ${it.fav ? '<span class="badge fav">★</span>' : ''}${it.watched ? '<span class="badge seen">✓ Watched</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}
       ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
     <div class="title" title="${esc(opts.title || it.name)}">${esc(opts.title || it.name)}</div><div class="sub">${esc(sub)}</div></div>`);

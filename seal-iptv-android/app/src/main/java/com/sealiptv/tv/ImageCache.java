@@ -11,10 +11,11 @@
  * the VPN guard allows the network. Anything that isn't a picture, or
  * a picture too big to keep: null — the WebView then loads it itself.
  * At most MAX_BYTES; the ones not shown for longest go first.
- * Addresses that failed (a provider's picture server that hangs for 20 s
- * and drops the connection, a missing file …) are remembered for
- * RETRY_AFTER (failed.txt) and answered "not found" at once, so the page
- * shows initials and looks the title up instead of waiting again.
+ * Addresses that failed are remembered (failed.txt: until when) and answered
+ * "not found" at once, so the page shows initials and looks the title up
+ * instead of waiting again: a missing file (404 …) for RETRY_AFTER, one that
+ * didn't answer in time, dropped the connection or had a server error only
+ * for RETRY_SOON (often it was just busy, or the TV was short of memory).
  * ===================================================================== */
 package com.sealiptv.tv;
 
@@ -41,6 +42,7 @@ final class ImageCache {
     private static final int MAX_ONE = 8 * 1024 * 1024;
     private static final long DAY = 86400000L;
     private static final long RETRY_AFTER = 6 * 3600000L;
+    private static final long RETRY_SOON = 10 * 60000L;
     private static final int MAX_FAILED = 20000;
 
     private final File dir;
@@ -48,7 +50,7 @@ final class ImageCache {
     private long size = -1;   // bytes on disk (counted on first save)
     private boolean trimming = false;
     private final File failedFile;
-    private final java.util.LinkedHashMap<String, Long> failed = new java.util.LinkedHashMap<>();   // url -> when (oldest first)
+    private final java.util.LinkedHashMap<String, Long> failed = new java.util.LinkedHashMap<>();   // url -> tried again after (oldest first)
     private boolean saving = false;
 
     ImageCache(Context ctx) {
@@ -66,14 +68,16 @@ final class ImageCache {
     }
 
     private boolean recentlyFailed(String url) {
-        synchronized (failed) { Long t = failed.get(url); return t != null && System.currentTimeMillis() - t < RETRY_AFTER; }
+        synchronized (failed) { Long until = failed.get(url); return until != null && System.currentTimeMillis() < until; }
     }
 
     /** remembers a failed address (saved a few seconds later) and answers "not found" */
-    private WebResourceResponse fail(String url) {
+    private WebResourceResponse fail(String url) { return fail(url, RETRY_AFTER); }
+
+    private WebResourceResponse fail(String url, long retryIn) {
         synchronized (failed) {
             failed.remove(url);
-            failed.put(url, System.currentTimeMillis());
+            failed.put(url, System.currentTimeMillis() + retryIn);
             while (failed.size() > MAX_FAILED) failed.remove(failed.keySet().iterator().next());
             if (!saving) { saving = true; new Thread(this::saveFailed, "image-failed").start(); }
         }
@@ -152,7 +156,11 @@ final class ImageCache {
                 if (!at.startsWith("http://") && !at.startsWith("https://")) return fail(url);
                 c = null;
             }
-            if (c == null || c.getResponseCode() != 200) { if (c != null) c.disconnect(); return fail(url); }
+            if (c == null || c.getResponseCode() != 200) {
+                int code = c == null ? 0 : c.getResponseCode();
+                if (c != null) c.disconnect();
+                return fail(url, code >= 500 || code == 429 ? RETRY_SOON : RETRY_AFTER);   // busy / broken server: soon
+            }
             byte[] body;
             try (InputStream in = c.getInputStream()) {
                 ByteArrayOutputStream buf = new ByteArrayOutputStream(64 * 1024);
@@ -174,7 +182,7 @@ final class ImageCache {
             Log.i("SealImages", "fetched and kept " + body.length + " bytes");   // only new ones: kept ones aren't logged
             synchronized (failed) { failed.remove(url); }   // works again
             return answer(type, new ByteArrayInputStream(body));
-        } catch (Exception e) { return fail(url); }   // no answer in time, connection dropped …
+        } catch (Exception e) { return fail(url, RETRY_SOON); }   // no answer in time, connection dropped …
     }
 
     private static WebResourceResponse answer(String type, InputStream in) {

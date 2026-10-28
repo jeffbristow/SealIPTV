@@ -158,7 +158,7 @@ handle('lib:watched', (key, on, meta) => library.setWatched(pid(), key, on, meta
 handle('lib:watchedMany', (items, on) => library.setWatchedMany(pid(), items, on));
 handle('lib:progress', (key, pos, dur, meta) => library.setProgress(pid(), key, pos, dur, meta));
 handle('lib:clearProgress', key => library.clearProgress(pid(), key));
-handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.homeSafe(pid(), p.key, p)).slice(0, 20));
+handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.homeSafe(pid(), p.key, p)).slice(0, 20).map(p => ({ ...p, poster: catalog.posterFor(pid(), p.key, p) })));
 handle('lib:favorites', kind => catalog.withLogos(pid(), library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f))));
 handle('lib:arrangeFavorites', (kind, keys) => catalog.withLogos(pid(), library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f))));
 handle('lists:all', () => library.lists(pid()));

@@ -74,6 +74,29 @@ public class MainActivity extends Activity {
         bridge.voiceBack(result == RESULT_OK && said != null && !said.isEmpty() ? said.get(0) : null);
     }
 
+    /** a picture by its address, for /img/?u=… (ImageCache; while the VPN guard blocks: only kept ones) */
+    private WebResourceResponse picture(String url) {
+        HashMap<String, String> h = new HashMap<>();
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://")))
+            return new WebResourceResponse("text/plain", "utf-8", 400, "Bad address", h, new ByteArrayInputStream(new byte[0]));
+        WebResourceResponse kept = images.kept(url);
+        if (kept != null) return kept;
+        if (bridge != null && bridge.blocked) return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked: VPN is off", h, new ByteArrayInputStream(new byte[0]));
+        WebResourceResponse r = images.get(url, bridge != null ? bridge.guardUa : null);
+        if (r != null) return r;
+        try {   // too big to keep: straight through
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(15000);
+            if (bridge != null && bridge.guardUa != null) c.setRequestProperty("User-Agent", bridge.guardUa);
+            String type = c.getContentType() == null ? "image/jpeg" : c.getContentType().split(";")[0];
+            h.put("Access-Control-Allow-Origin", "*");
+            return new WebResourceResponse(type, null, c.getResponseCode(), "OK", h, c.getInputStream());
+        } catch (Exception e) {
+            return new WebResourceResponse("text/plain", "utf-8", 502, "Not loaded", h, new ByteArrayInputStream(new byte[0]));
+        }
+    }
+
     /** a playlist file of this app's own, by name only (no folders), with its size */
     static WebResourceResponse catalogFile(java.io.File dir, String name) {
         java.io.File f = name == null || !name.matches("[\\w.-]+\\.json") ? null : new java.io.File(dir, name);
@@ -124,6 +147,9 @@ public class MainActivity extends Activity {
                 if ("appassets.androidplatform.net".equals(u.getHost())) {
                     // the saved playlists, read by fetch() at start-up: much faster than through the bridge (core.js)
                     if (u.getPath() != null && u.getPath().startsWith("/catalog/")) return catalogFile(catalogDir, u.getLastPathSegment());
+                    // a provider's picture (app.js imgSrc): from the cache, or fetched now — newer WebViews
+                    // won't load http:// pictures into these https:// pages themselves
+                    if ("/img/".equals(u.getPath())) return picture(u.getQueryParameter("u"));
                     return assets.shouldInterceptRequest(u);
                 }
                 boolean image = isImage(req);

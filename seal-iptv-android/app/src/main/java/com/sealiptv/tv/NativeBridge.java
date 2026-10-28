@@ -522,6 +522,9 @@ public class NativeBridge {
         return new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(activity.getPackageManager()) != null;
     }
 
+    /** pictures at https://appassets.androidplatform.net/img/?u=… (MainActivity.picture; app.js imgSrc) */
+    @JavascriptInterface public boolean imageRoute() { return true; }
+
     /** asks for a few words; the page gets window.__tvVoice(text), or __tvVoice(null) if nothing was heard */
     @JavascriptInterface public void voiceSearch(String prompt) {
         activity.runOnUiThread(() -> ((MainActivity) activity).startVoice(prompt));
