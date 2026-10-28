@@ -9,6 +9,9 @@
  * Locked categories: any with "Adult" (or XXX / 18+) in the name while
  * "autoAdult" is on, plus the ones chosen per playlist (library.js
  * category flags). Changing what's locked needs the PIN.
+ *
+ * lockSettings: Settings itself only opens after the PIN (the same
+ * unlock as for locked categories).
  * ===================================================================== */
 const crypto = require('crypto');
 
@@ -31,7 +34,7 @@ class Parental {
 
   status() {
     const c = this.cfg;
-    return { hasPin: !!c.pinHash, unlocked: this.isUnlocked(), autoAdult: c.autoAdult !== false, unlockMinutes: c.unlockMinutes || 0,
+    return { hasPin: !!c.pinHash, unlocked: this.isUnlocked(), autoAdult: c.autoAdult !== false, unlockMinutes: c.unlockMinutes || 0, lockSettings: !!c.pinHash && !!c.lockSettings,
       waitSeconds: Math.max(0, Math.ceil((this.waitUntil - Date.now()) / 1000)),
       searchHidden: this.searchHidden(), searchUntil: this.searchHidden() ? (this.searchUntil === Infinity ? null : this.searchUntil) : 0 };
   }
@@ -99,15 +102,19 @@ class Parental {
 
   removePin(currentPin) {
     this.allowChange(currentPin);
-    this.store.setParental({ pinHash: '', pinSalt: '' });
+    this.store.setParental({ pinHash: '', pinSalt: '', lockSettings: false });
     this.until = 0;
     return this.status();
   }
 
-  setOptions({ autoAdult, unlockMinutes }, pin) {
+  setOptions({ autoAdult, unlockMinutes, lockSettings }, pin) {
     this.allowChange(pin);
     const patch = {};
     if (typeof autoAdult === 'boolean') patch.autoAdult = autoAdult;
+    if (typeof lockSettings === 'boolean') {
+      if (lockSettings && !this.hasPin()) { const e = new Error('Set a parental PIN first.'); e.code = 'PIN_NONE'; throw e; }
+      patch.lockSettings = lockSettings;
+    }
     if ([0, 15, 60, 240].includes(Number(unlockMinutes))) patch.unlockMinutes = Number(unlockMinutes);
     this.store.setParental(patch);
     return this.status();

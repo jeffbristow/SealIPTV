@@ -8,6 +8,14 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- shown until the playlist is read (start() in app.js takes it away); it keeps moving while the app is busy -->
+<div id="splash" role="status" aria-live="polite">
+  <div class="splash-logo"><img src="logo.svg" alt=""></div>
+  <h2>Seal IPTV</h2>
+  <p id="splashText">Loading your playlist…</p>
+  <div class="splash-bar"><span></span></div>
+  <p class="muted small">Getting your channels, movies and series ready.<br>A big playlist can take a few seconds.</p>
+</div>
 <div id="app">
   <aside id="sidebar">
     <div class="brand"><img src="logo.svg" alt=""><div><b>Seal IPTV</b><span id="profileName" class="muted small"></span></div></div>

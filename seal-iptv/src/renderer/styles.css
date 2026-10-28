@@ -325,6 +325,23 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 #saver { position: fixed; inset: 0; z-index: 10000; background: #000; cursor: none; }
 #saver img { position: absolute; left: 0; top: 0; width: 180px; height: 180px; will-change: transform; }
 
+/* ---------- Start-up screen while the playlist is read ----------
+ * Only transform / opacity animate: those keep moving while the page is busy (TV: the playlist is read on this thread). */
+#splash { position: fixed; inset: 0; z-index: 9000; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 16px; transition: opacity .35s ease; }
+#splash.gone { opacity: 0; pointer-events: none; }
+#splash h2 { margin: 6px 0 0; font-size: 28px; }
+#splash #splashText { margin: 0; font-size: 17px; color: var(--text); }
+#splash .small { margin: 6px 0 0; line-height: 1.5; }
+.splash-logo { position: relative; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; }
+.splash-logo::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: var(--accent); opacity: .18; animation: splash-glow 2.4s ease-in-out infinite; will-change: transform, opacity; }
+.splash-logo img { position: relative; width: 120px; height: 120px; animation: splash-bob 2.4s ease-in-out infinite; will-change: transform; }
+.splash-bar { width: 260px; max-width: 80vw; height: 4px; border-radius: 2px; background: var(--bg-4); overflow: hidden; margin-top: 8px; }
+.splash-bar span { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--accent); animation: splash-slide 1.3s ease-in-out infinite; will-change: transform; }
+@keyframes splash-bob { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-12px) rotate(3deg); } }
+@keyframes splash-glow { 0%, 100% { transform: scale(.85); opacity: .12; } 50% { transform: scale(1.08); opacity: .28; } }
+@keyframes splash-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .splash-logo img, .splash-logo::before { animation: none; } }
+
 /* ---------- network logos (US local stations) ---------- */
 img.net-logo { background: #f2f3f5; border-radius: 6px; padding: 4px; box-sizing: border-box; }
 .card img.net-logo { padding: 10px 16px; border-radius: 10px; }

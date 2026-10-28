@@ -107,6 +107,22 @@ const fakeFetch = async url => ({ ok: true, status: 200, text: async () => JSON.
     store.setSettings({ content: { hideNonEnglish: false } });
     ok(cat.list(p.id, { section: 'live' }).total === 3, 'option off: everything (but the locked one) is back');
 
+    /* ---- Settings behind the PIN ---- */
+    parental.lock();
+    ok(parental.status().lockSettings === false && store.getSettings().parental.lockSettings === false, 'Settings opens without the PIN at first');
+    await throwsCode(() => parental.setOptions({ lockSettings: true }), 'PIN_NEEDED', 'turning the Settings lock on needs the PIN');
+    parental.setOptions({ lockSettings: true }, '2468');
+    ok(parental.status().lockSettings && store.getSettings().parental.lockSettings && store.syncSettings().parental.lockSettings === true, 'on: the window is told, and it syncs');
+    store.setSettings({ parental: { lockSettings: false } });
+    ok(parental.status().lockSettings, "settings:set can't turn it off");
+    parental.removePin('2468');
+    ok(!parental.status().lockSettings && !store.getParental().lockSettings, 'removing the PIN turns it off too');
+    await throwsCode(() => parental.setOptions({ lockSettings: true }), 'PIN_NONE', "it can't be on without a PIN");
+    store.applySettings('parental', { lockSettings: true });
+    ok(store.getParental().lockSettings === true && parental.status().lockSettings === false, 'from another device: kept, but only counts once there is a PIN');
+    parental.setPin('2468');
+    parental.lock();
+
     /* ---- wrong PINs slow down ---- */
     for (let i = 0; i < 5; i++) await throwsCode(() => parental.unlock('0000'), 'PIN_WRONG', `wrong PIN ${i + 1} in a row`).catch(() => {});
     await throwsCode(() => parental.unlock('2468'), 'PIN_WAIT', 'after 5 wrong PINs, even the right one has to wait');

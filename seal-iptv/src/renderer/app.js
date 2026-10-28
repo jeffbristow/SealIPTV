@@ -258,6 +258,14 @@ async function start() {
   if (state.settings.updates && state.settings.updates.check) setTimeout(() => Upd.check(false), 6000);
 }
 
+/** The start-up screen (index.html) fades away once Home is drawn. */
+function endSplash() {
+  const el = $('#splash');
+  if (!el || el.classList.contains('gone')) return;
+  el.classList.add('gone');
+  setTimeout(() => el.remove(), 400);
+}
+
 /** Reload the playlist on start-up when it's old — quietly, after the VPN check. */
 async function autoRefresh() {
   try {
@@ -276,6 +284,10 @@ async function autoRefresh() {
 const TITLES = { home: 'Home', live: 'Live TV', movies: 'Movies', series: 'Series', favorites: 'Favorites', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
 
 function go(view, arg = null, { push = true } = {}) {
+  if (view === 'settings' && state.view !== 'settings' && settingsLocked()) {
+    askPin(null, { why: 'Settings is locked.' }).then(ok => { if (ok) go(view, arg, { push }); }).catch(fail);
+    return;
+  }
   if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg });
   if (state.history.length > 50) state.history.shift();
   if (view !== state.view) state.favArrange = '';
@@ -341,7 +353,7 @@ function wireChrome() {
   $('#refreshBtn').onclick = () => reload().catch(fail);
   $('#profileSel').onchange = () => useProfile($('#profileSel').value);
   $('#hiddenSearchBtn').onclick = toggleHiddenSearch;
-  $('#lockBtn').onclick = async () => { state.parental = await call('parental:lock'); afterLock(); toast('Locked categories are locked again.'); };
+  $('#lockBtn').onclick = async () => { state.parental = await call('parental:lock'); afterLock(); toast(state.parental.lockSettings ? 'Locked categories and Settings are locked again.' : 'Locked categories are locked again.'); };
   document.addEventListener('click', e => { if (!e.target.closest('#ctxMenu')) hideMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') hideMenu(); }, true);
   $('#vpnPill').onclick = async () => {
@@ -477,6 +489,7 @@ function afterLock() {
   updateLockBtn();
   for (const k of Object.keys(state.sec)) state.sec[k].cat = '';
   if (state.view === 'movie' || state.view === 'show') { state.history = []; return go('home', null, { push: false }); }
+  if (state.view === 'settings' && settingsLocked()) { state.history = []; return go('home', null, { push: false }); }
   if ($('#player').classList.contains('hidden') && state.view !== 'settings') render();
 }
 
@@ -557,6 +570,9 @@ setInterval(async () => {
     if (ended) { if (!s.unlocked) afterLock(); else { updateLockBtn(); render(); } }
   } catch { /* later */ }
 }, 30000);
+
+/** Settings → Parental controls → "Ask for the PIN to open Settings", and it's locked now. */
+const settingsLocked = () => !!(state.parental && state.parental.hasPin && state.parental.lockSettings && !state.parental.unlocked);
 
 /** Ask for the PIN (or to create one, if there's none yet). Resolves true when unlocked. */
 async function askPin(locked, { why } = {}) {
@@ -1638,7 +1654,8 @@ function renderSettings(view) {
     <div class="row gap"><b>${par.hasPin ? '🔒 A PIN is set' : 'No PIN yet'}</b><span class="spacer"></span>
       <button class="btn${par.hasPin ? '' : ' primary'}" id="parSet">${par.hasPin ? 'Change PIN…' : 'Set a PIN…'}</button>${par.hasPin ? '<button class="btn danger" id="parRemove">Remove PIN</button>' : ''}</div>
     <label class="check"><input type="checkbox" id="parAdult" ${par.autoAdult !== false ? 'checked' : ''}> Lock every category with "Adult", "XXX" or "18+" in its name</label>
-    <label for="parMins">After the PIN, keep locked categories open</label>
+    <label class="check"><input type="checkbox" id="parSettings" ${par.hasPin && par.lockSettings ? 'checked' : ''} ${par.hasPin ? '' : 'disabled'}> Ask for the PIN to open Settings${par.hasPin ? '' : ' <span class="faint">(set a PIN first)</span>'}</label>
+    <label for="parMins">After the PIN, keep locked categories (and Settings) open</label>
     <select id="parMins" style="max-width:320px">${[[0, 'Until I close Seal IPTV'], [15, 'For 15 minutes'], [60, 'For 1 hour'], [240, 'For 4 hours']].map(([n, t]) => `<option value="${n}" ${(par.unlockMinutes || 0) === n ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <p class="faint small">To lock other categories, right-click one in Live TV, Movies or Series, or use the list under Categories below. Changing these settings needs the PIN.</p>
     ${par.hasPin && par.unlocked ? '<button class="btn" id="parLock">Lock now</button>' : ''}</div>`);
@@ -1654,6 +1671,11 @@ function renderSettings(view) {
   pc.querySelector('#parAdult').onchange = async e => {
     const want = e.target.checked;
     try { const r = await withPin(() => call('parental:options', { autoAdult: want })); if (r === undefined) e.target.checked = !want; else { state.parental = r; toast(want ? 'Adult categories are locked.' : 'Adult categories are no longer locked automatically.'); } }
+    catch (err) { e.target.checked = !want; fail(err); }
+  };
+  pc.querySelector('#parSettings').onchange = async e => {
+    const want = e.target.checked;
+    try { const r = await withPin(() => call('parental:options', { lockSettings: want })); if (r === undefined) e.target.checked = !want; else { state.parental = r; toast(want ? 'Settings now needs the parental PIN. It stays open until you lock or close Seal IPTV.' : 'Settings opens without the PIN again.'); } }
     catch (err) { e.target.checked = !want; fail(err); }
   };
   pc.querySelector('#parMins').onchange = async e => {
@@ -2094,4 +2116,5 @@ const Saver = (() => {
   return { wake, showing: () => !!el, start: begin };
 })();
 
-start().catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; });
+// two frames first, so the start-up screen is on show before the playlist is read
+requestAnimationFrame(() => requestAnimationFrame(() => start().finally(endSplash).catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; })));

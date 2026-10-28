@@ -52,7 +52,8 @@ const DEFAULTS = {
   parental: {
     pinHash: '', pinSalt: '',
     autoAdult: true,        // lock every category with "Adult" (XXX, 18+) in its name
-    unlockMinutes: 0        // after the PIN: 0 = until Seal IPTV closes, else minutes
+    unlockMinutes: 0,       // after the PIN: 0 = until Seal IPTV closes, else minutes
+    lockSettings: false     // Settings needs the PIN too
   },
   content: {
     hideNonEnglish: false   // hide categories / titles that look like another language (language.js)
@@ -87,7 +88,7 @@ const SYNC_GROUPS = {
   favorites: ['live', 'movie', 'series'],
   collections: ['order'],
   vpn: ['required', 'provider'],
-  parental: ['pinHash', 'pinSalt', 'autoAdult', 'unlockMinutes']
+  parental: ['pinHash', 'pinSalt', 'autoAdult', 'unlockMinutes', 'lockSettings']
 };
 const clone = o => JSON.parse(JSON.stringify(o));
 
@@ -149,7 +150,7 @@ class Store {
   /** For the window: everything except the PIN hash (hasPin instead). */
   getSettings() {
     const s = clone(this.data.settings);
-    s.parental = { autoAdult: s.parental.autoAdult !== false, unlockMinutes: s.parental.unlockMinutes || 0, hasPin: !!s.parental.pinHash };
+    s.parental = { autoAdult: s.parental.autoAdult !== false, unlockMinutes: s.parental.unlockMinutes || 0, lockSettings: !!s.parental.lockSettings, hasPin: !!s.parental.pinHash };
     return s;
   }
 
@@ -160,6 +161,7 @@ class Store {
     for (const k of ['pinHash', 'pinSalt']) if (typeof patch[k] === 'string') p[k] = patch[k];
     if (typeof patch.autoAdult === 'boolean') p.autoAdult = patch.autoAdult;
     if (Number.isFinite(patch.unlockMinutes)) p.unlockMinutes = patch.unlockMinutes;
+    if (typeof patch.lockSettings === 'boolean') p.lockSettings = patch.lockSettings;
     this._save();
     this._emit('settings:parental', this.syncSettings().parental);
   }
@@ -181,6 +183,7 @@ class Store {
       if (typeof d.pinSalt === 'string' && /^([0-9a-f]{32})?$/.test(d.pinSalt)) p.pinSalt = d.pinSalt;
       if (typeof d.autoAdult === 'boolean') p.autoAdult = d.autoAdult;
       if ([0, 15, 60, 240].includes(d.unlockMinutes)) p.unlockMinutes = d.unlockMinutes;
+      if (typeof d.lockSettings === 'boolean') p.lockSettings = d.lockSettings;
       return this._save();
     }
     const patch = {};
