@@ -44,7 +44,10 @@ seal-iptv/
     preload.js             window.api.invoke(channel, …) whitelist + events
     store.js               settings + playlists (seal-iptv.json; passwords via safeStorage)
     library.js             favorites / watched / resume, one file per playlist
-    catalog.js             catalogue per playlist (memory + catalog/<id>.json), paging, search
+    catalog.js             catalogue per playlist, paging, search. On disk: catalog/<id>.json (summary:
+                           counts, categories, newest titles for Home, titles the library points to)
+                           + catalog/<id>.<live|movies|series>.json, each read when first needed.
+                           An older single-file <id>.json is still read and saved the new way.
     xtream.js              Xtream Codes player_api client + stream URLs + normalizers
     m3u.js                 M3U parser, live/movies/series sorting, show grouping
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)
@@ -88,6 +91,10 @@ dist/                      Seal-IPTV-Sync-Server-<ver>.zip (upload; never contai
                            the page reads them in 1 MB base64 pieces (blobChunk); big saved files use
                            fileSize/fileChunk/appendFile (shims/fs.js). Test: web/test-pieces.js.
                            Crash logs: adb connect <TV IP>:5555, adb logcat -b crash -d.
+                           Start-up steps, slow commands (> 0.5 s) and page errors: adb logcat -s SealWeb
+                           (core.js trace() -> console "[seal] …" -> MainActivity.onConsoleMessage).
+                           Never change the WebView's own User-Agent: it reloads the page (that was
+                           the "page starts twice"); the provider's UA is only for native fetches.
                            Shared-code hooks for it: window.SEAL_TV / TV in app.js (wording, hidden
                            desktop-only options, tabindex on cards), vpn.js vpnActive option,
                            avsync.js asks SealNative.audioOutput().

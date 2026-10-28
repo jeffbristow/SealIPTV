@@ -62,6 +62,24 @@ function matchRank(i, words) {
   return 4;
 }
 
+/* how many of the newest movies / series the summary keeps for Home (filtered there by category) */
+const HOME_KEEP = 300;
+/** a title as saved: the search keys are worked out again when it's read; plots come with the series page */
+const plainItem = ({ _q, _core, _foreign, plot, ...i }) => i;
+/* A section's file says which titles are in another language (worked out once, when it's saved: on a TV
+   that took longer than reading the file). LANG: the language rules they were found with (language.js). */
+const LANG = 1;
+const savedItem = i => (foreignOf(i) ? { ...plainItem(i), _foreign: true } : plainItem(i));
+/* Saved with letters beyond Latin-1 as \u escapes: the text is then read as one byte a letter, not two
+   (a few titles in Greek or Japanese made a TV hold 75 MB instead of 37 MB while reading the file). */
+const writeJson = (f, o) => {
+  const tmp = f + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(o).replace(/[Ā-￿]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0')));
+  fs.renameSync(tmp, f);
+};
+/** setTimeout that doesn't keep Node running (tests) */
+const later = (fn, ms) => { const t = setTimeout(fn, ms); if (t && t.unref) t.unref(); return t; };
+
 const EMPTY = () => ({ live: { cats: [], items: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] } });
 
 class Catalog {
@@ -88,17 +106,30 @@ class Catalog {
 
   /* =================================================================
    * 1. FILES
+   *   catalog/<id>.json            what's needed first: counts, categories, the newest titles
+   *                                (Home) and the titles the library points to (favorites,
+   *                                Continue watching, my categories)
+   *   catalog/<id>.<section>.json  each section's titles, read the first time they're needed —
+   *                                a TV with 140 000 movies doesn't hold them until Movies is opened
+   * An older catalog/<id>.json with everything in it is read as it is, then saved this way.
    * ================================================================= */
   _file(pid) { return path.join(this.dir, String(pid).replace(/[^\w-]/g, '') + '.json'); }
+  _secFile(pid, s) { return this._file(pid).replace(/\.json$/, `.${s}.json`); }
+  _files(pid) { return [this._file(pid), ...SECTIONS.map(s => this._secFile(pid, s))]; }
 
   /** The catalogue (from memory or disk), or an empty one. */
   get(pid) {
     if (!pid) return { ...EMPTY(), fetchedAt: 0 };
     let c = this.mem.get(pid);
     if (c) return c;
-    try { c = JSON.parse(fs.readFileSync(this._file(pid), 'utf8')); } catch { c = null; }
-    c = c && c.live ? c : { ...EMPTY(), fetchedAt: 0 };
-    this._index(c);
+    let d;
+    try { d = JSON.parse(fs.readFileSync(this._file(pid), 'utf8')); } catch { d = null; }
+    if (d && d.v === 2) c = this._lazy(pid, d);
+    else {
+      c = d && d.live ? d : { ...EMPTY(), fetchedAt: 0 };
+      this._index(c);
+      if (d && d.live) later(() => { if (this.mem.get(pid) === c) try { this._save(pid, c); } catch { /* next time */ } }, 30000);   // the older single file
+    }
     this.mem.set(pid, c);
     return c;
   }
@@ -112,10 +143,90 @@ class Catalog {
     this._warm(c);
   }
 
+  /** A catalogue saved in sections: each section's items (and _byId) are read the first time they're asked for. */
+  _lazy(pid, d) {
+    const c = { fetchedAt: d.fetchedAt || 0, account: d.account || null, counts: d.counts || {}, home: d.home || {}, refs: d.refs || {}, _pid: pid, _byId: {}, _read: {} };
+    const set = (o, k, value) => Object.defineProperty(o, k, { value, writable: true, enumerable: true, configurable: true });
+    for (const s of SECTIONS) {
+      const sec = { cats: (d.cats && d.cats[s]) || [] };
+      sec._catNames = new Map(sec.cats.map(x => [x.id, x.name]));
+      const read = () => {
+        if (c._read[s]) return;
+        let items = [];
+        try {
+          const f = JSON.parse(fs.readFileSync(this._secFile(pid, s), 'utf8'));
+          items = f.items || [];
+          if (f.lang === LANG) for (const i of items) if (!i._foreign) i._foreign = false;
+        } catch { /* missing: empty until a reload */ }
+        c._read[s] = true;
+        set(sec, 'items', items);
+        set(c._byId, s, new Map(items.map(i => [i.id, i])));
+        this._warm(c, [items]);
+      };
+      Object.defineProperty(sec, 'items', { get: () => (read(), sec.items), enumerable: true, configurable: true });
+      Object.defineProperty(c._byId, s, { get: () => (read(), c._byId[s]), enumerable: true, configurable: true });
+      c[s] = sec;
+    }
+    return c;
+  }
+
+  /** Have this section's titles been read? (an older single-file catalogue: always) */
+  _isRead(c, s) { return !c._read || !!c._read[s]; }
+  /** the sections not read yet (core.js on a TV reads their files ahead) */
+  unread(pid) { const c = this.get(pid); return SECTIONS.filter(s => !this._isRead(c, s)); }
+
+  /** a favorite's / resume point's key -> [section, id] (an episode: its series) */
+  static where(key, meta = {}) {
+    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
+    return kind === 'live' ? ['live', id] : kind === 'movie' ? ['movies', id] : ['series', kind === 'series' ? id : meta.seriesId ? String(meta.seriesId) : ''];
+  }
+
+  /** A title by id. Before its section is read, the copy kept with the summary will do (refs). */
+  _find(c, section, id) {
+    id = String(id);
+    if (!this._isRead(c, section)) {
+      const r = c.refs[section];
+      if (r && Object.prototype.hasOwnProperty.call(r, id)) return r[id] || undefined;   // null: known not to be in the playlist
+      // a new favorite / resume point: the section is read for it, and it's kept for next time
+      if (!c._refsSoon) c._refsSoon = later(() => { c._refsSoon = null; if (this.mem.get(c._pid) === c) try { this._saveSummary(c._pid, c); } catch { /* next time */ } }, 5000);
+    }
+    return c._byId[section].get(id);
+  }
+
+  /** The titles the library points to, for _find; null for ones not in the playlist.
+      readNew false: a new one from a section not read yet is left for later (not read for it). */
+  _refs(pid, c, readNew = true) {
+    const out = { live: {}, movies: {}, series: {} };
+    const keys = [];
+    try {
+      for (const k of ['live', 'movie', 'series', 'episode']) keys.push(...this.library.favorites(pid, k));
+      keys.push(...this.library.continueWatching(pid, 60));
+      for (const l of this.library.lists(pid)) keys.push(...this.library.listItems(pid, l.id));
+    } catch { return out; }
+    for (const m of keys) {
+      const [s, id] = Catalog.where(m.key, m);
+      if (!id || Object.prototype.hasOwnProperty.call(out[s], id)) continue;
+      if (!this._isRead(c, s) && c.refs[s] && Object.prototype.hasOwnProperty.call(c.refs[s], id)) out[s][id] = c.refs[s][id];
+      else if (readNew || this._isRead(c, s)) { const it = c._byId[s].get(id); out[s][id] = it ? plainItem(it) : null; }   // a new one: read its section
+    }
+    return out;
+  }
+
+  /** The app was left or came back (after playing something): the summary keeps up with the library,
+      from the sections already read. */
+  keepRefs(pid) {
+    const c = pid && this.mem.get(pid);
+    if (!c || !c._read) return false;
+    const refs = this._refs(pid, c, false);
+    if (JSON.stringify(refs) === JSON.stringify(c.refs)) return false;
+    c.refs = refs;
+    this._saveSummary(pid, c, refs);
+    return true;
+  }
+
   /** After start-up: the per-title search / language / collection keys, a few thousand at a time,
       so the window (on a TV: the remote) keeps answering. Anything needing one sooner works it out then. */
-  _warm(c) {
-    const todo = SECTIONS.map(s => c[s].items);
+  _warm(c, todo = SECTIONS.map(s => c[s].items)) {
     let s = 0, at = 0;
     const step = () => {
       if (this.mem && ![...this.mem.values()].includes(c)) return;   // replaced by a reload
@@ -130,29 +241,44 @@ class Catalog {
     setTimeout(step, 1500);
   }
 
+  /** The sections first, then the summary (until it's written, the older file is still the one read). */
   _save(pid, c) {
     fs.mkdirSync(this.dir, { recursive: true });
-    const plain = { fetchedAt: c.fetchedAt, account: c.account || null };
-    for (const s of SECTIONS) plain[s] = { cats: c[s].cats, items: c[s].items.map(({ _q, _core, _foreign, plot, ...i }) => i) };   // worked out again when loaded; plots come with the series page
-    const f = this._file(pid), tmp = f + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(plain));
-    fs.renameSync(tmp, f);
+    const counts = {}, home = {};
+    for (const s of SECTIONS) {
+      const items = c[s].items.map(savedItem);
+      writeJson(this._secFile(pid, s), { lang: LANG, items });
+      counts[s] = items.length;
+      if (s !== 'live') home[s] = items.filter(i => i.added).sort((a, b) => b.added - a.added).slice(0, HOME_KEEP);
+    }
+    Object.assign(c, { counts, home });
+    this._saveSummary(pid, c);
+  }
+
+  _saveSummary(pid, c, refs = this._refs(pid, c)) {
+    const cats = {};
+    for (const s of SECTIONS) cats[s] = c[s].cats;
+    writeJson(this._file(pid), { v: 2, fetchedAt: c.fetchedAt, account: c.account || null, counts: c.counts, cats, home: c.home, refs });
+    if (c._read) c.refs = refs;
   }
 
   /** A playlist joined with the same one from another PC: keep the downloaded lists. */
   rename(from, to) {
     this.mem.delete(from); this.mem.delete(to);
-    try { if (!fs.existsSync(this._file(to))) fs.renameSync(this._file(from), this._file(to)); else fs.unlinkSync(this._file(from)); } catch { /* nothing downloaded */ }
+    const have = fs.existsSync(this._file(to));
+    const a = this._files(from), b = this._files(to);
+    a.forEach((f, n) => { try { if (!have) fs.renameSync(f, b[n]); else fs.unlinkSync(f); } catch { /* nothing downloaded */ } });
   }
 
   remove(pid) {
     this.mem.delete(pid);
-    try { fs.unlinkSync(this._file(pid)); } catch { /* none */ }
+    for (const f of this._files(pid)) try { fs.unlinkSync(f); } catch { /* none */ }
   }
 
   summary(pid) {
     const c = this.get(pid);
-    return { fetchedAt: c.fetchedAt || 0, account: c.account || null, counts: { live: c.live.items.length, movies: c.movies.items.length, series: c.series.items.length } };
+    const n = s => (this._isRead(c, s) ? c[s].items.length : c.counts[s] || 0);
+    return { fetchedAt: c.fetchedAt || 0, account: c.account || null, counts: { live: n('live'), movies: n('movies'), series: n('series') } };
   }
 
   /** Is the saved copy older than the refresh setting? */
@@ -292,10 +418,8 @@ class Catalog {
 
   /** Favorites / Continue watching: is what this key points to shown right now? */
   visibleKey(pid, key, meta = {}) {
-    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
-    const c = this.get(pid);
-    const [section, iid] = kind === 'live' ? ['live', id] : kind === 'movie' ? ['movies', id] : ['series', kind === 'series' ? id : meta.seriesId];
-    const it = iid && c._byId[section].get(String(iid));
+    const [section, iid] = Catalog.where(key, meta);
+    const it = iid && this._find(this.get(pid), section, iid);
     if (!it) return true;
     return this._visible(it, this.rules(pid, section), this.parental.isUnlocked());
   }
@@ -306,18 +430,15 @@ class Catalog {
    * known (still in the playlist).
    */
   homeSafe(pid, key, meta = {}) {
-    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
-    const c = this.get(pid);
-    const [section, iid] = kind === 'live' ? ['live', id] : kind === 'movie' ? ['movies', id] : ['series', kind === 'series' ? id : meta.seriesId];
-    const it = iid && c._byId[section].get(String(iid));
+    const [section, iid] = Catalog.where(key, meta);
+    const it = iid && this._find(this.get(pid), section, iid);
     return !!it && this._homeSafeItem(it, this.rules(pid, section));
   }
 
   /** The poster of the movie / the episode's series, from the playlist (Home falls back to it) */
   posterFor(pid, key, meta = {}) {
-    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
-    const c = this.get(pid);
-    const it = kind === 'movie' ? c._byId.movies.get(String(id)) : kind === 'episode' || kind === 'series' ? c._byId.series.get(String(kind === 'series' ? id : meta.seriesId)) : null;
+    const [section, iid] = Catalog.where(key, meta);
+    const it = section !== 'live' && iid ? this._find(this.get(pid), section, iid) : null;
     return (it && it.poster) || '';
   }
 
@@ -411,7 +532,7 @@ class Catalog {
     const c = this.get(pid);
     return list.map(f => {
       if (!String(f.key || '').startsWith('live:')) return f;
-      const i = c._byId.live.get(String(f.id));
+      const i = this._find(c, 'live', f.id);
       const net = i ? networkLogo(i.name, c.live._catNames.get(i.cat)) : networkLogo(f.name);
       return net ? { ...f, image: net } : f;
     });
@@ -419,7 +540,7 @@ class Catalog {
 
   item(pid, section, id) {
     const c = this.get(pid);
-    const i = c._byId[section].get(String(id));
+    const i = this._find(c, section, id);
     if (i) this.guard(pid, section, i);
     return i ? this._decorate(pid, KIND[section], [i], c[section])[0] : null;
   }
@@ -454,11 +575,13 @@ class Catalog {
    * window looks up (artwork.js) and shows instead; cover: { kind, name, year } to look up when there's no poster.
    */
   collections(pid, q = '') {
+    // a search that names no collection: the playlist isn't matched against them (seconds on a TV)
+    const wanted = franchises.all().filter(f => !q || franchises.matchesQuery(f, q));
+    if (!wanted.length) return [];
     const get = this._franchiseItems(pid);
     const out = [];
     const posterOf = its => (its.find(i => i.poster) || {}).poster || '';
-    for (const f of franchises.all()) {
-      if (q && !franchises.matchesQuery(f, q)) continue;
+    for (const f of wanted) {
       let have = 0, poster = '';
       for (const n of f.release) {
         const its = get(f, f.items[n]);
@@ -504,7 +627,17 @@ class Catalog {
   /** Recently added movies / series (Home). */
   /** the newest titles; homeSafe: only what may be on Home (homeSafe above) */
   recent(pid, section, limit = 20, homeSafe = false) {
-    const items = this.list(pid, { section, sort: 'added', limit: homeSafe ? limit * 3 : limit }).items.filter(i => i.added);
+    const c = this.get(pid), want = homeSafe ? limit * 3 : limit;
+    let items = null;
+    // the section not read yet: the newest kept with the summary, when enough of them may be shown
+    const kept = !this._isRead(c, section) && c.home && c.home[section];
+    if (kept) {
+      const rules = this.rules(pid, section), open = this.parental.isUnlocked();
+      const shown = kept.filter(i => this._visible(i, rules, open));
+      if (shown.length >= want || kept.length < HOME_KEEP) items = this._decorate(pid, KIND[section], shown.slice(0, want), c[section]);
+    }
+    if (!items) items = this.list(pid, { section, sort: 'added', limit: want }).items;
+    items = items.filter(i => i.added);
     if (!homeSafe) return items;
     const rules = this.rules(pid, section);
     return items.filter(i => this._homeSafeItem(i, rules)).slice(0, limit);
@@ -533,7 +666,7 @@ class Catalog {
         await this.vpn.ensure();
         info = await this.client(p).seriesInfo(id);
       } else {
-        const show = this.get(pid)._byId.series.get(String(id));
+        const show = this._find(this.get(pid), 'series', id);
         if (!show) throw new Error('This series isn\'t in the playlist any more.');
         info = seriesInfoFromShow(show);
       }
@@ -557,9 +690,9 @@ class Catalog {
   async streamUrl(pid, { kind, id, ext, seriesId }) {
     const p = this.store.getProfile(pid);
     const c = this.get(pid);
-    if (kind === 'live') this.guard(pid, 'live', c._byId.live.get(String(id)));
-    else if (kind === 'movie') this.guard(pid, 'movies', c._byId.movies.get(String(id)));
-    else this.guard(pid, 'series', c._byId.series.get(String(seriesId)));
+    if (kind === 'live') this.guard(pid, 'live', this._find(c, 'live', id));
+    else if (kind === 'movie') this.guard(pid, 'movies', this._find(c, 'movies', id));
+    else this.guard(pid, 'series', this._find(c, 'series', seriesId));
     if (p.type === 'xtream') {
       const x = this.client(p);
       if (kind === 'live') {
@@ -568,18 +701,18 @@ class Catalog {
         return { url: x.liveUrl(id, want), live: true };
       }
       if (kind === 'movie') {
-        const m = c._byId.movies.get(String(id));
+        const m = this._find(c, 'movies', id);
         return { url: x.movieUrl(id, ext || (m && m.ext)), live: false };
       }
       return { url: x.episodeUrl(id, ext), live: false };
     }
     // M3U: the address is in the playlist
     if (kind === 'live' || kind === 'movie') {
-      const i = c._byId[kind === 'live' ? 'live' : 'movies'].get(String(id));
+      const i = this._find(c, kind === 'live' ? 'live' : 'movies', id);
       if (!i) throw new Error('This isn\'t in the playlist any more. Reload the playlist.');
       return { url: i.url, live: kind === 'live', ua: i.ua };
     }
-    const show = c._byId.series.get(String(seriesId));
+    const show = this._find(c, 'series', seriesId);
     const e = show && show.episodes.find(x => x.id === String(id));
     if (!e) throw new Error('This episode isn\'t in the playlist any more. Reload the playlist.');
     return { url: e.url, live: false, ua: e.ua };

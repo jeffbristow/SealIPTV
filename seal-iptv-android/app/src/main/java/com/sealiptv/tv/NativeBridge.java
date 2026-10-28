@@ -576,12 +576,11 @@ public class NativeBridge {
     @JavascriptInterface public void exitApp() { activity.runOnUiThread(activity::finish); }
 
     /* ---------------- VPN guard for posters / logos ---------------- */
+    /* ua: for the pictures fetched here (MainActivity.picture, ImageCache). Not given to the WebView
+       itself: a WebView whose User-Agent changes loads its page again (the page started twice). */
     @JavascriptInterface public void setGuard(boolean isBlocked, String ua) {
         blocked = isBlocked;
-        if (ua != null && !ua.equals(guardUa)) {
-            guardUa = ua;
-            activity.runOnUiThread(() -> web.getSettings().setUserAgentString(ua));
-        }
+        if (ua != null) guardUa = ua;
     }
 
     /* ---------------- player ---------------- */

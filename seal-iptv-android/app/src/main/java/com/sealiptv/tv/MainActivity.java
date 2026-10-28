@@ -34,6 +34,10 @@ import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -166,6 +170,30 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 return true;   // never navigate away from the app
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+                Log.i("SealWeb", "page starts: " + url);
+            }
+
+            /* The page's own process went (Android needed the memory, or it crashed): start the screen
+               again, instead of Android closing the whole app. */
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail d) {
+                Log.w("SealWeb", "the page's process went (" + (d.didCrash() ? "crashed" : "ended by Android") + "), starting again");
+                if (view == web && !isFinishing()) recreate();
+                return true;
+            }
+        });
+        // the page's start-up steps ("[seal] …") and its errors, for adb logcat -s SealWeb
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage m) {
+                String t = m.message();
+                if (t != null && t.startsWith("[seal]")) Log.i("SealWeb", t.substring(7));
+                else if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR) Log.w("SealWeb", t + " (" + m.sourceId() + ":" + m.lineNumber() + ")");
+                return true;
             }
         });
         bridge = new NativeBridge(this, web);

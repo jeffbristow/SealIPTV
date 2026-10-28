@@ -94,6 +94,25 @@ const fakeFetch = async (url, opts) => {
     // loaded again from disk (new process)
     const cat2 = new Catalog({ dir, store, vpn, library, fetch: fakeFetch });
     ok(cat2.summary(p.id).counts.live === 3 && cat2.list(p.id, { section: 'live', q: 'bbc' }).total === 1, 'the catalogue is kept on disk');
+    // saved in sections: a small summary first, each section read when it's needed
+    const files = fs.readdirSync(path.join(dir, 'catalog')).sort();
+    ok(files.join() === [p.id + '.json', p.id + '.live.json', p.id + '.movies.json', p.id + '.series.json'].sort().join(), 'saved as a summary + one file per section');
+    const cat3 = new Catalog({ dir, store, vpn, library, fetch: fakeFetch });
+    ok(cat3.summary(p.id).counts.movies === 2 && cat3.unread(p.id).length === 3, 'counts come from the summary: no section read for them');
+    const rec = cat3.recent(p.id, 'movies', 20, true);
+    ok(rec.map(i => i.name).join() === 'Beta,Alpha (2001)' && rec[0].catName === 'Action' && cat3.unread(p.id).includes('movies'), 'Home\'s newest movies come from the summary, movies not read');
+    ok(cat3.list(p.id, { section: 'movies' }).total === 2 && !cat3.unread(p.id).includes('movies'), 'opening Movies reads the movies');
+    // the titles the library points to are kept with the summary
+    library.setProgress(p.id, 'movie:21', 60, 600, { name: 'Alpha (2001)' });
+    cat3._saveSummary(p.id, cat3.get(p.id));
+    const cat4 = new Catalog({ dir, store, vpn, library, fetch: fakeFetch });
+    ok(cat4.visibleKey(p.id, 'live:12') && cat4.posterFor(p.id, 'movie:21') === '' && cat4.homeSafe(p.id, 'movie:21'), 'a favorite / resume point is looked up in the summary');
+    ok(cat4.unread(p.id).length === 3, '… without reading any section');
+    ok((await cat4.streamUrl(p.id, { kind: 'movie', id: '21' })).url.endsWith('/21.mkv') && cat4.unread(p.id).includes('movies'), 'playing it from Home: its file type from the summary too');
+    ok(cat4.homeSafe(p.id, 'movie:22') === true && !cat4.unread(p.id).includes('movies'), 'one that isn\'t in the summary: its section is read');
+    // an older catalogue saved in one file is still read
+    fs.writeFileSync(path.join(dir, 'catalog', 'old1.json'), JSON.stringify({ fetchedAt: 5, live: { cats: [], items: [{ id: '1', name: 'Old One', cat: '' }] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] } }));
+    ok(cat4.summary('old1').counts.live === 1 && cat4.list('old1', { section: 'live' }).items[0].name === 'Old One', 'an older single-file catalogue is still read');
     const s2 = await cat.seriesInfo(p.id, '31');
     library.setWatched(p.id, 'episode:401', true, {});
     const s3 = await cat.seriesInfo(p.id, '31');
@@ -101,13 +120,16 @@ const fakeFetch = async (url, opts) => {
 
     // M3U file profile
     const f = path.join(dir, 'list.m3u');
-    fs.writeFileSync(f, '#EXTM3U\n#EXTINF:-1 group-title="News",One\nhttp://a/1.m3u8\n#EXTINF:-1 group-title="Movies",Film (2020)\nhttp://a/2.mp4\n');
+    fs.writeFileSync(f, '#EXTM3U\n#EXTINF:-1 group-title="News",Ελλάδα One\nhttp://a/1.m3u8\n#EXTINF:-1 group-title="Movies",Film (2020)\nhttp://a/2.mp4\n');
     const pm = store.saveProfile({ type: 'm3u', m3uFile: f });
     const before = vpnCalls.length;
     const sm = await cat.refresh(pm.id);
     ok(sm.counts.live === 1 && sm.counts.movies === 1 && vpnCalls.length === before, 'an M3U file loads without contacting anyone');
     const movieId = cat.list(pm.id, { section: 'movies' }).items[0].id;
     ok((await cat.streamUrl(pm.id, { kind: 'movie', id: movieId })).url === 'http://a/2.mp4', 'M3U: the address from the playlist');
+    const saved = fs.readFileSync(path.join(dir, 'catalog', pm.id + '.live.json'), 'utf8');
+    ok(/^\{"lang":1,/.test(saved) && /"_foreign":true/.test(saved), 'each section\'s file says which titles are in another language');
+    ok(!/[^\x00-\xff]/.test(saved) &&new Catalog({ dir, store, vpn, library, fetch: fakeFetch }).list(pm.id, { section: 'live' }).items[0].name === 'Ελλάδα One', 'other scripts are saved as \\u escapes (one byte a letter when read) and read back the same');
     await rejects(cat.test({ type: 'm3u', m3uFile: path.join(dir, 'missing.m3u') }), /can't be read/, 'a missing playlist file is reported');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

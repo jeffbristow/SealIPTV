@@ -489,11 +489,15 @@ function infinite(container, scroller, fetchPage, renderItem, empty) {
   container.appendChild(sentinel);
   const items = [];
   let offset = 0, total = Infinity, loading = false;
+  // the first page taking a while (on a TV: a section of the playlist read the first time): say so
+  const wait = h('<div class="empty">Loading…</div>');
+  setTimeout(() => { if (!offset && loading && container._token === token) container.insertBefore(wait, sentinel); }, 300);
   const more = async () => {
     if (loading || offset >= total || container._token !== token) return;
     loading = true;
     try {
       const r = await fetchPage(offset);
+      wait.remove();
       if (container._token !== token) return;
       total = r.total;
       const frag = document.createDocumentFragment();
@@ -1549,7 +1553,11 @@ async function renderSearch(view) {
   const page = h('<div class="home"></div>');
   view.appendChild(page);
   if (!state.q) return;
+  const wait = h('<div class="empty">Searching…</div>');
+  const slow = setTimeout(() => page.appendChild(wait), 300);   // the first search on a TV reads the whole playlist
   const [r, cols] = await Promise.all([call('catalog:search', state.q).catch(e => { fail(e); return null; }), call('collections:list', state.q).catch(() => [])]);
+  clearTimeout(slow);
+  wait.remove();
   if (!r || !page.isConnected) return;
   const total = r.live.total + r.movies.total + r.series.total;
   if (cols.length) {

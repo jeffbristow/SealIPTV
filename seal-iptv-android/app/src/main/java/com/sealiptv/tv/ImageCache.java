@@ -179,7 +179,6 @@ final class ImageCache {
             if (!tmp.renameTo(f)) { //noinspection ResultOfMethodCallIgnored
                 tmp.delete(); }
             added(body.length);
-            Log.i("SealImages", "fetched and kept " + body.length + " bytes");   // only new ones: kept ones aren't logged
             synchronized (failed) { failed.remove(url); }   // works again
             return answer(type, new ByteArrayInputStream(body));
         } catch (Exception e) { return fail(url, RETRY_SOON); }   // no answer in time, connection dropped …

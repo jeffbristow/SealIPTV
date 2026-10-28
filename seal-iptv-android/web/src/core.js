@@ -37,6 +37,10 @@ const { Artwork } = require('../../../seal-iptv/src/main/artwork');
 const DATA = '/data';
 // the version of these pages and logic (build.js writes it in); the APK can be older
 const VERSION = typeof __SEAL_VERSION__ !== 'undefined' ? __SEAL_VERSION__ : (N && N.appVersion()) || '0.0.0';
+// start-up steps for adb logcat -s SealWeb (MainActivity passes on messages starting "[seal]")
+const T0 = Date.now();
+const trace = (...a) => console.log(`[seal] ${a.join(' ')} (${Date.now() - T0} ms)`);
+trace('core', VERSION, 'starts');
 const UA = { seal: `SealIPTV/${VERSION} (Fire TV)`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 const listeners = new Map();
 const send = (ch, data) => { for (const fn of listeners.get(ch) || []) { try { fn(data); } catch (e) { console.error(e); } } };
@@ -82,7 +86,9 @@ function syncSoon(ms) {
 sync.onLocalChange = type => syncSoon(type === 'pos' ? 20000 : 1500);
 setInterval(() => syncSoon(0), 15000);
 // back to the app (from the Fire TV home screen, ProtonVPN …): check the VPN, sync
-onEvent('resume', () => { vpn.check({ force: true }).catch(() => {}); syncSoon(300); });
+// the summary of the playlist keeps up with what was watched (catalog.keepRefs)
+const keepRefs = () => { try { catalog.keepRefs(store.getSettings().activeProfile); } catch { /* next time */ } };
+onEvent('resume', () => { vpn.check({ force: true }).catch(() => {}); syncSoon(300); keepRefs(); });
 onEvent('network', () => vpn.check({ force: true }).catch(() => {}));
 
 /* =================================================================
@@ -100,24 +106,54 @@ const pid = () => {
 const readAhead = (() => {
   const id = store.getSettings().activeProfile;
   if (!id) return Promise.resolve(false);
-  const f = catalog._file(id);
-  return require('fs').readAhead(f, 'https://appassets.androidplatform.net/catalog/' + encodeURIComponent(f.split('/').pop()));
+  return require('fs').readAhead(catalog._file(id)).then(ok => { trace('playlist summary read ahead:', ok); return ok; });
 })();
 
-handle('app:init', async () => (await readAhead, {
-  version: VERSION,
-  settings: store.getSettings(),
-  profiles: store.listProfiles(),
-  vpn: vpn.status(),
-  catalog: store.getSettings().activeProfile ? catalog.summary(store.getSettings().activeProfile) : null,
-  stale: store.getSettings().activeProfile ? catalog.stale(store.getSettings().activeProfile) : false,
-  dataDir: 'this Fire TV (app storage)',
-  parental: parental.status(),
-  sync: sync.status(),
-  lists: store.getSettings().activeProfile ? library.lists(store.getSettings().activeProfile) : [],
-  hostname: N.deviceName ? N.deviceName() : 'Fire TV',
-  platform: 'tv'
-}));
+/* A playlist saved in sections (catalog.js): a section's file is fetched ahead, without holding up the
+   page, before a command that needs it — Movies opened the first time, a search … */
+const NEEDS = {
+  'catalog:cats': a => [a[0]],
+  'catalog:list': a => [a[0] && a[0].section],
+  'catalog:search': () => ['live', 'movies', 'series'],
+  'collections:list': () => ['movies', 'series'],
+  'collections:get': () => ['movies', 'series']
+};
+const reading = new Map();   // file -> its fetch, so two commands don't fetch it twice
+async function readSections(list) {
+  const id = store.getSettings().activeProfile;
+  if (!id) return;
+  const want = catalog.unread(id).filter(s => list.includes(s));
+  await Promise.all(want.map(s => {
+    const f = catalog._secFile(id, s);
+    if (!reading.has(f)) {
+      const t = Date.now();
+      reading.set(f, require('fs').readAhead(f).then(ok => trace(s, 'read ahead:', ok, Date.now() - t, 'ms')).finally(() => reading.delete(f)));
+    }
+    return reading.get(f);
+  }));
+  // read some other way meanwhile: let go of the copy
+  for (const s of want) if (!catalog.unread(id).includes(s)) require('fs').dropAhead(catalog._secFile(id, s));
+}
+
+handle('app:init', async () => {
+  await readAhead;
+  const id = store.getSettings().activeProfile;
+  if (id && !catalog.mem.has(id)) { catalog.get(id); trace('playlist summary ready, sections not read yet:', catalog.unread(id).join(' ') || 'none'); }
+  return {
+    version: VERSION,
+    settings: store.getSettings(),
+    profiles: store.listProfiles(),
+    vpn: vpn.status(),
+    catalog: store.getSettings().activeProfile ? catalog.summary(store.getSettings().activeProfile) : null,
+    stale: store.getSettings().activeProfile ? catalog.stale(store.getSettings().activeProfile) : false,
+    dataDir: 'this Fire TV (app storage)',
+    parental: parental.status(),
+    sync: sync.status(),
+    lists: store.getSettings().activeProfile ? library.lists(store.getSettings().activeProfile) : [],
+    hostname: N.deviceName ? N.deviceName() : 'Fire TV',
+    platform: 'tv'
+  };
+});
 
 /* ---- settings + playlists ---- */
 handle('settings:set', patch => {
@@ -251,8 +287,11 @@ window.api = {
   invoke: async (channel, ...args) => {
     const fn = handlers[channel];
     if (!fn) return { ok: false, error: 'Unknown command: ' + channel };
+    const t = Date.now();
+    if (NEEDS[channel]) { try { await readSections(NEEDS[channel](args)); } catch { /* read when it's needed */ } }
     try { return { ok: true, data: await fn(...args) }; }
     catch (e) { return { ok: false, error: e.message, code: e.code || null, vpn: e.vpn || null, locked: e.locked || null }; }
+    finally { if (Date.now() - t > 500) trace(channel, 'took', Date.now() - t, 'ms'); }
   },
   on: (channel, fn) => { if (!listeners.has(channel)) listeners.set(channel, new Set()); listeners.get(channel).add(fn); }
 };
@@ -260,4 +299,4 @@ window.SealEvents = { on: onEvent };
 window.addEventListener('pagehide', () => { try { library.flush(); artwork.flush(); } catch { /* nothing to save */ } });
 // the Fire TV home button doesn't unload the page: save the library now and then
 setInterval(() => { try { library.flush(); artwork.flush(); } catch { /* later */ } }, 30000);
-onEvent('pause', () => { try { library.flush(); artwork.flush(); } catch { /* later */ } });
+onEvent('pause', () => { try { library.flush(); artwork.flush(); } catch { /* later */ } keepRefs(); });
