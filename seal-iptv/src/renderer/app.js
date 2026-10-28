@@ -868,7 +868,7 @@ function catList(section, el, onPick) {
 function renderLive(view) {
   view.appendChild(h('<div class="cats" id="cats"></div>'));
   view.appendChild(h('<div class="channels" id="chList"></div>'));
-  view.appendChild(h('<div class="live-info" id="liveInfo"><div class="empty">Choose a channel to see what\'s on.<br><span class="small faint">Double-click or press Enter to watch.</span></div></div>'));
+  view.appendChild(h(`<div class="live-info" id="liveInfo"><div class="empty">Choose a channel to see what's on.${TV ? '' : '<br><span class="small faint">Double-click or press Enter to watch.</span>'}</div></div>`));
   const list = $('#chList');
   const load = () => {
     state.live.items = infinite(list, list,
@@ -889,8 +889,10 @@ function channelRow(it, i) {
   </div>`);
   el.onclick = () => selectChannel(it, el);
   el.ondblclick = () => playChannel(i);
+  // the remote's OK (tvnav.js): watch it — moving onto a channel already shows what's on
+  el.tvOk = () => { if (state.live.sel !== it) selectChannel(it, el); playChannel(i); };
   el.onkeydown = e => {
-    if (e.key === 'Enter') playChannel(i);
+    if (e.key === 'Enter') { e.preventDefault(); playChannel(i); }   // (not pressed again by tvnav.js)
     if (e.key === 'ArrowDown' && el.nextElementSibling && el.nextElementSibling.classList.contains('channel')) { e.preventDefault(); el.nextElementSibling.focus(); el.nextElementSibling.click(); }
     if (e.key === 'ArrowUp' && el.previousElementSibling) { e.preventDefault(); el.previousElementSibling.focus(); el.previousElementSibling.click(); }
   };

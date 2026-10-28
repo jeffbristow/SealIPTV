@@ -2,7 +2,7 @@
  * Seal IPTV for Fire TV — tvnav.js   (the remote)
  * ---------------------------------------------------------------------
  *   ← ↑ → ↓   move to the nearest thing in that direction
- *   OK        press it (also for cards / rows that aren't buttons);
+ *   OK        press it (also for cards / rows that aren't buttons; a Live TV channel: watch it);
  *             on a form field: type into it (Android calls window.__tvOk()) — Android's own
  *             text box + keyboard opens, and what you type is put in the field (__tvText)
  *   Back      close the dialog / menu, go back, else leave the app
@@ -157,6 +157,7 @@
     if (editable(a)) { keyboard(a); return true; }
     if (a.type === 'range') return true;
     if (a.tagName === 'SELECT') { pick(a); return true; }
+    if (typeof a.tvOk === 'function') { a.tvOk(); return true; }   // its own action for OK (a Live TV channel: watch it)
     a.click();
     if (a.closest('#sidebar') && a.classList.contains('nav')) window.tvFocusFirst(true);   // a menu item: on to its page
     return true;
