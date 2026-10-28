@@ -447,7 +447,8 @@ public class NativeBridge {
     /* Typing into a form field: the Fire TV keyboard doesn't reliably type into a WebView's text
        box, so OK on a field opens a real Android text box with the keyboard; Done / OK copies the
        text back (window.__tvText(text), or __tvText(null) when cancelled).
-       json: { value, type: text|password|url|number|search|email, label, placeholder, multiline } */
+       json: { value, type: text|password|url|number|search|email, label, placeholder, multiline,
+             live (the search box: each change goes to window.__tvTyping(text), the box sits at the top) } */
     @JavascriptInterface public void editText(String json) {
         activity.runOnUiThread(() -> {
             JSONObject o;
@@ -471,6 +472,19 @@ public class NativeBridge {
             box.setHint(o.optString("placeholder", ""));
             box.setImeOptions((type.equals("search") ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE) | EditorInfo.IME_FLAG_NO_FULLSCREEN);
             box.setTextSize(20);
+            if (o.optBoolean("live")) {   // results update under the box while typing
+                final Runnable[] send = { null };
+                box.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) { }
+                    @Override public void onTextChanged(CharSequence c, int a, int b, int d) { }
+                    @Override public void afterTextChanged(android.text.Editable e) {
+                        if (send[0] != null) box.removeCallbacks(send[0]);
+                        final String t = e.toString();
+                        send[0] = () -> web.evaluateJavascript("window.__tvTyping && window.__tvTyping(" + JSONObject.quote(t) + ")", null);
+                        box.postDelayed(send[0], 350);
+                    }
+                });
+            }
 
             final boolean[] answered = { false };
             final AlertDialog dlg = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -490,7 +504,10 @@ public class NativeBridge {
                 }
                 return false;
             });
-            if (dlg.getWindow() != null) dlg.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            if (dlg.getWindow() != null) {
+                dlg.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+                if (o.optBoolean("live")) { dlg.getWindow().setGravity(android.view.Gravity.TOP); dlg.getWindow().setDimAmount(0.15f); }
+            }
             dlg.show();
             box.requestFocus();
             box.postDelayed(() -> {
@@ -498,6 +515,21 @@ public class NativeBridge {
                 imm.showSoftInput(box, InputMethodManager.SHOW_IMPLICIT);
             }, 150);
         });
+    }
+
+    /* ---------------- voice search (Android's speech recognition: Google TV has it, Fire TV usually not) ---------------- */
+    @JavascriptInterface public boolean voiceAvailable() {
+        return new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(activity.getPackageManager()) != null;
+    }
+
+    /** asks for a few words; the page gets window.__tvVoice(text), or __tvVoice(null) if nothing was heard */
+    @JavascriptInterface public void voiceSearch(String prompt) {
+        activity.runOnUiThread(() -> ((MainActivity) activity).startVoice(prompt));
+    }
+
+    void voiceBack(String text) {
+        final String js = "window.__tvVoice && window.__tvVoice(" + (text == null ? "null" : JSONObject.quote(text)) + ")";
+        web.post(() -> { web.requestFocus(); web.evaluateJavascript(js, null); });
     }
 
     private void textBack(String text) {

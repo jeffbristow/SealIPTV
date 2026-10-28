@@ -55,6 +55,39 @@ public class MainActivity extends Activity {
     private AudioDeviceCallback audioCallback;
     private ConnectivityManager.NetworkCallback netCallback;
 
+    private static final int REQ_VOICE = 41;
+
+    /** voice search (NativeBridge.voiceSearch) */
+    void startVoice(String prompt) {
+        android.content.Intent i = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, prompt == null ? "Search" : prompt);
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        try { startActivityForResult(i, REQ_VOICE); } catch (Exception e) { if (bridge != null) bridge.voiceBack(null); }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int result, android.content.Intent data) {
+        super.onActivityResult(req, result, data);
+        if (req != REQ_VOICE || bridge == null) return;
+        java.util.ArrayList<String> said = data == null ? null : data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+        bridge.voiceBack(result == RESULT_OK && said != null && !said.isEmpty() ? said.get(0) : null);
+    }
+
+    /** a playlist file of this app's own, by name only (no folders), with its size */
+    static WebResourceResponse catalogFile(java.io.File dir, String name) {
+        java.io.File f = name == null || !name.matches("[\\w.-]+\\.json") ? null : new java.io.File(dir, name);
+        HashMap<String, String> h = new HashMap<>();
+        try {
+            if (f == null || !f.isFile()) return new WebResourceResponse("text/plain", "utf-8", 404, "Not found", h, new ByteArrayInputStream(new byte[0]));
+            h.put("Content-Length", String.valueOf(f.length()));
+            h.put("Cache-Control", "no-store");
+            return new WebResourceResponse("application/json", "utf-8", 200, "OK", h, new java.io.BufferedInputStream(new java.io.FileInputStream(f), 1 << 16));
+        } catch (Exception e) {
+            return new WebResourceResponse("text/plain", "utf-8", 500, "Error", h, new ByteArrayInputStream(new byte[0]));
+        }
+    }
+
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle saved) {
@@ -83,11 +116,16 @@ public class MainActivity extends Activity {
         final WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/update/", new WebViewAssetLoader.InternalStoragePathHandler(this, UpdateManager.webDir(this))).build();
+        final java.io.File catalogDir = new java.io.File(getFilesDir(), "data/catalog");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
-                if ("appassets.androidplatform.net".equals(u.getHost())) return assets.shouldInterceptRequest(u);
+                if ("appassets.androidplatform.net".equals(u.getHost())) {
+                    // the saved playlists, read by fetch() at start-up: much faster than through the bridge (core.js)
+                    if (u.getPath() != null && u.getPath().startsWith("/catalog/")) return catalogFile(catalogDir, u.getLastPathSegment());
+                    return assets.shouldInterceptRequest(u);
+                }
                 boolean image = isImage(req);
                 if (image) {
                     WebResourceResponse kept = images.kept(u.toString());
@@ -162,6 +200,10 @@ public class MainActivity extends Activity {
                     else { lastBack = now; Toast.makeText(this, "Press Back again to leave Seal IPTV", Toast.LENGTH_SHORT).show(); }
                 });
             }
+            return true;
+        }
+        if (k == KeyEvent.KEYCODE_SEARCH) {   // the remote's search key: voice search (or the text box)
+            if (e.getAction() == KeyEvent.ACTION_UP) web.evaluateJavascript("window.__tvSearchKey && window.__tvSearchKey()", null);
             return true;
         }
         if (k == KeyEvent.KEYCODE_MENU) {

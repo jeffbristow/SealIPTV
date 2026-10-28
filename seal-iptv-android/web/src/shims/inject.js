@@ -26,5 +26,8 @@ async function nativeFetch(url, opts = {}) {
   const h = new Map(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
   return { ok: r.status >= 200 && r.status < 300, status: r.status, url: r.url || url, headers: { get: k => h.get(String(k).toLowerCase()) || null }, text: async () => r.body || '', json: async () => JSON.parse(r.body || 'null') };
 }
+/* the WebView's own fetch, for the app's files (https://appassets.androidplatform.net/…, MainActivity) */
+const pageFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null;
+globalThis.__pageFetch = pageFetch;   // shims/fs.js readAhead
 globalThis.fetch = nativeFetch;
-export { nativeFetch };
+export { nativeFetch, pageFetch };

@@ -8,7 +8,7 @@ html.tv { --focus-ring: 0 0 0 3px var(--accent); --focus-glow: 0 0 0 3px var(--a
 html.tv :focus { outline: none; }
 html.tv :focus-visible, html.tv .tvf:focus { outline: 3px solid var(--accent) !important; outline-offset: 2px; border-radius: 8px; }
 html.tv .btn, html.tv .icon-btn, html.tv .star, html.tv .seen-btn, html.tv .seg button, html.tv .card .poster, html.tv .stat { transition: transform .12s ease, box-shadow .12s ease; }
-html.tv .btn:focus, html.tv .icon-btn:focus, html.tv .star:focus, html.tv .seen-btn:focus, html.tv .seg button:focus { outline: none !important; box-shadow: var(--focus-glow); transform: scale(1.05); position: relative; z-index: 1; }
+html.tv .btn:focus, html.tv .icon-btn:focus, html.tv .star:focus, html.tv .seen-btn:focus, html.tv .seg button:focus, html.tv .chip:focus { outline: none !important; box-shadow: var(--focus-glow); transform: scale(1.05); position: relative; z-index: 1; }
 html.tv .btn.primary:focus { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent), 0 6px 22px rgba(60, 207, 145, .35); }
 html.tv .nav:focus, html.tv .cat:focus, html.tv .channel:focus, html.tv .episode:focus, html.tv .season:focus, html.tv .set-item:focus, html.tv .ctx button:focus { background: var(--bg-4); color: var(--text); outline: none !important; box-shadow: inset 0 0 0 3px var(--accent); }
 html.tv .ctx button:focus { background: var(--accent); color: var(--accent-ink); }

@@ -23,6 +23,7 @@
   /** a form field you type into: any text-like input, a textarea, or editable text */
   const editable = el => !!el && ((el.tagName === 'INPUT' && !NOT_TEXT.test(el.type) && !el.readOnly && !el.disabled) || (el.tagName === 'TEXTAREA' && !el.readOnly && !el.disabled) || el.isContentEditable);
   let editing = null;   // the field Android's text box is typing into
+  let before = null;    // its text before (the search box changes while typing: Cancel puts this back)
   function labelOf(el) {
     const l = (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`)) || el.closest('label');
     return ((l && l.textContent) || el.getAttribute('aria-label') || el.placeholder || el.title || 'Type here').trim().slice(0, 80);
@@ -32,8 +33,9 @@
     const N = window.SealNative;
     if (N && N.editText) {
       editing = el;
+      before = el.isContentEditable ? el.textContent : el.value;
       const type = el.tagName === 'INPUT' ? el.type : 'text';
-      N.editText(JSON.stringify({ value: el.isContentEditable ? el.textContent : el.value, type, label: labelOf(el), placeholder: el.placeholder || '', multiline: el.tagName === 'TEXTAREA' }));
+      N.editText(JSON.stringify({ value: before, type, label: labelOf(el), placeholder: el.placeholder || '', multiline: el.tagName === 'TEXTAREA', live: el.id === 'search' }));
     } else if (N && N.showKeyboard) N.showKeyboard();
   }
   /* Moving onto a field doesn't open the keyboard (Google TV opens it as soon as a field has the
@@ -51,12 +53,24 @@
   }, true);
 
   /* Android's text box closed: null = cancelled, else the text (the app sees it as typing) */
+  /* the search box while Android's text box is open: results follow the typing */
+  window.__tvTyping = text => {
+    const el = editing;
+    if (!el || !el.isConnected || el.id !== 'search') return;
+    setValue(el, text);
+  };
+  function setValue(el, text) {
+    if (el.isContentEditable) el.textContent = text;
+    else Object.getOwnPropertyDescriptor(el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(el, text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   window.__tvText = text => {
     const el = editing;
     editing = null;
     if (!el || !el.isConnected) return;
     el.focus({ preventScroll: true });
-    if (text === null) return;
+    if (text === null) { if (el.id === 'search' && el.value !== before) setValue(el, before); return; }
     if (el.isContentEditable) el.textContent = text;
     else {
       const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -65,6 +79,25 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
+
+  /* voice search: the 🎤 next to the search box, or the remote's search key (MainActivity) */
+  const canVoice = () => { const N = window.SealNative; return !!(N && N.voiceSearch && N.voiceAvailable && N.voiceAvailable()); };
+  function voice() { if (canVoice()) window.SealNative.voiceSearch('Search channels, movies and series'); }
+  window.__tvVoice = text => {
+    const box = document.querySelector('#search');
+    if (!box || text == null || !String(text).trim()) return;
+    box.focus({ preventScroll: true });
+    setValue(box, String(text).trim());
+  };
+  window.__tvSearchKey = () => {
+    if (window.sealWake && window.sealWake()) return;
+    const box = document.querySelector('#search');
+    if (canVoice()) voice(); else if (box && visible(box)) { box.focus(); keyboard(box); }
+  };
+  setTimeout(() => {
+    const b = document.querySelector('#voiceBtn');
+    if (b && canVoice()) { b.classList.remove('hidden'); b.onclick = voice; }
+  }, 0);
 
   /** OK on the remote: what's selected is pressed — a form field opens the keyboard */
   function ok(a) {

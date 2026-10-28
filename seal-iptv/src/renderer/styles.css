@@ -66,7 +66,14 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 .upd-bar .txt { font-weight: 600; }
 #topbar { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); min-height: 58px; }
 #topbar h1 { margin: 0; white-space: nowrap; }
-#topbar .search { flex: 1; max-width: 420px; margin-left: 12px; }
+#topbar .search { flex: 1; max-width: 420px; margin-left: 12px; position: relative; display: flex; align-items: center; gap: 6px; }
+#topbar .search input { flex: 1; min-width: 0; }
+.voice-btn { flex: none; font-size: 18px; }
+/* recent searches, under the empty search box */
+.search-recent { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 70; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.chip { border: 1px solid var(--line); background: var(--bg-3); color: var(--text); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.chip:hover { border-color: var(--accent-2); }
+.chip.ghost { background: none; color: var(--text-3); }
 #topbar select { width: auto; }
 #view { flex: 1; min-height: 0; overflow: hidden; display: flex; }
 .scroll { overflow: auto; }
@@ -144,6 +151,26 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 .card .arrange button:hover, .card .arrange button:focus-visible { background: var(--accent); outline: none; }
 .shelf-row { display: grid; grid-auto-flow: column; grid-auto-columns: 150px; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
 .shelf-row.wide { grid-auto-columns: 240px; }
+/* Home's spotlight: what you were watching (or the newest movie), big, with ▶ first */
+.spotlight { position: relative; margin: 14px 22px 4px; border-radius: 16px; overflow: hidden; display: flex; gap: 24px; align-items: center; padding: 26px; min-height: 230px; background: var(--bg-2); border: 1px solid var(--line); }
+.spot-bg { position: absolute; inset: 0; z-index: 0; }
+.spot-bg img, .spot-bg .pi { width: 100%; height: 100%; object-fit: cover; filter: blur(28px) brightness(.45) saturate(1.2); transform: scale(1.2); }
+.spotlight::after { content: ''; position: absolute; inset: 0; z-index: 0; background: linear-gradient(90deg, rgba(18,20,24,.85) 0%, rgba(18,20,24,.35) 60%, rgba(18,20,24,.6) 100%); }
+.spot-poster { position: relative; z-index: 1; width: 132px; flex: none; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--bg-3); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.spot-poster img, .spot-poster .pi { width: 100%; height: 100%; object-fit: cover; }
+.spot-poster { display: flex; align-items: center; justify-content: center; }
+.spot-poster .initials { font-size: 40px; font-weight: 600; color: var(--text-3); }
+.spot-bg .initials { display: none; }   /* no picture: just the panel's colour behind */
+.spot-body { position: relative; z-index: 1; min-width: 0; flex: 1; }
+.spot-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.spotlight h2 { font-size: 28px; margin: 6px 0 4px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.spot-line { color: var(--text-2); font-size: 14px; }
+.spot-bar { position: relative; width: min(420px, 100%); height: 5px; border-radius: 3px; margin-top: 12px; background: rgba(255,255,255,.18); overflow: hidden; }
+.spot-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+/* Settings → About: what the playlist holds */
+.about-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.about-stats > div { background: var(--bg-3); border-radius: 10px; padding: 10px 14px; min-width: 130px; }
+.about-stats b { display: block; font-size: 18px; margin-top: 2px; }
 .stats { display: flex; gap: 12px; padding: 10px 22px 0; flex-wrap: wrap; }
 .stat { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; min-width: 150px; cursor: pointer; }
 .stat:hover { border-color: var(--accent-2); }

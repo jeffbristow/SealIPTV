@@ -96,7 +96,15 @@ const pid = () => {
   return id;
 };
 
-handle('app:init', () => ({
+// the playlist in use, fetched ahead while the page starts (the bridge took 15 s for a big one)
+const readAhead = (() => {
+  const id = store.getSettings().activeProfile;
+  if (!id) return Promise.resolve(false);
+  const f = catalog._file(id);
+  return require('fs').readAhead(f, 'https://appassets.androidplatform.net/catalog/' + encodeURIComponent(f.split('/').pop()));
+})();
+
+handle('app:init', async () => (await readAhead, {
   version: VERSION,
   settings: store.getSettings(),
   profiles: store.listProfiles(),
@@ -139,7 +147,7 @@ handle('catalog:cats', (section, opts) => catalog.cats(pid(), section, opts || {
 handle('catalog:list', opts => catalog.list(pid(), opts || {}));
 handle('catalog:item', (section, id) => catalog.item(pid(), section, id));
 handle('catalog:search', q => catalog.search(pid(), q));
-handle('catalog:recent', section => catalog.recent(pid(), section));
+handle('catalog:recent', (section, opts = {}) => catalog.recent(pid(), section, 20, !!opts.homeSafe));
 handle('details:movie', id => catalog.movieInfo(pid(), id));
 handle('details:series', id => catalog.seriesInfo(pid(), id));
 handle('epg:short', id => catalog.epg(pid(), id));
@@ -150,7 +158,7 @@ handle('lib:watched', (key, on, meta) => library.setWatched(pid(), key, on, meta
 handle('lib:watchedMany', (items, on) => library.setWatchedMany(pid(), items, on));
 handle('lib:progress', (key, pos, dur, meta) => library.setProgress(pid(), key, pos, dur, meta));
 handle('lib:clearProgress', key => library.clearProgress(pid(), key));
-handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.visibleKey(pid(), p.key, p)).slice(0, 20));
+handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.homeSafe(pid(), p.key, p)).slice(0, 20));
 handle('lib:favorites', kind => catalog.withLogos(pid(), library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f))));
 handle('lib:arrangeFavorites', (kind, keys) => catalog.withLogos(pid(), library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f))));
 handle('lists:all', () => library.lists(pid()));

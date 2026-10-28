@@ -6,11 +6,15 @@ const { N, readPieces } = require('./native');
 const BIG = 512 * 1024;
 const PIECE = 256 * 1024;   // characters per appendFile
 
+// files fetched ahead (the playlist cache at start-up, core.js): much faster than the bridge
+const ahead = new Map();
+
 const enoent = p => Object.assign(new Error(`ENOENT: no such file '${p}'`), { code: 'ENOENT' });
 
 module.exports = {
   readFileSync(p) {
     p = String(p);
+    if (ahead.has(p)) { const s = ahead.get(p); ahead.delete(p); return s; }
     if (N.fileSize && N.fileChunk) {
       const size = N.fileSize(p);
       if (size < 0) throw enoent(p);
@@ -48,5 +52,23 @@ module.exports = {
   existsSync(p) { return !!N.exists(String(p)); },
   mkdirSync() { /* folders are made when a file is written */ },
   rmSync(p) { try { N.deleteFile(String(p)); } catch { /* gone */ } },
-  readdirSync() { return []; }
+  readdirSync() { return []; },
+  /** fetch(url) now, so the next readFileSync(p) has it at once; false if the app can't serve it (older APK) */
+  async readAhead(p, url, tries = 3) {
+    for (let i = 0; i < tries; i++) {
+      if (i) await new Promise(r => setTimeout(r, 400));
+      if (await this._readAhead(p, url)) return true;
+    }
+    return false;
+  },
+  async _readAhead(p, url) {
+    try {
+      const pageFetch = globalThis.__pageFetch;   // the WebView's own fetch (shims/inject.js)
+      if (!pageFetch) return false;
+      const r = await pageFetch(url);
+      if (!r.ok) return false;
+      ahead.set(String(p), await r.text());
+      return true;
+    } catch { return false; }
+  }
 };

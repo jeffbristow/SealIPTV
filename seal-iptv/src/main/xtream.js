@@ -142,7 +142,7 @@ class Xtream {
     if (section === 'movies') {
       return { id: String(s.stream_id), name, poster: s.stream_icon || '', cat, rating: rating(s.rating_5based, s.rating), year: yearOf(s.year || s.releaseDate, name), added: Number(s.added) || 0, ext: s.container_extension || 'mp4' };
     }
-    return { id: String(s.series_id), name, poster: s.cover || '', cat, rating: rating(s.rating_5based, s.rating), year: yearOf(s.releaseDate || s.release_date || s.year, name), added: Number(s.last_modified) || 0, plot: s.plot || '' };
+    return { id: String(s.series_id), name, poster: s.cover || '', cat, rating: rating(s.rating_5based, s.rating), year: yearOf(s.releaseDate || s.release_date || s.year, name), added: Number(s.last_modified) || 0 };   // no plot here: the series page asks for it (8 MB less in a big list)
   }
 
   static normMovieInfo(j) {

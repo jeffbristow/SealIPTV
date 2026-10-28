@@ -377,13 +377,18 @@ function wireChrome() {
   let t;
   $('#search').oninput = () => {
     clearTimeout(t);
+    showRecent();
     t = setTimeout(() => {
       state.q = $('#search').value.trim();
+      rememberSearch(state.q);
       if (['live', 'movies', 'series'].includes(state.view)) { $('#sortSel').options[0].textContent = sortDefaultLabel(); updateHiddenSearchBtn(); return renderKeepSearch(); }
       if (state.q) { if (state.view === 'search') render(); else go('search'); }
       else if (state.view === 'search') back();
     }, 250);
   };
+  // recent searches: under the search box while it's empty and selected
+  $('#search').addEventListener('focus', showRecent);
+  $('#search').parentElement.addEventListener('focusout', () => setTimeout(() => { if (!$('#search').parentElement.contains(document.activeElement)) show($('#searchRecent'), false); }, 0));
   $('#sortSel').onchange = () => { state.sec[state.view].sort = $('#sortSel').value; render(); };
   $('#refreshBtn').onclick = () => reload().catch(fail);
   $('#profileSel').onchange = () => useProfile($('#profileSel').value);
@@ -401,6 +406,37 @@ function wireChrome() {
     if ((e.key === 'Backspace' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) || (e.altKey && e.key === 'ArrowLeft')) { if (state.history.length) { e.preventDefault(); back(); } }
     if (e.key === 'Escape' && document.activeElement === $('#search')) { $('#search').value = ''; $('#search').oninput(); $('#search').blur(); }
   });
+}
+
+/* ---- recent searches (this device only) ---- */
+const RECENT_KEY = 'seal.recentSearches';
+const recentSearches = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter(x => typeof x === 'string'); } catch { return []; } };
+let recentTimer;
+/** kept once the same search has stayed for a moment (not every letter typed) */
+function rememberSearch(q) {
+  clearTimeout(recentTimer);
+  if (!q || q.length < 2) return;
+  recentTimer = setTimeout(() => {
+    if ($('#search').value.trim() !== q) return;
+    const list = [q, ...recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* not kept */ }
+  }, 2000);
+}
+function showRecent() {
+  const box = $('#searchRecent'), input = $('#search');
+  const list = recentSearches();
+  const on = !input.value && list.length && input.parentElement.contains(document.activeElement);
+  show(box, !!on);
+  if (!on) return;
+  box.innerHTML = '<span class="faint small">Recent</span>';
+  for (const q of list) {
+    const b = h(`<button class="chip">${esc(q)}</button>`);
+    b.onclick = () => { input.value = q; input.focus(); input.oninput(); };
+    box.appendChild(b);
+  }
+  const clr = h('<button class="chip ghost">Clear</button>');
+  clr.onclick = () => { try { localStorage.removeItem(RECENT_KEY); } catch { /* none */ } show(box, false); input.focus(); };
+  box.appendChild(clr);
 }
 
 function renderProfiles() {
@@ -726,27 +762,22 @@ async function renderHome(view) {
     $('#hLoad').onclick = () => reload().catch(fail);
     return;
   }
-  const stats = h('<div class="stats"></div>');
-  for (const [k, label, ico] of [['live', 'Live channels', '📺'], ['movies', 'Movies', '🎬'], ['series', 'Series', '🎞️']]) {
-    const t = h(`<div class="stat" tabindex="0"><span class="muted small">${ico} ${label}</span><b>${(c[k] || 0).toLocaleString()}</b></div>`);
-    t.onclick = () => go(k);
-    stats.appendChild(t);
-  }
-  const acc = sum.account;
-  if (acc) {
-    stats.appendChild(h(`<div class="stat" style="cursor:default"><span class="muted small">👤 Account</span><b style="font-size:15px;margin-top:4px">${acc.expires ? 'Until ' + esc(fmtDate(acc.expires)) : 'No end date'}</b><span class="small faint">${acc.maxConnections ? `${acc.maxConnections} connection${acc.maxConnections === 1 ? '' : 's'}` : ''}</span></div>`));
-  }
-  home.appendChild(stats);
+  // the counts and the account are in Settings → About; Home starts with something to watch
+  const top = h('<div class="spot-slot"></div>');
+  home.appendChild(top);
 
   const [cont, favLive, favMovies, favSeries, newMovies, newSeries] = await Promise.all([
     call('lib:continue'), call('lib:favorites', 'live'), call('lib:favorites', 'movie'), call('lib:favorites', 'series'),
-    call('catalog:recent', 'movies'), call('catalog:recent', 'series')
+    call('catalog:recent', 'movies', { homeSafe: true }), call('catalog:recent', 'series', { homeSafe: true })
   ].map(p => p.catch(() => [])));
   const mine = await Promise.all(state.lists.map(l => call('lists:items', l.id).catch(() => [])));
   if (!home.isConnected) return;
-  if (cont.length) home.appendChild(shelf('Continue watching', cont, continueCard, { wide: true }));
-  state.lists.forEach((l, i) => { if (mine[i].length) home.appendChild(shelf(`${l.icon || LIST_ICONS[0]} ${l.name}`, mine[i].slice(0, 30), listCard, { more: () => go('list', l.id) })); });
+  // the spotlight: what you were watching, else the newest movie
+  const spot = cont[0] ? spotlight(cont[0]) : newMovies.find(m => m.poster) ? spotlight(null, newMovies.find(m => m.poster)) : null;
+  if (spot) top.appendChild(spot);
+  if (cont.length > 1) home.appendChild(shelf('Continue watching', cont.slice(1), continueCard, { wide: true }));
   if (favLive.length) home.appendChild(shelf('Favorite channels', favLive.slice(0, 30), f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }), { more: () => { state.sec.live.cat = '*fav'; go('live'); } }));
+  state.lists.forEach((l, i) => { if (mine[i].length) home.appendChild(shelf(`${l.icon || LIST_ICONS[0]} ${l.name}`, mine[i].slice(0, 30), listCard, { more: () => go('list', l.id) })); });
   if (favMovies.length) home.appendChild(shelf('Favorite movies', favMovies.slice(0, 30), f => posterCard({ kind: 'movie', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.movies.cat = '*fav'; go('movies'); } }));
   if (favSeries.length) home.appendChild(shelf('Favorite series', favSeries.slice(0, 30), f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.series.cat = '*fav'; go('series'); } }));
   if (newMovies.length) home.appendChild(shelf('Recently added movies', newMovies, posterCard, { more: () => { state.sec.movies.sort = 'added'; state.sec.movies.cat = ''; go('movies'); } }));
@@ -754,6 +785,29 @@ async function renderHome(view) {
   if (!cont.length && !favLive.length && !favMovies.length && !favSeries.length) {
     home.appendChild(h('<p class="muted" style="padding:10px 22px">Tip: click ☆ on a channel, movie or series to keep it on this page. Movies and episodes you start show up here so you can pick up where you left off.</p>'));
   }
+}
+
+/** The big panel at the top of Home: picture, title, where you are, ▶ Resume / Play and More info. */
+function spotlight(p, movie) {
+  const it = p || { kind: 'movie', id: movie.id, name: movie.name, image: movie.poster, year: movie.year, rating: movie.rating };
+  const ep = it.kind === 'episode';
+  const title = ep ? (it.seriesName || it.name) : it.name;
+  const pct = p && p.dur ? Math.min(100, Math.max(2, (p.pos / p.dur) * 100)) : 0;
+  const line = p ? (ep ? `${epLabel(p.season, p.episode)} · ${esc(p.name || '')} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur))
+    : ['New in your playlist', movie.year || '', movie.rating ? `★ ${movie.rating}` : ''].filter(Boolean).join(' · ');
+  const el = h(`<section class="spotlight">
+    <div class="spot-bg">${pic(it.image, title, 'pi')}</div>
+    <div class="spot-poster">${pic(it.image, title, 'pi')}</div>
+    <div class="spot-body">
+      <div class="spot-kicker">${p ? 'Continue watching' : 'Recently added'}</div>
+      <h2>${esc(title)}</h2>
+      <div class="spot-line">${p ? line : esc(line)}</div>
+      ${pct ? `<div class="bar spot-bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}
+      <div class="spot-actions"><button class="btn primary big" data-a="play">▶ ${p ? 'Resume' : 'Play'}</button><button class="btn big" data-a="info">More info</button></div>
+    </div></section>`);
+  el.querySelector('[data-a=play]').onclick = () => p ? resumeFromHome(p) : Player.play({ kind: 'movie', id: movie.id, name: movie.name, image: movie.poster, ext: movie.ext });
+  el.querySelector('[data-a=info]').onclick = () => ep ? (it.seriesId ? go('show', it.seriesId) : resumeFromHome(p)) : go('movie', it.id);
+  return el;
 }
 
 function continueCard(p) {
@@ -1810,6 +1864,7 @@ function renderSettings(view) {
   /* ---- about ---- */
   add('about', h(`<div class="panel"><h2>About</h2>
     <div class="row gap"><img src="logo.svg" alt="" style="width:48px;height:48px"><div><b>Seal IPTV${TV ? ' for Fire TV' : ''} ${esc(state.version)}</b><div class="muted small">A player for the IPTV service you subscribe to. Seal IPTV doesn't provide any channels or content.</div></div></div>
+    ${aboutPlaylist()}
     <div class="row gap" style="margin-top:14px"><button class="btn" id="uCheck">Check for updates</button><span class="small muted" id="uBox"></span></div>
     <label class="check"><input type="checkbox" id="uAuto" ${s.updates && s.updates.check ? 'checked' : ''}> Look for a new version when Seal IPTV starts</label>
     <p class="faint small selectable" style="margin-top:10px">Your settings and library: ${esc(state.dataDir)}</p></div>`));
@@ -1855,6 +1910,19 @@ function settingsSections(wrap, page) {
     nav.appendChild(b);
   }
   showSec(state.setSec);
+}
+
+/** Settings → About: what the playlist in use holds, and the account (they were on Home) */
+function aboutPlaylist() {
+  const sum = state.summary;
+  if (!profile() || !sum || !sum.fetchedAt) return '';
+  const c = sum.counts || {}, acc = sum.account;
+  return `<div class="about-stats">
+    <div><span class="muted small">📺 Live channels</span><b>${(c.live || 0).toLocaleString()}</b></div>
+    <div><span class="muted small">🎬 Movies</span><b>${(c.movies || 0).toLocaleString()}</b></div>
+    <div><span class="muted small">🎞️ Series</span><b>${(c.series || 0).toLocaleString()}</b></div>
+    ${acc ? `<div><span class="muted small">👤 Account</span><b>${acc.expires ? 'Until ' + esc(fmtDate(acc.expires)) : 'No end date'}</b>${acc.maxConnections ? `<span class="faint small">${acc.maxConnections} connection${acc.maxConnections === 1 ? '' : 's'}</span>` : ''}</div>` : ''}
+  </div><p class="faint small">${esc(profile().name)} · updated ${esc(fmtDate(sum.fetchedAt))} ${esc(fmtClock(sum.fetchedAt))}</p>`;
 }
 
 function updateVpnBox() {

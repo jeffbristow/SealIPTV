@@ -41,9 +41,17 @@ const coreName = name => String(name).replace(TAG_RE, '').trim().toLowerCase();
  * 3 every search word starts a word of the title, in any order
  * 4 the letters are somewhere ("Fromage" for "rom")
  */
+/* worked out per title the first time they're needed (not all 190 000 at start-up), then kept */
+const qOf = i => i._q !== undefined ? i._q : (i._q = i.name.toLowerCase());
+const coreOf = i => i._core != null ? i._core : (i._core = coreName(i.name));
+const foreignOf = i => {
+  if (i._foreign === undefined) { const l = titleLanguage(i.name); i._foreign = !!(l && l.lang !== 'en'); }
+  return i._foreign;
+};
+
 function matchRank(i, words) {
   const phrase = words.join(' ');
-  const core = i._core != null ? i._core : coreName(i.name);
+  const core = coreOf(i);
   const bare = core.replace(/\s*[([](19|20)\d{2}[)\]]\s*$/, '').trim();
   if (bare === phrase || core === phrase) return 0;
   if (core.startsWith(phrase) && !/[a-z0-9]/.test(core[phrase.length] || ' ')) return 1;
@@ -100,19 +108,32 @@ class Catalog {
     for (const s of SECTIONS) {
       c._byId[s] = new Map(c[s].items.map(i => [i.id, i]));
       c[s]._catNames = new Map(c[s].cats.map(x => [x.id, x.name]));
-      for (const i of c[s].items) {
-        i._q = i.name.toLowerCase();
-        i._core = coreName(i.name);
-        const l = titleLanguage(i.name);
-        i._foreign = !!(l && l.lang !== 'en');
-      }
     }
+    this._warm(c);
+  }
+
+  /** After start-up: the per-title search / language / collection keys, a few thousand at a time,
+      so the window (on a TV: the remote) keeps answering. Anything needing one sooner works it out then. */
+  _warm(c) {
+    const todo = SECTIONS.map(s => c[s].items);
+    let s = 0, at = 0;
+    const step = () => {
+      if (this.mem && ![...this.mem.values()].includes(c)) return;   // replaced by a reload
+      const end = Date.now() + 25;
+      while (s < todo.length && Date.now() < end) {
+        const items = todo[s];
+        for (const stop = Math.min(items.length, at + 500); at < stop; at++) { qOf(items[at]); coreOf(items[at]); foreignOf(items[at]); }
+        if (at >= items.length) { s++; at = 0; }
+      }
+      if (s < todo.length) setTimeout(step, 15);
+    };
+    setTimeout(step, 1500);
   }
 
   _save(pid, c) {
     fs.mkdirSync(this.dir, { recursive: true });
     const plain = { fetchedAt: c.fetchedAt, account: c.account || null };
-    for (const s of SECTIONS) plain[s] = { cats: c[s].cats, items: c[s].items.map(({ _q, ...i }) => i) };
+    for (const s of SECTIONS) plain[s] = { cats: c[s].cats, items: c[s].items.map(({ _q, _core, _foreign, plot, ...i }) => i) };   // worked out again when loaded; plots come with the series page
     const f = this._file(pid), tmp = f + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(plain));
     fs.renameSync(tmp, f);
@@ -239,14 +260,14 @@ class Catalog {
     const r = rules.get(i.cat);
     if (r && r.hidden && !allowHidden) return false;
     if (r && r.locked && !open) return false;
-    if (rules.hideForeign && i._foreign && !(r && r.show) && !allowHidden) return false;
+    if (rules.hideForeign && foreignOf(i) && !(r && r.show) && !allowHidden) return false;
     return true;
   }
 
   /** Is the item only shown because "search hidden categories" is on? */
   _fromHidden(i, rules) {
     const r = rules.get(i.cat);
-    return !!((r && r.hidden) || (rules.hideForeign && i._foreign && !(r && r.show)));
+    return !!((r && r.hidden) || (rules.hideForeign && foreignOf(i) && !(r && r.show)));
   }
 
   static lockedError(section, cat, name) {
@@ -280,6 +301,25 @@ class Catalog {
   }
 
   /**
+   * May it be on Home (Continue watching, Recently added, the spotlight)? Only from categories
+   * that are open to everyone, whether or not the PIN was entered, and only if its category is
+   * known (still in the playlist).
+   */
+  homeSafe(pid, key, meta = {}) {
+    const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
+    const c = this.get(pid);
+    const [section, iid] = kind === 'live' ? ['live', id] : kind === 'movie' ? ['movies', id] : ['series', kind === 'series' ? id : meta.seriesId];
+    const it = iid && c._byId[section].get(String(iid));
+    return !!it && this._homeSafeItem(it, this.rules(pid, section));
+  }
+
+  _homeSafeItem(it, rules) {
+    const r = rules.get(it.cat);
+    if (r && (r.adult || r.locked || r.hidden)) return false;
+    return !(rules.hideForeign && foreignOf(it) && !(r && r.show));
+  }
+
+  /**
    * Categories for the lists (hidden ones left out), or all of them for
    * Settings (all = true). Counts are of what's shown.
    */
@@ -291,7 +331,7 @@ class Catalog {
     let total = 0;
     for (const i of c.items) {
       const r = rules.get(i.cat);
-      if (rules.hideForeign && i._foreign && !(r && r.show)) continue;
+      if (rules.hideForeign && foreignOf(i) && !(r && r.show)) continue;
       counts.set(i.cat, (counts.get(i.cat) || 0) + 1);
       if (this._visible(i, rules, open)) total++;
     }
@@ -325,7 +365,7 @@ class Catalog {
       items = items.filter(i => i.cat === cat);
     }
     const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
-    if (words.length) items = items.filter(i => words.every(w => i._q.includes(w)));
+    if (words.length) items = items.filter(i => words.every(w => qOf(i).includes(w)));
     if (favAt && !sort && !words.length) items.sort((a, b) => favAt.get(a.id) - favAt.get(b.id));
     // searching without a chosen sort: best matches first ("From" before "Far From Home")
     if (words.length && !sort) {
@@ -454,8 +494,12 @@ class Catalog {
   }
 
   /** Recently added movies / series (Home). */
-  recent(pid, section, limit = 20) {
-    return this.list(pid, { section, sort: 'added', limit }).items.filter(i => i.added);
+  /** the newest titles; homeSafe: only what may be on Home (homeSafe above) */
+  recent(pid, section, limit = 20, homeSafe = false) {
+    const items = this.list(pid, { section, sort: 'added', limit: homeSafe ? limit * 3 : limit }).items.filter(i => i.added);
+    if (!homeSafe) return items;
+    const rules = this.rules(pid, section);
+    return items.filter(i => this._homeSafeItem(i, rules)).slice(0, limit);
   }
 
   /* =================================================================

@@ -16,8 +16,8 @@ const API = {
   '': { user_info: { auth: 1, status: 'Active' } },
   get_live_categories: [{ category_id: '1', category_name: 'News' }, { category_id: '2', category_name: 'FR | Infos' }, { category_id: '3', category_name: 'XXX Adult' }],
   get_live_streams: [{ stream_id: 1, name: 'CNN', category_id: '1' }, { stream_id: 2, name: 'BFM TV', category_id: '2' }, { stream_id: 3, name: 'Night Channel', category_id: '3' }, { stream_id: 4, name: 'FR - TF1', category_id: '1' }],
-  get_vod_categories: [{ category_id: '10', category_name: 'Action' }, { category_id: '11', category_name: 'ARABIC MOVIES' }, { category_id: '12', category_name: 'Horror' }],
-  get_vod_streams: [{ stream_id: 20, name: 'From Dusk Till Dawn', category_id: '10' }, { stream_id: 21, name: 'الرسالة', category_id: '11' }, { stream_id: 22, name: 'From Hell', category_id: '12' }],
+  get_vod_categories: [{ category_id: '10', category_name: 'Action' }, { category_id: '11', category_name: 'ARABIC MOVIES' }, { category_id: '12', category_name: 'Horror' }, { category_id: '13', category_name: 'Adult Movies' }],
+  get_vod_streams: [{ stream_id: 20, name: 'From Dusk Till Dawn', category_id: '10' }, { stream_id: 21, name: 'الرسالة', category_id: '11' }, { stream_id: 22, name: 'From Hell', category_id: '12', added: '1700000300' }, { stream_id: 23, name: 'Late Show', category_id: '13', added: '1700000900' }, { stream_id: 24, name: 'Young Adult', category_id: '10', added: '1700000100' }],
   get_series_categories: [{ category_id: '30', category_name: 'Drama' }],
   get_series: [{ series_id: 40, name: 'From', category_id: '30' }]
 };
@@ -121,6 +121,27 @@ const fakeFetch = async url => ({ ok: true, status: 200, text: async () => JSON.
     store.applySettings('parental', { lockSettings: true });
     ok(store.getParental().lockSettings === true && parental.status().lockSettings === false, 'from another device: kept, but only counts once there is a PIN');
     parental.setPin('2468');
+    parental.lock();
+
+    /* ---- Home: only categories open to everyone ---- */
+    const home = () => library.continueWatching(p.id, 60).filter(x => cat.homeSafe(p.id, x.key, x)).map(x => x.name).sort().join();
+    library.setProgress(p.id, 'movie:23', 600, 3600, { name: 'Late Show' });
+    library.setProgress(p.id, 'movie:20', 600, 3600, { name: 'From Dusk Till Dawn' });
+    library.setProgress(p.id, 'movie:24', 600, 3600, { name: 'Young Adult' });
+    library.setProgress(p.id, 'movie:999', 600, 3600, { name: 'Gone From The Playlist' });
+    library.setProgress(p.id, 'live:3', 600, 3600, { name: 'Night Channel' });
+    parental.lock();
+    ok(home() === 'From Dusk Till Dawn,Young Adult', 'Home: what is in an open category, not what left the playlist ("Young Adult" in Action stays)');
+    parental.unlock('2468');
+    ok(home() === 'From Dusk Till Dawn,Young Adult', '… also with the PIN entered');
+    library.setCatFlag(p.id, 'movies:10', { hide: true });
+    ok(home() === '', 'a hidden category: not on Home');
+    library.setCatFlag(p.id, 'movies:10', { hide: false });
+    library.setCatFlag(p.id, 'movies:12', { lock: true });
+    library.setProgress(p.id, 'movie:22', 600, 3600, { name: 'From Hell' });
+    ok(!home().includes('From Hell'), 'a category locked by hand: not on Home');
+    ok(cat.recent(p.id, 'movies', 20, true).map(i => i.name).join() === 'Young Adult' && cat.recent(p.id, 'movies').some(i => i.name === 'Late Show'), 'Recently added on Home: open categories only (the Movies list, unlocked, has everything)');
+    library.setCatFlag(p.id, 'movies:12', { lock: null });
     parental.lock();
 
     /* ---- wrong PINs slow down ---- */
