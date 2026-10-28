@@ -34,6 +34,20 @@
       N.editText(JSON.stringify({ value: el.isContentEditable ? el.textContent : el.value, type, label: labelOf(el), placeholder: el.placeholder || '', multiline: el.tagName === 'TEXTAREA' }));
     } else if (N && N.showKeyboard) N.showKeyboard();
   }
+  /* Moving onto a field doesn't open the keyboard (Google TV opens it as soon as a field has the
+     focus): typing goes through Android's text box after OK (keyboard() above), so the page's own
+     field asks for no keyboard while it has the focus. */
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if (!editable(el) || !(window.SealNative && window.SealNative.editText) || el.getAttribute('inputmode') === 'none') return;
+    el.dataset.tvInputmode = el.getAttribute('inputmode') || '';
+    el.setAttribute('inputmode', 'none');
+    el.addEventListener('focusout', () => {
+      if (el.dataset.tvInputmode) el.setAttribute('inputmode', el.dataset.tvInputmode); else el.removeAttribute('inputmode');
+      delete el.dataset.tvInputmode;
+    }, { once: true });
+  }, true);
+
   /* Android's text box closed: null = cancelled, else the text (the app sees it as typing) */
   window.__tvText = text => {
     const el = editing;
