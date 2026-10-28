@@ -22,7 +22,7 @@ fs.writeFileSync(path.join(web, 'config.php'), `<?php if (!defined('SEALIPTV')) 
   try {
     const electron = require(path.join(win, 'node_modules', 'electron'));
     await new Promise(res => {
-      const p = spawn(electron, [path.join(__dirname, 'tv-harness.js'), out], { env: { ...process.env, TV_DATA: path.join(tmp, 'tvdata') }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const p = spawn(electron, [process.env.TV_HARNESS || path.join(__dirname, 'tv-harness.js'), out], { env: { ...process.env, TV_DATA: path.join(tmp, 'tvdata') }, stdio: ['ignore', 'pipe', 'pipe'] });
       p.stdout.on('data', d => process.stdout.write(d));
       p.on('exit', res);
     });

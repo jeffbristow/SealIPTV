@@ -1,19 +1,62 @@
 /* Seal IPTV for Fire TV — tv.css (on top of styles.css): seen from the sofa, used with a remote. */
 html.tv, html.tv body { overflow-x: hidden; max-width: 100vw; }   /* the page fits the TV: never sideways */
 html.tv body { font-size: 15px; }
+html.tv { --focus-ring: 0 0 0 3px var(--accent); --focus-glow: 0 0 0 3px var(--accent), 0 6px 22px rgba(60, 207, 145, .35); }
+
+/* ---- focus: one look everywhere, easy to find from the sofa ----
+   things you press: a green ring with a soft glow, a little bigger; rows in lists: lit up, with the ring inside */
 html.tv :focus { outline: none; }
 html.tv :focus-visible, html.tv .tvf:focus { outline: 3px solid var(--accent) !important; outline-offset: 2px; border-radius: 8px; }
-html.tv .nav:focus, html.tv .cat:focus, html.tv .channel:focus, html.tv .episode:focus, html.tv .season:focus { background: var(--bg-4); color: var(--text); outline: 3px solid var(--accent); outline-offset: -3px; }
+html.tv .btn, html.tv .icon-btn, html.tv .star, html.tv .seen-btn, html.tv .seg button, html.tv .card .poster, html.tv .stat { transition: transform .12s ease, box-shadow .12s ease; }
+html.tv .btn:focus, html.tv .icon-btn:focus, html.tv .star:focus, html.tv .seen-btn:focus, html.tv .seg button:focus { outline: none !important; box-shadow: var(--focus-glow); transform: scale(1.05); position: relative; z-index: 1; }
+html.tv .btn.primary:focus { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent), 0 6px 22px rgba(60, 207, 145, .35); }
+html.tv .nav:focus, html.tv .cat:focus, html.tv .channel:focus, html.tv .episode:focus, html.tv .season:focus, html.tv .set-item:focus, html.tv .ctx button:focus { background: var(--bg-4); color: var(--text); outline: none !important; box-shadow: inset 0 0 0 3px var(--accent); }
+html.tv .ctx button:focus { background: var(--accent); color: var(--accent-ink); }
 html.tv .card:focus { outline: none !important; }
-html.tv .card:focus .poster { outline: 3px solid var(--accent); outline-offset: 3px; transform: scale(1.04); transition: transform .12s; }
+html.tv .card:focus .poster { outline: none; box-shadow: var(--focus-glow); transform: scale(1.05); }
 html.tv .card:focus .title { color: var(--accent); }
 html.tv .card .arrange button { width: 46px; height: 36px; font-size: 17px; }
 html.tv .card .arrange button:focus { background: var(--accent); outline: 3px solid #fff; }
-html.tv .stat:focus { border-color: var(--accent); outline: none !important; }
-html.tv .btn:focus, html.tv .icon-btn:focus, html.tv .star:focus, html.tv .seen-btn:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
-html.tv .btn.primary:focus { box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent); outline: none; }
-html.tv input:focus, html.tv select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-html.tv .ctx button:focus { background: var(--accent); color: var(--accent-ink); }
+html.tv .stat:focus { border-color: var(--accent); outline: none !important; box-shadow: var(--focus-glow); transform: scale(1.03); }
+html.tv input:focus, html.tv select:focus, html.tv textarea:focus { outline: none !important; border-color: var(--accent); box-shadow: var(--focus-glow); }
+
+/* ---- the sidebar: icons only while you're on the page, the whole menu (over the page) when you go to it ---- */
+html.tv #app { grid-template-columns: 76px 1fr; }
+html.tv #sidebar { position: relative; z-index: 60; width: 76px; overflow: hidden; transition: width .18s ease, box-shadow .18s ease; }
+html.tv #sidebar:focus-within { width: 270px; box-shadow: 18px 0 40px rgba(0, 0, 0, .6); }
+html.tv #sidebar .brand { padding-left: 19px; }
+html.tv #sidebar .nav { white-space: nowrap; }
+html.tv #sidebar:not(:focus-within) .brand div, html.tv #sidebar:not(:focus-within) .side-foot { display: none; }
+html.tv #sidebar:not(:focus-within) .nav { font-size: 0; justify-content: center; padding: 10px 0; }
+html.tv #sidebar:not(:focus-within) .nav .ico { font-size: 18px; width: auto; }
+html.tv #sidebar:not(:focus-within) .nav .count, html.tv #sidebar:not(:focus-within) .nav .nav-name { display: none; }
+
+/* ---- Settings: rows the size of a TV menu; on / off as a switch that says On or Off ---- */
+html.tv .set-nav { width: 290px; }
+html.tv .set-item { padding: 12px 14px; }
+html.tv .set-item .txt b { font-size: 16px; }
+html.tv .panel > label.check { padding: 11px 14px; margin: 6px -14px 0; border-radius: 10px; font-size: 15px; }
+html.tv .panel > label.check:focus-within { background: var(--bg-4); box-shadow: inset 0 0 0 3px var(--accent); }
+html.tv .panel > label.check > input[type=checkbox] { -webkit-appearance: none; appearance: none; order: 9; margin: 0 0 0 auto; flex: none; position: relative; width: 66px; height: 30px; border-radius: 15px; background: var(--bg-3); border: 1px solid var(--line); cursor: pointer; transition: background .15s; }
+html.tv .panel > label.check > input[type=checkbox]::before { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--text-3); transition: transform .15s, background .15s; }
+html.tv .panel > label.check > input[type=checkbox]::after { content: 'Off'; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 600; color: var(--text-2); }
+html.tv .panel > label.check > input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
+html.tv .panel > label.check > input[type=checkbox]:checked::before { transform: translateX(36px); background: #fff; }
+html.tv .panel > label.check > input[type=checkbox]:checked::after { content: 'On'; right: auto; left: 10px; color: var(--accent-ink); }
+html.tv .panel > label.check > input[type=checkbox]:disabled { opacity: .45; }
+html.tv .panel > label.check > input[type=checkbox]:focus { outline: none !important; box-shadow: none; }
+
+/* ---- OK on a choice: the choices slide in from the right (tvnav.js), instead of the browser's drop-down ---- */
+.tv-pick-back { position: fixed; inset: 0; z-index: 400; background: rgba(0, 0, 0, .45); }
+.tv-pick { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 90vw; z-index: 401; background: var(--bg-2); border-left: 1px solid var(--line); box-shadow: -18px 0 40px rgba(0, 0, 0, .6); display: flex; flex-direction: column; padding: 28px 18px; animation: tv-pick-in .18s ease; }
+.tv-pick h3 { margin: 0 10px 14px; font-size: 18px; }
+.tv-pick .opts { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.tv-pick button { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border: 0; border-radius: 10px; background: none; color: var(--text-2); font-size: 16px; text-align: left; }
+.tv-pick button .tick { width: 18px; color: var(--accent); flex: none; }
+.tv-pick button.on { color: var(--text); }
+.tv-pick button:focus { background: var(--bg-4); color: var(--text); outline: none !important; box-shadow: inset 0 0 0 3px var(--accent); }
+@keyframes tv-pick-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
 /* no mouse here: things that only showed on hover stay visible */
 html.tv .star { color: var(--text-2); }
 html.tv ::-webkit-scrollbar { width: 6px; height: 6px; }

@@ -186,6 +186,55 @@ app.whenReady().then(async () => {
     log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
     log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
 
+    // Back puts the focus back on the poster that was opened
+    await js("state.history = []; go('movies', null, { push: false })");
+    await sleep(1500);
+    await js("document.querySelectorAll('#view .card')[4].focus()");
+    const opened = await focused();
+    await key('Enter');
+    await sleep(1500);
+    log('Back after opening a movie ->', await js('String(window.__tvBack())'));
+    await sleep(1800);
+    log('focus back on the same poster', { opened, now: await focused(), view: await js('state.view') });
+
+    // ← from the page into the sidebar: the whole menu opens over the page, on the item in use
+    log('sidebar while on the page', await js("JSON.stringify({ width: document.querySelector('#sidebar').offsetWidth })"));
+    for (let i = 0; i < 8 && !(await js("String(!!document.activeElement.closest('#sidebar'))")).includes('true'); i++) await key('Left');
+    await sleep(400);
+    await shot('t12-sidebar-open');
+    log('← into the sidebar', await js("JSON.stringify({ width: document.querySelector('#sidebar').offsetWidth, focus: document.activeElement.innerText.trim().replace(/\\s+/g, ' ') })"));
+    await key('Right');
+    await sleep(400);
+    log('→ back to the page', await js("JSON.stringify({ width: document.querySelector('#sidebar').offsetWidth, inSidebar: !!document.activeElement.closest('#sidebar') })"));
+
+    // Settings in sections: ↓ through the list shows each one, → goes in, Back comes out
+    await js("state.setSec = 'playlists'; go('settings')");
+    await sleep(1200);
+    await js("document.querySelector('.set-nav .set-item').focus()");
+    await key('Down', 3);
+    log('↓ ↓ ↓ in the sections', await js("JSON.stringify({ section: state.setSec, shown: [...document.querySelectorAll('.settings > [data-sec]')].filter(p => !p.classList.contains('hidden')).map(p => p.dataset.sec) })"));
+    await key('Right');
+    await sleep(300);
+    await shot('t13-settings-playback');
+    log('→ into Playback', await focused());
+    await js("document.querySelector('#pResume').focus()");
+    await key('Enter');
+    await sleep(400);
+    await shot('t14-choice-panel');
+    log('OK on a choice -> panel', await js("JSON.stringify({ title: document.querySelector('#tvPick h3').textContent, options: [...document.querySelectorAll('#tvPick button')].map(b => b.innerText.replace(/\\s+/g, ' ').trim()), focus: document.activeElement.innerText.trim() })"));
+    await key('Down');
+    await key('Enter');
+    await sleep(600);
+    log('↓ OK -> chosen and saved', await js("JSON.stringify({ panel: !!document.querySelector('#tvPick'), select: document.querySelector('#pResume').value, saved: state.settings.playback.resume, focus: document.activeElement.id })"));
+    await key('Enter');
+    await sleep(300);
+    log('Back in the panel -> closed, nothing changed', await js("JSON.stringify({ handled: window.__tvBack(), panel: !!document.querySelector('#tvPick'), saved: state.settings.playback.resume, focus: document.activeElement.id })"));
+    await js("document.querySelector('#pNext').focus()");
+    await key('Left');
+    log('← from a row -> the section in use', await focused());
+    await js("document.querySelector('#pNext').focus()");
+    log('Back in a section -> its list', await js("JSON.stringify({ handled: window.__tvBack(), focus: document.activeElement.innerText.trim().replace(/\\s+/g, ' '), view: state.view })"));
+
     // screensaver: any remote key only ends it
     await js('Saver.start()');
     await sleep(1200);

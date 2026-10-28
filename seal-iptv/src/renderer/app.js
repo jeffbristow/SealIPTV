@@ -72,6 +72,7 @@ function busy(text) {
  * Generic dialog. Resolves with onOk()'s value, 'extra', or null (cancel).
  * onOk may return false to keep the dialog open.
  */
+let dialogKey = null;   // the open dialog's Enter / Escape keys
 function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel = false, onOk, extraText = null, wide = false, onOpen }) {
   return new Promise(resolve => {
     $('#dlgTitle').textContent = title;
@@ -86,9 +87,13 @@ function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel 
     show($('#dlgModal'), true);
     const done = v => { show($('#dlgModal'), false); ok.onclick = cancel.onclick = extra.onclick = $('#dlgX').onclick = null; document.removeEventListener('keydown', key, true); resolve(v); };
     const key = e => {
+      // the dialog went away some other way (another dialog, a redraw): Enter is the page's again
+      if (dialogKey !== key || $('#dlgModal').classList.contains('hidden')) { document.removeEventListener('keydown', key, true); return; }
       if (e.key === 'Escape') { e.stopPropagation(); done(null); }
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') { e.preventDefault(); ok.click(); }
     };
+    if (dialogKey) document.removeEventListener('keydown', dialogKey, true);
+    dialogKey = key;
     document.addEventListener('keydown', key, true);
     ok.onclick = async () => {
       ok.disabled = true;
@@ -288,7 +293,7 @@ function go(view, arg = null, { push = true } = {}) {
     askPin(null, { why: 'Settings is locked.' }).then(ok => { if (ok) go(view, arg, { push }); }).catch(fail);
     return;
   }
-  if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg });
+  if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg, focus: TV ? focusMark() : null });
   if (state.history.length > 50) state.history.shift();
   if (view !== state.view) state.favArrange = '';
   if (view !== state.view || arg !== state.arg) state.listEdit = '';
@@ -299,7 +304,37 @@ function go(view, arg = null, { push = true } = {}) {
 
 function back() {
   const prev = state.history.pop();
-  if (prev) { state.view = prev.view; state.arg = prev.arg; render(); }
+  if (prev) { state.view = prev.view; state.arg = prev.arg; render(); if (prev.focus) focusBack(prev.focus); }
+}
+
+/* TV: Back puts the focus on what it was on before (the poster you opened), scrolled to it.
+   Remembered as its place among the page's focusable things, its text and the scroll. */
+const FOCUSABLE_IN_VIEW = 'button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled]):not([type=hidden]), select:not([disabled]), a[href]';
+function scrollerOf(el) {
+  for (let p = el.parentElement; p && p.id !== 'view'; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+function focusMark() {
+  const a = document.activeElement, view = $('#view');
+  if (!a || !view.contains(a)) return null;
+  const all = [...view.querySelectorAll(FOCUSABLE_IN_VIEW)];
+  const sc = scrollerOf(a);
+  return { idx: all.indexOf(a), text: a.textContent.trim().slice(0, 80), scroller: sc ? '.' + [...sc.classList].join('.') : '', top: sc ? sc.scrollTop : 0 };
+}
+function focusBack(m, tries = 0) {
+  const view = $('#view');
+  if (m.scroller && tries === 0) { const sc = view.querySelector(m.scroller); if (sc) sc.scrollTop = m.top; }   // also loads the rows that were there
+  const all = [...view.querySelectorAll(FOCUSABLE_IN_VIEW)];
+  // the same text nearest its old place (pages loaded since may have moved it a little), else the same place
+  let el = null, best = Infinity;
+  all.forEach((x, i) => { if (x.textContent.trim().slice(0, 80) === m.text && Math.abs(i - m.idx) < best) { best = Math.abs(i - m.idx); el = x; } });
+  if (!el && tries >= 6) el = all[Math.min(m.idx, all.length - 1)];
+  if (!el) { if (tries < 8) setTimeout(() => focusBack(m, tries + 1), 150 + tries * 100); return; }
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 /** The sort list's first choice: what "no sort chosen" means right now. */
@@ -654,7 +689,7 @@ function catMenu(ev, section, c) {
     if (!state.parental.hasPin && !(await setPinDialog())) return;
     if (await setCatFlag(section, c, { lock: c.adult && autoAdult ? null : true })) { toast(`"${c.name}" now needs the parental PIN.`); render(); }
   } });
-  items.push('-', { label: '⚙️ All categories…', run: () => { state.catTab = section; go('settings'); setTimeout(() => { const p = $('#catPanel'); if (p) p.scrollIntoView(); }, 50); } });
+  items.push('-', { label: '⚙️ All categories…', run: () => { state.catTab = section; state.setSec = 'categories'; go('settings'); } });
   showMenu(ev, items);
 }
 
@@ -1490,13 +1525,16 @@ async function saveSettings(patch, note) {
 
 function renderSettings(view) {
   const s = state.settings;
+  const wrap = h('<div class="settings-wrap"><nav class="set-nav" id="setNav" data-tv-group></nav></div>');
   const page = h('<div class="settings"></div>');
-  view.appendChild(page);
+  wrap.appendChild(page);
+  view.appendChild(wrap);
+  const add = (sec, el) => { el.dataset.sec = sec; page.appendChild(el); return el; };
 
   /* ---- playlists ---- */
   const pl = h(`<div class="panel"><div class="row"><h2 style="margin:0">Playlists</h2><span class="spacer"></span><button class="btn primary" id="stAdd">＋ Add playlist</button></div>
     <p class="muted small">Your IPTV provider's Xtream Codes login or M3U playlist. Favorites, watched marks and resume points are kept per playlist.</p><div id="stProfiles"></div></div>`);
-  page.appendChild(pl);
+  add('playlists', pl);
   const list = pl.querySelector('#stProfiles');
   if (!state.profiles.length) list.innerHTML = '<p class="muted">No playlist yet.</p>';
   for (const p of state.profiles) {
@@ -1520,7 +1558,7 @@ function renderSettings(view) {
   pl.querySelector('#stAdd').onclick = () => editProfile(null);
 
   /* ---- sync ---- */
-  page.appendChild(h('<div class="panel" id="syncPanel"></div>'));
+  add('sync', h('<div class="panel" id="syncPanel"></div>'));
   drawSyncPanel();
 
   /* ---- VPN ---- */
@@ -1542,7 +1580,7 @@ function renderSettings(view) {
       <div class="vpn-box" id="vBox"></div>
       <div class="row gap"><button class="btn" id="vCheck">Check now</button><button class="btn ghost" id="vProton">Open ProtonVPN</button></div>
     </div></div>`);
-  page.appendChild(vp);
+  add('vpn', vp);
   const vOpts = vp.querySelector('#vOpts');
   const syncVpnUi = () => {
     const cur = state.settings.vpn;
@@ -1616,7 +1654,7 @@ function renderSettings(view) {
     <div class="row gap"><button class="btn" id="avTest">Sync test…</button></div>
     <div id="avSaved" style="margin-top:8px"></div>
   </div>`);
-  page.appendChild(pp);
+  add('playback', pp);
   pp.querySelector('#pAuto').onchange = e => saveSettings({ playback: { autoWatched: e.target.checked } });
   pp.querySelector('#pPct').onchange = e => saveSettings({ playback: { watchedPercent: Number(e.target.value) } });
   pp.querySelector('#pNext').onchange = e => saveSettings({ playback: { autoNext: e.target.checked } });
@@ -1659,7 +1697,7 @@ function renderSettings(view) {
     <select id="parMins" style="max-width:320px">${[[0, 'Until I close Seal IPTV'], [15, 'For 15 minutes'], [60, 'For 1 hour'], [240, 'For 4 hours']].map(([n, t]) => `<option value="${n}" ${(par.unlockMinutes || 0) === n ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <p class="faint small">To lock other categories, right-click one in Live TV, Movies or Series, or use the list under Categories below. Changing these settings needs the PIN.</p>
     ${par.hasPin && par.unlocked ? '<button class="btn" id="parLock">Lock now</button>' : ''}</div>`);
-  page.appendChild(pc);
+  add('parental', pc);
   const parRefresh = async () => { state.parental = await call('parental:status'); updateLockBtn(); render(); };
   pc.querySelector('#parSet').onclick = async () => { if (await setPinDialog()) render(); };
   const rm = pc.querySelector('#parRemove');
@@ -1694,7 +1732,7 @@ function renderSettings(view) {
       <div class="row gap" style="margin-top:10px"><div class="seg" id="cTabs"><button data-s="live">Live TV</button><button data-s="movies">Movies</button><button data-s="series">Series</button></div>
         <input type="search" id="cFilter" placeholder="Find a category" style="max-width:260px"></div>
       <div class="cat-table" id="cTable"><div class="empty">Loading…</div></div></div>`);
-    page.appendChild(cp);
+    add('categories', cp);
     cp.querySelector('#cForeign').onchange = async e => { await saveSettings({ content: { hideNonEnglish: e.target.checked } }, e.target.checked ? 'Categories and titles in other languages are hidden.' : 'Everything is shown again.'); drawCats(); };
     cp.querySelectorAll('#cTabs button').forEach(b => b.onclick = () => { state.catTab = b.dataset.s; drawCats(); });
     cp.querySelector('#cFilter').oninput = () => drawCats(true);
@@ -1739,7 +1777,7 @@ function renderSettings(view) {
     <div class="row gap"><input type="password" id="aKey" value="${esc(art.tmdbKey || '')}" placeholder="Paste your free TMDB key" spellcheck="false" autocomplete="off" style="max-width:420px"><button class="btn" id="aTest">Test key</button><button class="btn ghost" id="aAgain">Look up again</button></div>
     <p class="faint small">Free: sign up at themoviedb.org, then Settings → API. The "API Key" or the "API Read Access Token" works. ${TV ? 'Easiest to paste on a PC: it syncs to this TV.' : 'It syncs to your other devices, so you only paste it once.'}</p>
     <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters from TVmaze (tvmaze.com).</p></div>`);
-  page.appendChild(ap);
+  add('posters', ap);
   ap.querySelector('#aOn').onchange = e => saveSettings({ artwork: { lookup: e.target.checked } }, e.target.checked ? 'Missing posters will be filled in.' : 'Posters are only taken from your provider.');
   ap.querySelector('#aKey').onchange = e => saveSettings({ artwork: { tmdbKey: e.target.value } }, e.target.value.trim() ? 'TMDB key saved.' : 'TMDB key removed.');
   ap.querySelector('#aTest').onclick = async () => {
@@ -1757,7 +1795,7 @@ function renderSettings(view) {
     <select id="cRefresh" style="max-width:320px">${[[6, 'When it\'s older than 6 hours'], [12, 'When it\'s older than 12 hours'], [24, 'Once a day'], [72, 'Every 3 days'], [168, 'Once a week'], [0, 'Only when I click Reload']].map(([n, t]) => `<option value="${n}" ${s.catalog.refreshHours === n ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <div class="row gap" style="margin-top:14px"><button class="btn danger" id="cClear" ${profile() ? '' : 'disabled'}>Clear watched marks and resume points…</button></div>
     <p class="faint small">Only for the playlist in use. Favorites are kept.</p></div>`);
-  page.appendChild(lp);
+  add('library', lp);
   lp.querySelector('#cRefresh').onchange = e => saveSettings({ catalog: { refreshHours: Number(e.target.value) } });
   lp.querySelector('#cClear').onclick = async () => {
     if (!(await confirmBox('Clear history', `Forget every watched mark and resume point for "${profile().name}"?`, 'Clear'))) return;
@@ -1765,7 +1803,7 @@ function renderSettings(view) {
   };
 
   /* ---- about ---- */
-  page.appendChild(h(`<div class="panel"><h2>About</h2>
+  add('about', h(`<div class="panel"><h2>About</h2>
     <div class="row gap"><img src="logo.svg" alt="" style="width:48px;height:48px"><div><b>Seal IPTV${TV ? ' for Fire TV' : ''} ${esc(state.version)}</b><div class="muted small">A player for the IPTV service you subscribe to. Seal IPTV doesn't provide any channels or content.</div></div></div>
     <div class="row gap" style="margin-top:14px"><button class="btn" id="uCheck">Check for updates</button><span class="small muted" id="uBox"></span></div>
     <label class="check"><input type="checkbox" id="uAuto" ${s.updates && s.updates.check ? 'checked' : ''}> Look for a new version when Seal IPTV starts</label>
@@ -1773,6 +1811,45 @@ function renderSettings(view) {
   $('#uCheck').onclick = () => Upd.check(true);
   $('#uAuto').onchange = e => saveSettings({ updates: { check: e.target.checked } });
   Upd.drawBox();
+  settingsSections(wrap, page);
+}
+
+/* Settings in sections: the list on the left, one section on the right (as on Google TV / Apple TV).
+   On a TV, moving through the list shows each section; OK (or →) goes into it, Back comes out. */
+const SETTINGS_SECTIONS = [
+  ['playlists', '📋', 'Playlists', () => (profile() || {}).name || 'None yet'],
+  ['sync', '🔄', 'Sync', () => state.sync && state.sync.connected ? 'On' : 'Off'],
+  ['vpn', '🛡️', 'VPN', () => state.settings.vpn.required ? 'Only plays with the VPN on' : 'Off'],
+  ['playback', '▶️', 'Playback', () => 'Watched, resume, screensaver, audio sync'],
+  ['parental', '🔒', 'Parental controls', () => !state.parental.hasPin ? 'No PIN' : state.parental.lockSettings ? 'PIN set · Settings locked' : 'PIN set'],
+  ['categories', '🗂️', 'Categories', () => 'Hide, lock, languages'],
+  ['posters', '🖼️', 'Posters', () => (state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only'],
+  ['library', '🕘', 'Updates & history', () => 'Playlist reloads, watch history'],
+  ['about', 'ℹ️', 'About', () => 'Version ' + state.version]
+];
+function settingsSections(wrap, page) {
+  const nav = wrap.querySelector('#setNav');
+  const panels = [...page.children];
+  const secs = SETTINGS_SECTIONS.filter(([k]) => panels.some(p => p.dataset.sec === k));
+  if (!secs.some(([k]) => k === state.setSec)) state.setSec = 'playlists';
+  const showSec = k => {
+    if (state.setSec !== k) page.scrollTop = 0;
+    state.setSec = k;
+    for (const p of panels) p.classList.toggle('hidden', p.dataset.sec !== k);
+    nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.sec === k));
+  };
+  for (const [k, ico, name, sub] of secs) {
+    let note = '';
+    try { note = sub(); } catch { /* not known yet */ }
+    const b = h(`<button class="set-item" data-sec="${k}"><span class="ico">${ico}</span><span class="txt"><b>${esc(name)}</b><span class="faint small">${esc(note)}</span></span></button>`);
+    b.onclick = () => {
+      showSec(k);
+      if (TV) { const first = [...page.querySelector(`[data-sec="${k}"]`).querySelectorAll(FOCUSABLE_IN_VIEW)].find(x => x.offsetParent); if (first) first.focus(); }
+    };
+    if (TV) b.onfocus = () => showSec(k);
+    nav.appendChild(b);
+  }
+  showSec(state.setSec);
 }
 
 function updateVpnBox() {
