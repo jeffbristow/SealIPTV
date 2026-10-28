@@ -844,7 +844,7 @@ function playChannel(i) {
   const list = state.live.items;
   const it = list[i];
   if (!it) return;
-  Player.play({ kind: 'live', id: it.id, name: it.name, image: it.logo, cat: it.catName }, { channels: list, index: i });
+  Player.play({ kind: 'live', id: it.id, name: it.name, image: it.logo, cat: it.catName }, { channels: list, index: i, list: { cat: state.sec.live.cat, q: state.q } });
 }
 
 async function selectChannel(it, el) {
@@ -880,7 +880,12 @@ function channelCard(it) {
   const el = h(`<div class="card wide" tabindex="0"><div class="poster" style="aspect-ratio:16/9;padding:14px">${pic(it.logo, it.name, 'pi logo-img')}${it.fav ? '<span class="badge fav">★</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}</div><div class="title">${esc(it.name)}</div></div>`);
   const img = el.querySelector('img');
   if (img) img.style.objectFit = 'contain';
-  el.onclick = () => Player.play({ kind: 'live', id: it.id, name: it.name, image: it.logo });
+  // the channels next to it (a Home shelf, Favorites, one of my categories) are the player's channel list
+  el._ch = it;
+  el.onclick = () => {
+    const near = el.parentElement ? [...el.parentElement.children].map(x => x._ch).filter(Boolean) : [it];
+    Player.play({ kind: 'live', id: it.id, name: it.name, image: it.logo }, { channels: near, index: Math.max(0, near.indexOf(it)) });
+  };
   el.oncontextmenu = e => { e.preventDefault(); cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo }); };
   return el;
 }

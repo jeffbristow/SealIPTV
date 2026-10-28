@@ -57,6 +57,29 @@ app.whenReady().then(async () => {
     await js("window.__nativeEvent('player', JSON.stringify({ type: 'zap', dir: 1, pos: 5000, dur: 0 }))");
     await sleep(1500);
     log('zap ↓ -> next channel', await js("window.__played.title"));
+    log('… the channel list is sent once, then kept', await js("JSON.stringify({ index: window.__played.index, sentAgain: 'channels' in window.__played })"));
+    // the channel guide: opened -> the whole category; rows in view -> what's on; a row chosen, a number, the one before
+    const ev = o => js(`window.__nativeEvent('player', ${JSON.stringify(JSON.stringify(o))})`);
+    const lastCmd = cmd => js(`JSON.stringify((window.__cmds || []).filter(c => c.cmd === '${cmd}').slice(-1)[0] || null)`);
+    await ev({ type: 'guide', pos: 6000, dur: 0 });
+    await sleep(1200);
+    log('guide opened -> the whole category', await js("(() => { const c = (window.__cmds || []).filter(c => c.cmd === 'channels').slice(-1)[0]; return JSON.stringify(c && { count: c.channels.length, index: c.index, first: c.channels[0] }); })()"));
+    const ids = await js("JSON.stringify((window.__cmds || []).filter(c => c.cmd === 'channels').slice(-1)[0].channels.slice(0, 3).map(c => c.id))");
+    await ev({ type: 'epgNeed', ids: JSON.parse(ids) });
+    await sleep(1800);
+    log('rows in view -> what\'s on', await lastCmd('epg'));
+    await ev({ type: 'tune', index: 4 });
+    await sleep(1500);
+    log('a channel chosen in the guide', await js("window.__played.title"));
+    await ev({ type: 'number', num: '1' });
+    await sleep(1500);
+    log('number 1 typed', await js("window.__played.title"));
+    await ev({ type: 'last' });
+    await sleep(1500);
+    log('0: the channel before', await js("window.__played.title"));
+    await ev({ type: 'number', num: '999' });
+    await sleep(800);
+    log('a number that isn\'t there', await lastCmd('osd'));
     await js("window.__nativeEvent('player', JSON.stringify({ type: 'closed', pos: 9000, dur: 0 }))");
     await sleep(500);
 

@@ -1,7 +1,7 @@
 {
   "name": "seal-iptv",
   "productName": "Seal IPTV",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "updateMinInstalled": "1.1.0",
   "description": "IPTV player for Windows: Xtream Codes and M3U playlists, favorites, watched marks, resume, and a VPN guard",
   "main": "src/main/bootstrap.js",
