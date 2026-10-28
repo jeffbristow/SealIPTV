@@ -384,3 +384,7 @@ img.net-logo { background: #f2f3f5; border-radius: 6px; padding: 4px; box-sizing
 .card img.net-logo { padding: 10px 16px; border-radius: 10px; }
 .card .list-tools { position: static; background: none; padding: 6px 0 0; justify-content: flex-start; gap: 4px; flex-wrap: wrap; }
 .card .list-tools button { width: auto; padding: 0 8px; white-space: nowrap; font-size: 13px; background: var(--bg-3); color: var(--text); }
+/* things that delete: a step away from the buttons next to them, and a red OK when asked to confirm */
+.apart { margin-left: 18px; }
+.btn.primary.danger-ok { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.primary.danger-ok:hover { background: #ff8080; }

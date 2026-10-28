@@ -73,13 +73,14 @@ function busy(text) {
  * onOk may return false to keep the dialog open.
  */
 let dialogKey = null;   // the open dialog's Enter / Escape keys
-function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel = false, onOk, extraText = null, wide = false, onOpen }) {
+function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel = false, onOk, extraText = null, wide = false, onOpen, danger = false }) {
   return new Promise(resolve => {
     $('#dlgTitle').textContent = title;
     $('#dlgBody').innerHTML = html;
     $('#dlgModal .modal-card').classList.toggle('wide', wide);
     const ok = $('#dlgOk'), cancel = $('#dlgCancel'), extra = $('#dlgExtra');
     ok.textContent = okText;
+    ok.classList.toggle('danger-ok', danger);   // it deletes: red, and Cancel is selected first
     cancel.textContent = cancelText;
     show(cancel, !hideCancel);
     extra.textContent = extraText || '';
@@ -103,10 +104,10 @@ function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel 
     extra.onclick = () => done('extra');
     if (onOpen) onOpen();
     const first = $('#dlgBody').querySelector('input:not([type=checkbox]):not([type=radio]),select');
-    setTimeout(() => (first || ok).focus(), 30);
+    setTimeout(() => (first || (danger && !hideCancel ? cancel : ok)).focus(), 30);
   });
 }
-const confirmBox = (title, text, okText = 'OK') => dialog({ title, html: `<p>${esc(text)}</p>`, okText });
+const confirmBox = (title, text, okText = 'OK', danger = false) => dialog({ title, html: `<p>${esc(text)}</p>`, okText, danger });
 
 const initials = name => String(name || '?').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 
@@ -1408,7 +1409,7 @@ async function editList(l, { open = true } = {}) {
 }
 
 async function removeList(l) {
-  if (!(await confirmBox('Delete category', `Delete "${l.name}"? The channels, movies and series in it stay in your playlist; only the category goes, on all your devices.`, 'Delete'))) return;
+  if (!(await confirmBox('Delete category', `Delete "${l.name}"? The channels, movies and series in it stay in your playlist; only the category goes, on all your devices.`, 'Delete', true))) return;
   try { await call('lists:remove', l.id); } catch (e) { return fail(e); }
   await loadLists();
   toast(`"${l.name}" is deleted.`);
@@ -1417,7 +1418,7 @@ async function removeList(l) {
 }
 
 function listMenu(ev, l) {
-  showMenu(ev, [{ label: '✏️ Rename…', run: () => editList(l) }, { label: '🗑️ Delete category…', run: () => removeList(l) }]);
+  showMenu(ev, [{ label: '✏️ Rename…', run: () => editList(l) }, '-', { label: '🗑️ Delete category…', run: () => removeList(l) }]);
 }
 
 /** "＋ Category": tick the categories a channel / movie / series is in (key live:1, movie:9, series:4). */
@@ -1499,7 +1500,7 @@ async function renderList(view) {
   const editing = state.listEdit === l.id && items.length > 0;
   const bar = h(`<div class="list-bar"><span class="muted small">${items.length ? `${items.length} title${items.length === 1 ? '' : 's'}` : ''}</span><span class="spacer"></span>
     ${items.length ? `<button class="btn small${editing ? ' primary' : ''}" data-edit>${editing ? 'Done' : '✏️ Edit titles'}</button>` : ''}
-    <button class="btn small ghost" data-rename>✏️ Rename</button><button class="btn small ghost" data-del>🗑️ Delete category</button></div>`);
+    <button class="btn small ghost" data-rename>✏️ Rename</button><button class="btn small ghost danger apart" data-del>🗑️ Delete category</button></div>`);
   const eb = bar.querySelector('[data-edit]');
   if (eb) eb.onclick = () => { state.listEdit = editing ? '' : l.id; render(); setTimeout(() => { const b = $('.list-bar [data-edit]'); if (b) b.focus(); }, 30); };
   bar.querySelector('[data-rename]').onclick = () => editList(l);
@@ -1605,11 +1606,11 @@ function renderSettings(view) {
   for (const p of state.profiles) {
     const where = p.type === 'xtream' ? `Xtream Codes · ${p.server} · ${p.username}` : p.m3uUrl ? `M3U · ${new URL(p.m3uUrl).host}` : `M3U file · ${p.m3uFile}`;
     const row = h(`<div class="profile-row"><div class="txt"><b>${esc(p.name)}</b> ${p.id === s.activeProfile ? '<span class="tag on">In use</span>' : ''}<div class="muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(where)}</div></div>
-      ${p.id !== s.activeProfile ? '<button class="btn small" data-a="use">Use</button>' : ''}<button class="btn small" data-a="edit">Edit</button><button class="btn small danger" data-a="del">Delete</button></div>`);
+      ${p.id !== s.activeProfile ? '<button class="btn small" data-a="use">Use</button>' : ''}<button class="btn small" data-a="edit">Edit</button><button class="btn small danger apart" data-a="del">Delete</button></div>`);
     row.querySelectorAll('button').forEach(b => b.onclick = async () => {
       if (b.dataset.a === 'use') return useProfile(p.id);
       if (b.dataset.a === 'edit') return editProfile(p);
-      if (!(await confirmBox('Delete playlist', `Delete "${p.name}" from Seal IPTV, with its favorites, watched marks and resume points? Your provider account isn't affected.`, 'Delete'))) return;
+      if (!(await confirmBox('Delete playlist', `Delete "${p.name}" from Seal IPTV, with its favorites, watched marks and resume points? Your provider account isn't affected.`, 'Delete', true))) return;
       try {
         state.profiles = await call('profiles:delete', p.id);
         const init = await call('app:init');
@@ -1755,7 +1756,7 @@ function renderSettings(view) {
   const pc = h(`<div class="panel"><h2>Parental controls</h2>
     <p class="muted small">Locked categories need a PIN to open, and nothing from them shows up in "All", search, Home or Favorites until the PIN is entered.</p>
     <div class="row gap"><b>${par.hasPin ? '🔒 A PIN is set' : 'No PIN yet'}</b><span class="spacer"></span>
-      <button class="btn${par.hasPin ? '' : ' primary'}" id="parSet">${par.hasPin ? 'Change PIN…' : 'Set a PIN…'}</button>${par.hasPin ? '<button class="btn danger" id="parRemove">Remove PIN</button>' : ''}</div>
+      <button class="btn${par.hasPin ? '' : ' primary'}" id="parSet">${par.hasPin ? 'Change PIN…' : 'Set a PIN…'}</button>${par.hasPin ? '<button class="btn danger apart" id="parRemove">Remove PIN</button>' : ''}</div>
     <label class="check"><input type="checkbox" id="parAdult" ${par.autoAdult !== false ? 'checked' : ''}> Lock every category with "Adult", "XXX" or "18+" in its name</label>
     <label class="check"><input type="checkbox" id="parSettings" ${par.hasPin && par.lockSettings ? 'checked' : ''} ${par.hasPin ? '' : 'disabled'}> Ask for the PIN to open Settings${par.hasPin ? '' : ' <span class="faint">(set a PIN first)</span>'}</label>
     <label for="parMins">After the PIN, keep locked categories (and Settings) open</label>
@@ -1767,7 +1768,7 @@ function renderSettings(view) {
   pc.querySelector('#parSet').onclick = async () => { if (await setPinDialog()) render(); };
   const rm = pc.querySelector('#parRemove');
   if (rm) rm.onclick = async () => {
-    const r = await dialog({ title: 'Remove the PIN', okText: 'Remove PIN', html: '<p>Without a PIN, locked categories can\'t be opened (you\'d be asked to set a new PIN). Enter the current PIN:</p><input type="password" id="pinOld" class="pin-input" inputmode="numeric" maxlength="8"><p id="pinErr" class="error center"></p>',
+    const r = await dialog({ title: 'Remove the PIN', okText: 'Remove PIN', danger: true, html: '<p>Without a PIN, locked categories can\'t be opened (you\'d be asked to set a new PIN). Enter the current PIN:</p><input type="password" id="pinOld" class="pin-input" inputmode="numeric" maxlength="8"><p id="pinErr" class="error center"></p>',
       onOk: async () => { try { state.parental = await call('parental:removePin', $('#pinOld').value); return true; } catch (e) { $('#pinErr').textContent = e.message; return false; } } });
     if (r) { toast('PIN removed.'); parRefresh(); }
   };
@@ -1863,7 +1864,7 @@ function renderSettings(view) {
   add('library', lp);
   lp.querySelector('#cRefresh').onchange = e => saveSettings({ catalog: { refreshHours: Number(e.target.value) } });
   lp.querySelector('#cClear').onclick = async () => {
-    if (!(await confirmBox('Clear history', `Forget every watched mark and resume point for "${profile().name}"?`, 'Clear'))) return;
+    if (!(await confirmBox('Clear history', `Forget every watched mark and resume point for "${profile().name}"?`, 'Clear', true))) return;
     try { await call('lib:clearHistory'); toast('Watch history cleared.'); } catch (e) { fail(e); }
   };
 
@@ -1958,15 +1959,15 @@ function drawSyncPanel() {
         <div class="muted small">${esc(s.server)} · ${esc(s.username)} · this PC: ${esc(s.deviceName)}</div>
         <div class="faint small">${s.lastSync ? 'Last synced ' + esc(fmtDate(s.lastSync)) + ' ' + esc(fmtClock(s.lastSync)) : 'Not synced yet'} · ${(s.items || 0).toLocaleString()} records${s.waiting ? ` · ${s.waiting} waiting to send` : ''}</div>
         ${s.needs === 'passphrase' ? '<div class="small" style="margin-top:6px">The vault passphrase was changed on another PC. Disconnect, then connect again with the new passphrase.</div>' : ''}</div>
-      <div class="row gap"><button class="btn primary" id="syNow">⟳ Sync now</button><button class="btn" id="syDevs">Devices…</button><span class="spacer"></span><button class="btn ghost" id="syOff">Disconnect</button><button class="btn danger" id="syDel">Delete vault…</button></div>`;
+      <div class="row gap"><button class="btn primary" id="syNow">⟳ Sync now</button><button class="btn" id="syDevs">Devices…</button><span class="spacer"></span><button class="btn ghost" id="syOff">Disconnect</button><button class="btn danger apart" id="syDel">Delete vault…</button></div>`;
     box.querySelector('#syNow').onclick = async () => { try { state.sync = await call('sync:now'); drawSyncPanel(); toast('Synced.'); } catch (e) { state.sync = await call('sync:status'); drawSyncPanel(); fail(e); } };
     box.querySelector('#syDevs').onclick = syncDevices;
     box.querySelector('#syOff').onclick = async () => {
-      if (!(await confirmBox('Disconnect', 'Stop syncing this PC? Everything stays on this PC and in the vault; you can connect again later.', 'Disconnect'))) return;
+      if (!(await confirmBox('Disconnect', 'Stop syncing this PC? Everything stays on this PC and in the vault; you can connect again later.', 'Disconnect', true))) return;
       await call('sync:disconnect'); state.sync = await call('sync:status'); drawSyncPanel(); toast('This PC no longer syncs.');
     };
     box.querySelector('#syDel').onclick = async () => {
-      const r = await dialog({ title: 'Delete the vault', okText: 'Delete vault',
+      const r = await dialog({ title: 'Delete the vault', okText: 'Delete vault', danger: true,
         html: '<p>This deletes everything stored on the sync server and signs out every PC. Each PC keeps its own copy of everything.</p><label for="dvPass">Vault passphrase</label><input type="password" id="dvPass"><p id="dvErr" class="error"></p>',
         onOk: async () => { try { await call('sync:destroy', $('#dvPass').value); return true; } catch (e) { $('#dvErr').textContent = e.message; return false; } } });
       if (r) { state.sync = await call('sync:status'); drawSyncPanel(); toast('Vault deleted.'); }

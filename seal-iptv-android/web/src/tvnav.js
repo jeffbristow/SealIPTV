@@ -10,7 +10,8 @@
  *   ☰ Menu    the right-click menu of what's selected (categories: hide / lock; a poster:
  *             add to one of my categories)
  *   Any key while the screensaver is up only ends it (app.js sealWake()).
- * Text boxes keep ← → for the cursor; ↑ ↓ leave them.
+ * Text boxes keep ← → for the cursor; ↑ ↓ leave them. The parental PIN is typed on a number
+ * pad next to its boxes (or the remote's 0–9), not the keyboard.
  *   Going into the sidebar (or Settings' list of sections) from the page lands on the one
  *   in use; OK on a choice (a <select>) slides its choices in from the right.
  * ===================================================================== */
@@ -98,6 +99,57 @@
     const b = document.querySelector('#voiceBtn');
     if (b && canVoice()) { b.classList.remove('hidden'); b.onclick = voice; }
   }, 0);
+
+  /* The parental PIN: a number pad next to the PIN boxes instead of the keyboard (the remote's own
+     0–9 keys type too). ✓ goes on to the next box, or presses the dialog's OK. */
+  let pinAt = null;   // the PIN box the pad types into
+  const pinBoxes = () => [...document.querySelectorAll('#dlgBody .pin-input')];
+  function pinTo(f) {
+    pinAt = f;
+    const boxes = pinBoxes(), last = boxes.indexOf(f) === boxes.length - 1;
+    boxes.forEach(b => b.classList.toggle('pin-at', b === f));
+    const okKey = document.querySelector('#dlgBody .pin-pad [data-k="ok"]');
+    if (okKey) okKey.textContent = last ? '✓ OK' : 'Next';
+  }
+  function pinPad() {
+    const body = document.querySelector('#dlgBody');
+    let pad = body.querySelector('.pin-pad');
+    if (pad) return pad;
+    const wrap = document.createElement('div'); wrap.className = 'pin-wrap';
+    const fields = document.createElement('div'); fields.className = 'pin-fields';
+    fields.append(...body.childNodes);
+    pad = document.createElement('div'); pad.className = 'pin-pad';
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok']) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.k = k; b.textContent = k === 'del' ? '⌫' : k;
+      b.onclick = () => pinKey(k);
+      b.onfocus = () => { pad._last = b; };
+      pad.appendChild(b);
+    }
+    wrap.append(fields, pad);
+    body.appendChild(wrap);
+    pinBoxes().forEach(f => { f.readOnly = true; f.tabIndex = -1; });
+    return pad;
+  }
+  function pinKey(k) {
+    const f = pinAt;
+    if (!f || !f.isConnected) return;
+    const boxes = pinBoxes(), i = boxes.indexOf(f);
+    if (k === 'ok') { if (boxes[i + 1]) pinTo(boxes[i + 1]); else document.querySelector('#dlgOk').click(); return; }
+    if (k === 'del') { if (f.value) setValue(f, f.value.slice(0, -1)); else if (i > 0) pinTo(boxes[i - 1]); return; }
+    // a wrong PIN is selected (app.js): the next digit starts again
+    const all = f.value && f.selectionStart === 0 && f.selectionEnd === f.value.length;
+    const v = all ? '' : f.value;
+    if (v.length < (f.maxLength > 0 ? f.maxLength : 8)) setValue(f, v + k);
+  }
+  // a PIN box gets the focus (the dialog opening, or a wrong PIN): the pad takes it
+  document.addEventListener('focusin', e => {
+    const f = e.target;
+    if (!f.classList || !f.classList.contains('pin-input') || !f.closest('#dlgBody')) return;
+    const pad = pinPad();
+    pinTo(f);
+    setTimeout(() => { const b = pad._last && pad._last.isConnected ? pad._last : pad.firstChild; b.focus({ preventScroll: true }); }, 0);
+  }, true);
 
   /** OK on the remote: what's selected is pressed — a form field opens the keyboard */
   function ok(a) {
@@ -208,6 +260,12 @@
     const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key];
     const a = document.activeElement;
     const typing = editable(a);
+    // the remote's 0–9 (and a keyboard's Backspace) while the PIN pad is up
+    if (pinAt && pinAt.isConnected && !document.querySelector('#dlgModal').classList.contains('hidden') && (/^[0-9]$/.test(e.key) || e.key === 'Backspace')) {
+      e.preventDefault();
+      pinKey(e.key === 'Backspace' ? 'del' : e.key);
+      return;
+    }
     if (dir) {
       if (typing && (dir === 'left' || dir === 'right')) return;
       if (a && a.type === 'range' && (dir === 'left' || dir === 'right')) return;
