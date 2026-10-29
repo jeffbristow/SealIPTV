@@ -33,7 +33,8 @@ esbuild.buildSync({
   target: ['chrome80'],
   alias: { fs: SH('fs.js'), path: SH('path.js'), os: SH('os.js'), crypto: SH('crypto.js'), util: SH('util.js'), events: SH('events.js') },
   inject: [SH('inject.js')],
-  define: { __SEAL_VERSION__: JSON.stringify(VERSION) },
+  define: { __SEAL_VERSION__: JSON.stringify(VERSION), SEAL_TV_BUNDLE: 'true' },
+  loader: { '.dat': 'text' },   // studios.dat: the studio collections' list, in the bundle
   legalComments: 'none',
   logLevel: 'warning'
 });

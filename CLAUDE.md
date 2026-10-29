@@ -66,8 +66,10 @@ seal-iptv/
                            catalog/<id>.trend.json (first run: read in the background once).
                            FlixPatrol has the other services' Top 10s but sits behind a Cloudflare bot
                            check: not used.
-    studios.js             the Disney / Netflix / Prime collections: studios.json (shipped) or a newer
-                           copy fetched from GitHub (raw .../main/seal-iptv/src/main/studios.json) every
+    studios.js             the Disney / Netflix / Prime collections: studios.dat (shipped; scrambled with
+                           pack/unpack so the titles aren't searchable text; TV: bundled by build.js'
+                           .dat text loader) or a newer copy fetched from GitHub (raw .../main/seal-iptv/
+                           src/main/studios.dat) every
                            3 days -> franchises.setStudios (collections "studio-<id>", newest first, only
                            what the playlist has; catalog._studio). Built from Wikipedia's lists by
                            ../tools/studios.js (sections like "Exclusive international distribution" and

@@ -2,11 +2,11 @@
 /* =====================================================================
  * Seal IPTV — tools/studios.js
  * ---------------------------------------------------------------------
- * Builds seal-iptv/src/main/studios.json: the Disney, Netflix and Prime collections
+ * Builds seal-iptv/src/main/studios.dat: the Disney, Netflix and Prime collections
  * (Collections page), from Wikipedia's lists of each one's films and
  * shows — lists people keep up to date as titles come out.
  *
- *   node tools/studios.js            writes seal-iptv/src/main/studios.json
+ *   node tools/studios.js            writes seal-iptv/src/main/studios.dat
  *   node tools/studios.js --check    only prints what it found
  *
  * Each release ships that file; the apps also fetch it from GitHub every few
@@ -20,7 +20,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const OUT = path.join(__dirname, '..', 'seal-iptv', 'src', 'main', 'studios.json');
+const OUT = path.join(__dirname, '..', 'seal-iptv', 'src', 'main', 'studios.dat');
+const { pack, unpack } = require('../seal-iptv/src/main/studios');   // scrambled: the titles aren't searchable text
 const UA = 'SealIPTV-studios/1.0 (https://github.com/jeffbristow/SealIPTV)';
 
 // each collection: its Wikipedia pages (a trailing "(" = every page whose title starts like that)
@@ -149,13 +150,15 @@ async function main() {
   const data = await build();
   if (process.argv.includes('--check')) { for (const s of data.studios) console.log(s.id, s.items.slice(-5).map(x => `${x.t} (${x.y})`).join('; ')); return; }
   let old = null;
-  try { old = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch { /* the first one */ }
+  try { old = unpack(fs.readFileSync(OUT, 'utf8')); } catch { /* the first one */ }
   for (const s of data.studios) {
     const before = old && old.studios.find(x => x.id === s.id);
     if (s.items.length < 50 || (before && s.items.length < before.items.length * 0.8)) throw new Error(`${s.name}: ${s.items.length} titles${before ? ', was ' + before.items.length : ''} — a page or table has changed; the old list is kept`);
   }
+  // the same titles as last time: the file stays as it is (the weekly run commits only real changes)
+  if (old && JSON.stringify(old.studios) === JSON.stringify(data.studios)) { console.log('No changes.'); return; }
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, JSON.stringify(data, null, 0).replace(/\},\{"t"/g, '},\n{"t"') + '\n');
+  fs.writeFileSync(OUT, pack(data));
   console.log('written', OUT, Math.round(fs.statSync(OUT).size / 1024), 'KB');
 }
 

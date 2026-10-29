@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const { titlesOf } = require('../../tools/studios');
-const { Studios, valid } = require('../src/main/studios');
+const { Studios, valid, pack, unpack } = require('../src/main/studios');
 const franchises = require('../src/main/franchises');
 const { Catalog } = require('../src/main/catalog');
 const { Library } = require('../src/main/library');
@@ -45,16 +45,26 @@ const DATA = built => ({ built, studios: [
   ok(got.some(x => x.t === 'Stranger Things' && x.y === 2016) && !got.some(x => /Arrested/.test(x.t)), 'shows by their premiere; later seasons of someone else\'s show left out');
   ok(!got.some(x => x.t === '1'), 'tables without a title and a date are skipped');
 
+  /* ---- the file: not plain text, read back the same ---- */
+  const packed = pack(DATA('2026-10-29'));
+  ok(!/Red Notice|Netflix|Frozen/.test(packed) && /^SIS1:[A-Za-z0-9+/=]+\n$/.test(packed), 'the file has no titles as text in it');
+  ok(JSON.stringify(unpack(packed)) === JSON.stringify(DATA('2026-10-29')), 'and reads back the same');
+  let bad = '';
+  try { unpack('{"studios":[]}'); } catch (e) { bad = e.message; }
+  ok(/not a studio list/.test(bad), 'anything else isn\'t taken for one');
+  const shippedList = new Studios({ dir: os.tmpdir() }).shipped;
+  ok(valid(shippedList) && shippedList.studios.length === 3, 'the list shipped with the app is read');
+
   /* ---- keeping the list up to date ---- */
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sealiptv-studios-'));
   try {
     let online = true, answer = DATA('2026-11-05');
     const asked = [];
-    const fetch = async (url, o) => { asked.push({ url, ua: o.headers['User-Agent'] }); return { ok: true, status: 200, text: async () => JSON.stringify(answer) }; };
+    const fetch = async (url, o) => { asked.push({ url, ua: o.headers['User-Agent'] }); return { ok: true, status: 200, text: async () => pack(answer) }; };
     const st = new Studios({ dir, allowed: () => online, fetch, shipped: DATA('2026-10-29'), userAgent: () => 'UA-1' });
     ok(st.data().built === '2026-10-29' && st.due(), 'at first: the list shipped with the app, a newer one due');
     const d = await st.refresh();
-    ok(d && d.built === '2026-11-05' && st.data().built === '2026-11-05' && /raw\.githubusercontent\.com\/jeffbristow\/SealIPTV\/main\/seal-iptv\/src\/main\/studios\.json/.test(asked[0].url), 'the newest list fetched from GitHub');
+    ok(d && d.built === '2026-11-05' && st.data().built === '2026-11-05' && /raw\.githubusercontent\.com\/jeffbristow\/SealIPTV\/main\/seal-iptv\/src\/main\/studios\.dat/.test(asked[0].url), 'the newest list fetched from GitHub');
     ok(!st.due() && (await st.refresh()) === null && asked.length === 1, 'then not again for a few days');
     answer = { built: '2026-12-01', studios: [{ id: 'netflix', name: 'Netflix', items: [] }] };
     ok(!valid(answer) && await st.refresh({ force: true }).then(() => false, () => true) && st.data().built === '2026-11-05', 'a broken download never replaces a good list');
