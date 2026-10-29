@@ -54,7 +54,7 @@ function prepare(data) {
 let ALL = null, STUDIOS = null, VERSION = 0;
 const all = () => (ALL = ALL || [...prepare(require('./franchises.json')), ...(STUDIOS ? prepareStudios(STUDIOS) : [])]);
 
-/** studios.json -> collections like the others (id "studio-netflix"), marked studio */
+/** studios.dat (studios.js) -> collections like the others (id "studio-netflix"), marked studio */
 function prepareStudios(data) {
   const list = prepare({ franchises: data.studios.map(s => ({ id: 'studio-' + s.id, name: s.name, words: s.words, items: s.items.map(e => ({ t: e.t, d: String(e.y), k: e.k })) })) });
   return list.map(f => ({ ...f, studio: true }));

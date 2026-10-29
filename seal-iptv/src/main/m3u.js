@@ -20,6 +20,28 @@ const crypto = require('crypto');
 
 const idOf = s => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 12);
 
+/* A stream's id comes from its address without the login in it, so a new password,
+   username or playlist link keeps every channel's and movie's id (favorites, watched,
+   resume points and the user's own categories stay with them):
+     http://host/live/USER/PASS/123.ts  ->  host/live/123     (Xtream-style: also .m3u8 = .ts)
+     http://host/USER/PASS/123          ->  host/123
+     http://user:pass@host/x.m3u8?token=… -> host/x.m3u8
+   The host stays: another provider's channel 123 isn't this one (catalog.js matches those by name). */
+const LOGIN_PARAMS = /^(username|user|u|password|pass|passwd|pwd|p|token|auth|authtoken|key|apikey|sig|signature|hash|md5|expires|exp|e|st|session|sid|wmsauthsign|hdnts|hdnea)$/i;
+function streamKey(url) {
+  let u;
+  try { u = new URL(String(url)); } catch { return String(url); }
+  const seg = u.pathname.split('/').filter(Boolean);
+  const num = s => /^\d+(\.\w{2,5})?$/.test(s || '');
+  let path;
+  if (seg.length === 4 && /^(live|movie|movies|series|timeshift)$/i.test(seg[0]) && num(seg[3])) path = [seg[0].toLowerCase(), seg[3].replace(/\.\w+$/, '')];
+  else if (seg.length === 3 && num(seg[2])) path = [seg[2].replace(/\.\w+$/, '')];
+  else path = seg;
+  const q = [...u.searchParams].filter(([k]) => !LOGIN_PARAMS.test(k)).map(([k, v]) => `${k}=${v}`).join('&');
+  return u.host.toLowerCase() + '/' + path.join('/') + (q ? '?' + q : '');
+}
+const streamId = url => idOf(streamKey(url));
+
 /* =================================================================
  * 1. PARSING
  * ================================================================= */
@@ -120,10 +142,10 @@ function buildCatalog(entries) {
   for (const e of entries) {
     const section = sectionOf(e);
     if (section === 'live') {
-      items.live.push({ id: idOf(e.url), name: e.name, logo: e.logo, cat: catId('live', e.group), num: ++num, epg: e.tvgId, url: e.url, ua: e.userAgent || undefined });
+      items.live.push({ id: streamId(e.url), name: e.name, logo: e.logo, cat: catId('live', e.group), num: ++num, epg: e.tvgId, url: e.url, ua: e.userAgent || undefined });
     } else if (section === 'movies') {
       const y = String(e.name).match(/\((19|20)\d{2}\)/);
-      items.movies.push({ id: idOf(e.url), name: e.name, poster: e.logo, cat: catId('movies', e.group), rating: 0, year: y ? Number(y[0].slice(1, 5)) : 0, added: 0, ext: (e.url.match(/\.(\w{2,4})(\?|$)/) || [])[1] || '', url: e.url, ua: e.userAgent || undefined });
+      items.movies.push({ id: streamId(e.url), name: e.name, poster: e.logo, cat: catId('movies', e.group), rating: 0, year: y ? Number(y[0].slice(1, 5)) : 0, added: 0, ext: (e.url.match(/\.(\w{2,4})(\?|$)/) || [])[1] || '', url: e.url, ua: e.userAgent || undefined });
     } else {
       const ep = episodeOf(e.name) || { show: e.name, season: 1, episode: 0 };
       const cat = catId('series', e.group);
@@ -135,7 +157,7 @@ function buildCatalog(entries) {
         items.series.push(show);
       }
       if (!show.poster && e.logo) show.poster = e.logo;
-      show.episodes.push({ id: idOf(e.url), season: ep.season, num: ep.episode || show.episodes.length + 1, title: e.name, image: e.logo, url: e.url, ua: e.userAgent || undefined });
+      show.episodes.push({ id: streamId(e.url), season: ep.season, num: ep.episode || show.episodes.length + 1, title: e.name, image: e.logo, url: e.url, ua: e.userAgent || undefined });
     }
   }
   const out = {};
@@ -156,4 +178,4 @@ function seriesInfoFromShow(show) {
   };
 }
 
-module.exports = { parseM3U, splitExtinf, episodeOf, sectionOf, buildCatalog, seriesInfoFromShow, idOf };
+module.exports = { parseM3U, splitExtinf, episodeOf, sectionOf, buildCatalog, seriesInfoFromShow, idOf, streamKey, streamId };

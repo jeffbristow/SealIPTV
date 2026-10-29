@@ -17,7 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Xtream } = require('./xtream');
-const { parseM3U, buildCatalog, seriesInfoFromShow } = require('./m3u');
+const { parseM3U, buildCatalog, seriesInfoFromShow, streamId } = require('./m3u');
 const { categoryLanguage, titleLanguage, languageName } = require('./language');
 const { isAdult } = require('./parental');
 const franchises = require('./franchises');
@@ -338,6 +338,7 @@ class Catalog {
   /** Reload a playlist from the provider. onStep(text) reports progress. */
   async refresh(pid, onStep = () => {}) {
     const p = this.store.getProfile(pid);
+    const old = this.get(pid);   // (what the library's titles were: their addresses and names, for _carryOver)
     let c;
     if (p.type === 'xtream') {
       await this.vpn.ensure();
@@ -357,10 +358,70 @@ class Catalog {
     }
     c.fetchedAt = Date.now();
     this._index(c);
+    let carried = 0;
+    try { carried = this._carryOver(pid, old, c); } catch { /* the library stays as it was */ }
     this.mem.set(pid, c);
     this._save(pid, c);
     for (const k of [...this.details.keys()]) if (k.startsWith(pid + '|')) this.details.delete(k);
-    return this.summary(pid);
+    return { ...this.summary(pid), carried };
+  }
+
+  /**
+   * After a reload: the titles the library has something about (favorites, watched, resume
+   * points, my categories) whose id isn't in the playlist any more — a new playlist link or
+   * login, a provider that renumbered, another provider — are found again and the library is
+   * moved to them: by the stream's address without the login, else by name (in its category,
+   * else the only one of that name); an episode by its show, then the same season and number.
+   * -> how many moved
+   */
+  _carryOver(pid, old, c) {
+    const list = this.library.entries(pid);
+    if (!list.length) return 0;
+    const SEC = { live: 'live', movie: 'movies', series: 'series' };
+    const oldItem = (s, id) => (this._isRead(old, s) ? old._byId[s].get(id) : ((old.refs || {})[s] || {})[id]) || null;
+    const names = {};
+    const byName = (s, name, cat) => {
+      if (!name) return null;
+      if (!names[s]) {
+        names[s] = new Map();
+        for (const i of c[s].items) { const k = coreName(i.name); if (!names[s].has(k)) names[s].set(k, []); names[s].get(k).push(i); }
+      }
+      const hits = names[s].get(coreName(name)) || [];
+      const inCat = cat ? hits.filter(i => i.cat === cat) : [];
+      return inCat.length === 1 ? inCat[0] : hits.length === 1 ? hits[0] : null;
+    };
+    const findNew = (s, id, meta) => {
+      if (c._byId[s].has(id)) return id;
+      const o = oldItem(s, id);
+      if (o && o.url) { const sid = streamId(o.url); if (c._byId[s].has(sid)) return sid; }
+      const hit = byName(s, (o && o.name) || meta.name, (o && o.cat) || meta.cat);
+      return hit ? hit.id : null;
+    };
+    const moves = new Map(), shows = new Map();
+    for (const { key, meta } of list) {
+      const kind = key.slice(0, key.indexOf(':')), id = key.slice(key.indexOf(':') + 1);
+      const s = SEC[kind];
+      if (!s) continue;
+      const to = findNew(s, id, meta || {});
+      if (kind === 'series' && to) shows.set(id, to);
+      if (to && to !== id) moves.set(key, { key: kind + ':' + to });
+    }
+    for (const { key, meta = {} } of list) {
+      if (!key.startsWith('episode:')) continue;
+      const id = key.slice(8), was = String(meta.seriesId || '');
+      let sid = shows.get(was) || (c._byId.series.has(was) ? was : null);
+      if (!sid) { const h = byName('series', meta.seriesName, ''); sid = h && h.id; }
+      const show = sid && c._byId.series.get(sid);
+      if (!show || !Array.isArray(show.episodes)) continue;   // Xtream: episodes aren't in the playlist (their ids don't change)
+      const patch = sid !== was ? { seriesId: sid } : {};
+      if (show.episodes.some(e => e.id === id)) { if (sid !== was) moves.set(key, { key, meta: patch }); continue; }
+      const oldShow = oldItem('series', was);
+      const oldEp = oldShow && Array.isArray(oldShow.episodes) ? oldShow.episodes.find(e => e.id === id) : null;
+      let ep = oldEp && oldEp.url ? show.episodes.find(e => e.id === streamId(oldEp.url)) : null;
+      if (!ep && meta.season != null && meta.episode != null) ep = show.episodes.find(e => e.season === meta.season && e.num === meta.episode);
+      if (ep) moves.set(key, { key: 'episode:' + ep.id, meta: patch });
+    }
+    return moves.size ? this.library.remap(pid, moves) : 0;
   }
 
   /* =================================================================

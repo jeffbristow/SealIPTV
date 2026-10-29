@@ -78,6 +78,12 @@ seal-iptv/
                            was tried: thousands of licensed films, not usable.
     xtream.js              Xtream Codes player_api client + stream URLs + normalizers
     m3u.js                 M3U parser, live/movies/series sorting, show grouping
+                           Ids: streamId(url) = hash of the address without the login (Xtream-style
+                           user/pass segments, login query values, user:pass@, .ts/.m3u8), host kept —
+                           a new password keeps every id. After any reload catalog._carryOver moves the
+                           library (favorites, watched, resume, my categories) of titles whose id is gone:
+                           by address, else by name (+ category), episodes by show + season/number
+                           (library.remap, synced). Editing the playlist in use reloads it.
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)
     parental.js            parental PIN (salted scrypt hash, unlock timer, wrong-PIN backoff)
     sync.js                Sync with seal-iptv-server: records + newest-wins, E2E encrypted (see header)

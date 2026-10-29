@@ -2359,6 +2359,10 @@ async function editProfile(p) {
   } else {
     renderProfiles(); render();
     toast(`Saved "${r.saved.name}".`);
+    // a new playlist link (or another server / login) for the playlist in use: load it now —
+    // its streams' addresses have changed; favorites, watched and my categories move with them (catalog.js)
+    const moved = p.type !== r.saved.type || (p.m3uUrl || '') !== (r.saved.m3uUrl || '') || (p.m3uFile || '') !== (r.saved.m3uFile || '') || (p.server || '') !== (r.saved.server || '') || (p.username || '') !== (r.saved.username || '');
+    if (moved && state.settings.activeProfile === r.saved.id) await reload();
   }
 }
 
@@ -2376,7 +2380,8 @@ async function reload({ quiet = false } = {}) {
   try {
     state.summary = await call('catalog:refresh');
     const c = state.summary.counts;
-    toast(`Playlist loaded: ${c.live.toLocaleString()} channels, ${c.movies.toLocaleString()} movies, ${c.series.toLocaleString()} series.`);
+    const kept = state.summary.carried ? ` Your favorites, watched marks and categories were kept for ${state.summary.carried.toLocaleString()} title${state.summary.carried === 1 ? '' : 's'} with new links.` : '';
+    toast(`Playlist loaded: ${c.live.toLocaleString()} channels, ${c.movies.toLocaleString()} movies, ${c.series.toLocaleString()} series.${kept}`);
     if (!['settings', 'movie', 'show'].includes(state.view)) render();
   } catch (e) {
     fail(e);

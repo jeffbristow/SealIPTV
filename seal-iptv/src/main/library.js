@@ -16,6 +16,7 @@
  *   5. Category choices
  *   6. My categories (the user's own: Kids, Date night …)
  *   7. Sync
+ *   8. Titles that got a new id (a new playlist link: catalog.js moves them)
  * ===================================================================== */
 const fs = require('fs');
 const path = require('path');
@@ -350,6 +351,48 @@ class Library {
       if (type === 'list') for (const k of Object.keys(L.listed)) if (k.startsWith(key + '/')) delete L.listed[k];
     }
     this._changed(pid);
+  }
+
+  /* =================================================================
+   * 8. TITLES THAT GOT A NEW ID (a new playlist link, another provider: catalog.js _carryOver)
+   * ================================================================= */
+  /** Every title the library has something about: [{ key, meta }] (favorites, watched, resume points, my categories). */
+  entries(pid) {
+    const d = this._get(pid), seen = new Map();
+    for (const map of ['favorites', 'watched', 'progress']) for (const [k, m] of Object.entries(d[map])) if (!seen.has(k)) seen.set(k, m);
+    for (const [k, m] of Object.entries(d.listed)) { const key = k.slice(k.indexOf('/') + 1); if (!seen.has(key)) seen.set(key, m); }
+    return [...seen].map(([key, meta]) => ({ key, meta }));
+  }
+
+  /**
+   * Move what the library has about some titles to their new keys: moves = Map(old key -> { key, meta? })
+   * (meta: fields to change, e.g. an episode's seriesId). Where the new key already has its own, the newer one stays.
+   * Sent to the other devices like any change. -> how many titles moved
+   */
+  remap(pid, moves) {
+    const d = this._get(pid);
+    let n = 0, moved = false, any = false;
+    const move = (map, type, from, to, patch) => {
+      const v = d[map][from];
+      if (!v) return;
+      moved = any = true;
+      const keep = from === to || !d[map][to] || (v.at || 0) > (d[map][to].at || 0);
+      delete d[map][from];
+      this._emit(type, pid, from, null);
+      if (keep) { d[map][to] = { ...v, ...patch }; this._emit(type, pid, to, d[map][to]); }
+    };
+    for (const [from, { key: to, meta = {} }] of moves) {
+      if (!to || (to === from && !Object.keys(meta).length)) continue;
+      moved = false;
+      move('favorites', 'fav', from, to, meta);
+      move('watched', 'seen', from, to, meta);
+      move('progress', 'pos', from, to, meta);
+      for (const lid of Object.keys(d.lists)) move('listed', 'listed', lid + '/' + from, lid + '/' + to, meta);
+      if (moved && to !== from) n++;
+    }
+    for (const k of Object.keys(d.progress)) if (d.watched[k] && d.watched[k].at > d.progress[k].at) delete d.progress[k];
+    if (any) this._changed(pid);
+    return n;
   }
 
   /** The same playlist under two ids (set up on two PCs before syncing): move one library into the other. */
