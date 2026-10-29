@@ -808,6 +808,16 @@ async function renderHome(view) {
   const spot = cont[0] ? spotlight(cont[0]) : newMovies.find(m => m.poster) ? spotlight(null, newMovies.find(m => m.poster)) : null;
   if (spot) top.appendChild(spot);
   if (cont.length > 1) home.appendChild(shelf('Continue watching', cont.slice(1), continueCard, { wide: true }));
+  // what's popular on the streaming services, the titles this playlist has (filled in when they're in)
+  const trend = h('<div class="trend-slot"></div>');
+  home.appendChild(trend);
+  if ((state.settings.artwork || {}).trending !== false) {
+    call('trending:home').then(t => {
+      if (!trend.isConnected || !t) return;
+      if (t.movies.length) trend.appendChild(shelf('🔥 Trending movies', t.movies, posterCard));
+      if (t.series.length) trend.appendChild(shelf('🔥 Trending series', t.series, posterCard));
+    }).catch(() => { /* no trending today */ });
+  }
   if (favLive.length) home.appendChild(shelf('Favorite channels', favLive.slice(0, 30), f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }), { more: () => { state.sec.live.cat = '*fav'; go('live'); } }));
   state.lists.forEach((l, i) => { if (mine[i].length) home.appendChild(shelf(`${l.icon || LIST_ICONS[0]} ${l.name}`, mine[i].slice(0, 30), listCard, { more: () => go('list', l.id) })); });
   if (favMovies.length) home.appendChild(shelf('Favorite movies', favMovies.slice(0, 30), f => posterCard({ kind: 'movie', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.movies.cat = '*fav'; go('movies'); } }));
@@ -2030,14 +2040,17 @@ function renderSettings(view) {
 
   /* ---- posters the provider doesn't have (artwork.js) ---- */
   const art = s.artwork || { lookup: true, tmdbKey: '' };
-  const ap = h(`<div class="panel"><h2>Posters</h2>
+  const ap = h(`<div class="panel"><h2>Posters &amp; trending</h2>
     <label class="check"><input type="checkbox" id="aOn" ${art.lookup ? 'checked' : ''}> Fill in missing posters: series from TVmaze, movies and series from TMDB</label>
     <p class="muted small">Only the title and year are sent to look a poster up, never your provider or login. Nothing is looked up while the VPN check is blocking.</p>
     <label for="aKey">TMDB API key (needed for movies)</label>
     <div class="row gap"><input type="password" id="aKey" value="${esc(art.tmdbKey || '')}" placeholder="Paste your free TMDB key" spellcheck="false" autocomplete="off" style="max-width:420px"><button class="btn" id="aTest">Test key</button><button class="btn ghost" id="aAgain">Look up again</button></div>
     <p class="faint small">Free: sign up at themoviedb.org, then Settings → API. The "API Key" or the "API Read Access Token" works. ${TV ? 'Easiest to paste on a PC: it syncs to this TV.' : 'It syncs to your other devices, so you only paste it once.'}</p>
-    <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters from TVmaze (tvmaze.com).</p></div>`);
+    <label class="check" style="margin-top:14px"><input type="checkbox" id="aTrend" ${art.trending !== false ? 'checked' : ''}> Trending movies and series on Home</label>
+    <p class="muted small">What's popular on Netflix, Disney+, Apple TV, Hulu, Peacock, Paramount+, Prime Video and HBO Max, when your playlist has it: from Netflix's own Top 10 and TVmaze, and from TMDB when a key is set (it adds movies from the other services). These are the same lists for everyone: nothing about you or your provider is sent.</p>
+    <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters and streaming schedules from TVmaze (tvmaze.com). Netflix Top 10 from top10.netflix.com.</p></div>`);
   add('posters', ap);
+  ap.querySelector('#aTrend').onchange = e => saveSettings({ artwork: { trending: e.target.checked } }, e.target.checked ? 'Trending movies and series will be on Home.' : 'No trending on Home.');
   ap.querySelector('#aOn').onchange = e => saveSettings({ artwork: { lookup: e.target.checked } }, e.target.checked ? 'Missing posters will be filled in.' : 'Posters are only taken from your provider.');
   ap.querySelector('#aKey').onchange = e => saveSettings({ artwork: { tmdbKey: e.target.value } }, e.target.value.trim() ? 'TMDB key saved.' : 'TMDB key removed.');
   ap.querySelector('#aTest').onclick = async () => {
@@ -2084,7 +2097,7 @@ const SETTINGS_SECTIONS = [
   ['playback', '▶️', 'Playback', () => 'Watched, resume, screensaver, audio sync'],
   ['parental', '🔒', 'Parental controls', () => !state.parental.hasPin ? 'No PIN' : state.parental.lockSettings ? 'PIN set · Settings locked' : 'PIN set'],
   ['categories', '🗂️', 'Categories', () => 'Hide, lock, languages'],
-  ['posters', '🖼️', 'Posters', () => (state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only'],
+  ['posters', '🖼️', 'Posters & trending', () => ((state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only') + ((state.settings.artwork || {}).trending !== false ? ' · trending on' : '')],
   ['library', '🕘', 'Updates & history', () => 'Playlist reloads, watch history'],
   ['about', 'ℹ️', 'About', () => 'Version ' + state.version]
 ];

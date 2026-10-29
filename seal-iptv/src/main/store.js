@@ -62,7 +62,8 @@ const DEFAULTS = {
   // posters the provider doesn't have, looked up by title (artwork.js)
   artwork: {
     lookup: true,           // TVmaze for series (no key needed)
-    tmdbKey: ''             // TMDB API key (v3) or read access token: movies too
+    tmdbKey: '',            // TMDB API key (v3) or read access token: movies too
+    trending: true          // Trending movies / series on Home (trending.js)
   },
   updates: {
     check: true             // look for a new version on GitHub when the app starts (updater.js)
@@ -85,7 +86,7 @@ const SYNC_GROUPS = {
   network: ['userAgent', 'customUserAgent'],
   catalog: ['refreshHours'],
   content: ['hideNonEnglish'],
-  artwork: ['lookup', 'tmdbKey'],
+  artwork: ['lookup', 'tmdbKey', 'trending'],
   favorites: ['live', 'movie', 'series'],
   collections: ['order'],
   vpn: ['required', 'provider'],
@@ -264,6 +265,7 @@ class Store {
     if (patch.artwork) {
       const a = patch.artwork;
       if (typeof a.lookup === 'boolean') s.artwork.lookup = a.lookup;
+      if (typeof a.trending === 'boolean') s.artwork.trending = a.trending;
       if (typeof a.tmdbKey === 'string') s.artwork.tmdbKey = a.tmdbKey.replace(/\s+/g, '').slice(0, 400);
     }
     if (patch.updates && typeof patch.updates.check === 'boolean') s.updates.check = patch.updates.check;

@@ -30,6 +30,7 @@ const { Xtream } = require('../../../seal-iptv/src/main/xtream');
 const { Parental } = require('../../../seal-iptv/src/main/parental');
 const { SyncService } = require('../../../seal-iptv/src/main/sync');
 const { Artwork } = require('../../../seal-iptv/src/main/artwork');
+const { Trending } = require('../../../seal-iptv/src/main/trending');
 
 /* =================================================================
  * 1. START-UP
@@ -57,6 +58,7 @@ function userAgent() {
 }
 const catalog = new Catalog({ dir: DATA, store, vpn, library, userAgent, parental });
 const artwork = new Artwork({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+const trending = new Trending({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 const sync = new SyncService({
   dataDir: DATA, store, library, secure, appVersion: VERSION,
   onApplied: types => send('sync:applied', [...types]),
@@ -182,7 +184,24 @@ handle('dialog:m3uFile', () => null);
 handle('dialog:exe', () => null);
 
 /* ---- catalogue ---- */
-handle('catalog:refresh', () => catalog.refresh(pid(), text => send('catalog:step', text)));
+// after a reload the titles are all in memory: the trending ones are found then (Home never reads a section for them)
+handle('catalog:refresh', () => catalog.refresh(pid(), text => send('catalog:step', text)).then(r => {
+  try { const t = trending.saved(); if (t) catalog.trending(pid(), t, { read: false }); } catch { /* next time */ }
+  return r;
+}));
+let trendFirst = null;
+handle('trending:home', async () => {
+  const t = await trending.get({ wait: true });
+  const id = pid();
+  // the first time (no matches kept yet): the sections are read a little later, in the background, to find them
+  if (t && !trendFirst && !catalog.trendKept(id)) {
+    trendFirst = setTimeout(() => readSections(['movies', 'series']).then(() => {
+      catalog.trending(id, trending.saved(), { read: true });   // (from the copies just fetched)
+      trace('trending: found in the playlist');
+    }).catch(() => { trendFirst = null; }), 15000);
+  }
+  return catalog.trending(id, t, { read: false });
+});
 handle('catalog:summary', () => catalog.summary(pid()));
 handle('catalog:cats', (section, opts) => catalog.cats(pid(), section, opts || {}));
 handle('catalog:list', opts => catalog.list(pid(), opts || {}));

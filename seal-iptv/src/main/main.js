@@ -23,6 +23,7 @@ const { Xtream } = require('./xtream');
 const { Parental } = require('./parental');
 const { SyncService } = require('./sync');
 const { Artwork } = require('./artwork');
+const { Trending } = require('./trending');
 const { ImageCache } = require('./imagecache');
 const { Updater } = require('./updater');
 
@@ -37,7 +38,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const VERSION = process.env.SEAL_IPTV_RUNNING_VERSION || app.getVersion();
 const UA = { seal: `SealIPTV/${VERSION}`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 
-let store, library, catalog, vpn, win, parental, sync, artwork, updater, imageCache;
+let store, library, catalog, vpn, win, parental, sync, artwork, trending, updater, imageCache;
 
 function userAgent() {
   const n = store.getSettings().network;
@@ -58,6 +59,7 @@ function init() {
   parental = new Parental(store);
   catalog = new Catalog({ dir, store, vpn, library, userAgent, parental });
   artwork = new Artwork({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+  trending = new Trending({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   sync = new SyncService({
     dataDir: dir, store, library, secure, appVersion: VERSION,
     onApplied: types => send('sync:applied', [...types]),
@@ -239,6 +241,7 @@ function registerIpc() {
 
   /* ---- catalogue ---- */
   handle('catalog:refresh', () => catalog.refresh(pid(), text => send('catalog:step', text)));
+  handle('trending:home', async () => catalog.trending(pid(), await trending.get({ wait: true })));
   handle('catalog:summary', () => catalog.summary(pid()));
   handle('catalog:cats', (section, opts) => catalog.cats(pid(), section, opts || {}));
   handle('catalog:list', opts => catalog.list(pid(), opts || {}));

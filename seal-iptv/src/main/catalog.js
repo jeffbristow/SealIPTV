@@ -23,6 +23,7 @@ const { isAdult } = require('./parental');
 const franchises = require('./franchises');
 const { networkLogo } = require('./networks');
 const { Guide } = require('./guide');
+const { titleKey } = require('./trending');
 
 const SECTIONS = ['live', 'movies', 'series'];
 const KIND = { live: 'live', movies: 'movie', series: 'series' };
@@ -268,6 +269,7 @@ class Catalog {
   rename(from, to) {
     this.mem.delete(from); this.mem.delete(to);
     this.guide.forget(from);
+    try { fs.unlinkSync(this._trendFile(from)); } catch { /* none */ }
     const have = fs.existsSync(this._file(to));
     const a = this._files(from), b = this._files(to);
     a.forEach((f, n) => { try { if (!have) fs.renameSync(f, b[n]); else fs.unlinkSync(f); } catch { /* nothing downloaded */ } });
@@ -276,6 +278,7 @@ class Catalog {
   remove(pid) {
     this.mem.delete(pid);
     this.guide.forget(pid);
+    try { fs.unlinkSync(this._trendFile(pid)); } catch { /* none */ }
     for (const f of this._files(pid)) try { fs.unlinkSync(f); } catch { /* none */ }
   }
 
@@ -574,6 +577,64 @@ class Catalog {
     const m = this._franchiseMatches(pid), open = this.parental.isUnlocked();
     const rules = { movie: this.rules(pid, 'movies'), series: this.rules(pid, 'series') };
     return (f, e) => (m.get(f.id + ':' + e.i) || []).filter(i => this._visible(i, rules[e.kind], open));
+  }
+
+  /* ---- Trending (trending.js): the titles on the streaming services' lists that this playlist has ---- */
+  _trendFile(pid) { return this._file(pid).replace(/\.json$/, '.trend.json'); }
+  /** Are there matches kept (a TV finds them in the background the first time)? */
+  trendKept(pid) { try { return JSON.parse(fs.readFileSync(this._trendFile(pid), 'utf8')).v === 2; } catch { return false; } }
+
+  /**
+   * For Home: { movies: [...], series: [...] }, the most-watched first, each with sub
+   * ("Netflix #1 · Hulu"). Only titles Home may show. read: may read a section that isn't
+   * read yet (Windows); a TV matches when a section is read anyway (a reload, Movies opened)
+   * and keeps the last matches in catalog/<id>.trend.json meanwhile.
+   */
+  trending(pid, list, { read = true, limit = 20 } = {}) {
+    const c = this.get(pid);
+    let kept = null;
+    try { kept = JSON.parse(fs.readFileSync(this._trendFile(pid), 'utf8')); } catch { /* none yet */ }
+    if (kept && kept.v !== 2) kept = null;   // an older format
+    const fresh = kept && list && kept.at === list.at && kept.fetchedAt === c.fetchedAt;
+    const out = {};
+    let changed = false;
+    for (const [section, kind] of [['movies', 'movie'], ['series', 'series']]) {
+      if (fresh || !list || (!read && !this._isRead(c, section))) { out[section] = (kept && kept[section]) || []; continue; }
+      out[section] = this._matchTrending(pid, c, section, list[kind] || []);
+      changed = true;
+    }
+    if (changed) try { writeJson(this._trendFile(pid), { v: 2, at: list.at, fetchedAt: c.fetchedAt, movies: out.movies, series: out.series }); } catch { /* next time */ }
+    // what Home may show now (a category may have been hidden or locked since), with today's flags
+    const res = {};
+    for (const [section, kind] of [['movies', 'movie'], ['series', 'series']]) {
+      const rules = this.rules(pid, section), open = this.parental.isUnlocked();
+      res[section] = this._decorate(pid, KIND[section], out[section].filter(i => this._visible(i, rules, open) && this._homeSafeItem(i, rules)).slice(0, limit), c[section]);
+    }
+    return res;
+  }
+
+  /** The playlist's copy of each title: the same name (tags, years and "The" aside) and, when the list knows it, the year. */
+  _matchTrending(pid, c, section, titles) {
+    const sec = c[section];
+    if (!sec._trIdx) {
+      sec._trIdx = new Map();
+      for (const i of sec.items) { const k = titleKey(i.name); if (!k) continue; if (!sec._trIdx.has(k)) sec._trIdx.set(k, []); sec._trIdx.get(k).push(i); }
+    }
+    const rules = this.rules(pid, section), open = this.parental.isUnlocked();
+    const out = [], seen = new Set();
+    for (const x of titles) {
+      let cands = (sec._trIdx.get(titleKey(x.t)) || []).filter(i => this._visible(i, rules, open) && this._homeSafeItem(i, rules));
+      if (x.y) cands = cands.filter(i => !i.year || Math.abs(Number(i.year) - x.y) <= 1);
+      // no year to go by and different titles of that name (a 2019 and a 2021 "Animals"): don't guess
+      else if (new Set(cands.map(i => Number(i.year) || 0).filter(Boolean)).size > 1) continue;
+      cands.sort((a, b) => (foreignOf(a) - foreignOf(b)) || (!!b.poster - !!a.poster));
+      const it = cands.find(i => !seen.has(i.id));
+      if (!it) continue;
+      seen.add(it.id);
+      out.push({ ...plainItem(it), sub: x.tags.length ? x.tags.slice(0, 2).join(' · ') : 'Trending' });   // two fit under a poster
+      if (out.length >= 30) break;
+    }
+    return out;
   }
 
   /**

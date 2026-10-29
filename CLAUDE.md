@@ -57,6 +57,15 @@ seal-iptv/
                            ahead of now), read as it arrives (TV: res.pieces, 1 MB at a time), only
                            the next 26 h for the playlist's tvg ids kept -> catalog/<id>.guide.json.
                            catalog.epg / epgMany use it first, then get_short_epg (kept 15 min).
+    trending.js            Trending movies / series on Home: Netflix's own Top 10 TSV (needs a browser
+                           User-Agent, else it comes cut short), TVmaze's week of streaming episodes per
+                           service, TMDB popular-per-service + trending (only with the user's key) ->
+                           trending.json (12 h). catalog.trending matches by titleKey + year (no year and
+                           two different years in the playlist: skipped); TV: never reads a section for
+                           Home — matches after a reload / when a section is read, kept in
+                           catalog/<id>.trend.json (first run: read in the background once).
+                           FlixPatrol has the other services' Top 10s but sits behind a Cloudflare bot
+                           check: not used.
     xtream.js              Xtream Codes player_api client + stream URLs + normalizers
     m3u.js                 M3U parser, live/movies/series sorting, show grouping
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)
