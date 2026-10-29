@@ -1000,18 +1000,24 @@ class Catalog {
     return out;
   }
 
-  /** The address to play. kind: live | movie | episode */
-  async streamUrl(pid, { kind, id, ext, seriesId }) {
+  /**
+   * The address to play. kind: live | movie | episode.
+   * record (media.js, a recording that was set up while it could be): no lock check now, and live TV
+   * as one .ts stream when the provider has it (steadier to save than HLS pieces)
+   */
+  async streamUrl(pid, { kind, id, ext, seriesId }, { record = false } = {}) {
     const p = this.store.getProfile(pid);
     const c = this.get(pid);
-    if (kind === 'live') this.guard(pid, 'live', this._find(c, 'live', id));
-    else if (kind === 'movie') this.guard(pid, 'movies', this._find(c, 'movies', id));
-    else this.guard(pid, 'series', this._find(c, 'series', seriesId));
+    if (!record) {
+      if (kind === 'live') this.guard(pid, 'live', this._find(c, 'live', id));
+      else if (kind === 'movie') this.guard(pid, 'movies', this._find(c, 'movies', id));
+      else this.guard(pid, 'series', this._find(c, 'series', seriesId));
+    }
     if (p.type === 'xtream') {
       const x = this.client(p);
       if (kind === 'live') {
         const fmts = (c.account && c.account.formats) || [];
-        const want = p.liveFormat !== 'auto' ? p.liveFormat : (!fmts.length || fmts.includes('m3u8') ? 'm3u8' : 'ts');
+        const want = record && (!fmts.length || fmts.includes('ts')) ? 'ts' : p.liveFormat !== 'auto' ? p.liveFormat : (!fmts.length || fmts.includes('m3u8') ? 'm3u8' : 'ts');
         return { url: x.liveUrl(id, want), live: true };
       }
       if (kind === 'movie') {

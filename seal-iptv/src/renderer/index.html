@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- streams, posters and logos come from the provider: any http(s) source; scripts only from the app -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data: blob: sealimg:; media-src * blob: data:; connect-src *; worker-src 'self' blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data: blob: sealimg:; media-src * blob: data: sealfile:; connect-src * sealfile:; worker-src 'self' blob:">
 <title>Seal IPTV</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -30,6 +30,8 @@
       <button class="nav" data-view="collections"><span class="ico">📚</span>Collections</button>
       <button class="nav" data-view="favorites"><span class="ico">⭐</span>Favorites</button>
       <button class="nav" data-view="watchlist"><span class="ico">📌</span>Watchlist</button>
+      <button class="nav win-only" data-view="downloads"><span class="ico">📥</span>Downloads</button>
+      <button class="nav win-only" data-view="recordings"><span class="ico">⏺️</span>Recordings</button>
       <div id="myNav" class="my-nav"></div>
       <div class="nav-sep"></div>
       <button class="nav" data-view="settings"><span class="ico">⚙️</span>Settings</button>
@@ -102,6 +104,7 @@
       <button class="p-btn" id="pSyncBtn" title="Audio sync — for Bluetooth sound that's late ([ and ])">⏱ Sync</button>
       <button class="p-btn" id="pMute" title="Mute (M)">🔊</button>
       <input type="range" class="p-vol" id="pVol" min="0" max="100" value="100">
+      <button class="p-btn hidden win-only" id="pRec" title="Record this channel">⏺ Record</button>
       <button class="p-btn" id="pVlc" title="Open in VLC">VLC</button>
       <button class="p-btn" id="pFull" title="Full screen (F)">⛶</button>
     </div>

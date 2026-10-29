@@ -10,7 +10,9 @@
  *   6. Updates (updater.js; bootstrap.js runs the newest package)
  *   7. Dev: screenshots (SEAL_IPTV_SHOTS)
  * ===================================================================== */
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, session, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, session, protocol, powerSaveBlocker } = require('electron');
+const { Readable } = require('stream');
+const { Media } = require('./media');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -41,7 +43,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const VERSION = process.env.SEAL_IPTV_RUNNING_VERSION || app.getVersion();
 const UA = { seal: `SealIPTV/${VERSION}`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 
-let store, library, catalog, vpn, win, parental, sync, artwork, trending, updater, imageCache;
+let store, library, catalog, vpn, win, parental, sync, artwork, trending, updater, imageCache, media;
 
 function userAgent() {
   const n = store.getSettings().network;
@@ -77,6 +79,16 @@ function init() {
   sync.onLocalChange = type => syncSoon(type === 'pos' ? 20000 : 1500);
   // other PCs' changes: every 15 s, and as soon as the window is used again
   setInterval(() => syncSoon(0), 15000).unref();
+  // downloads and recordings (media.js): Windows kept awake while one runs
+  let awakeId = null;
+  media = new Media({
+    dir, store, catalog, library, vpn, userAgent, fetch: (u, o) => globalThis.fetch(u, o),
+    videos: path.join(app.getPath('videos'), 'Seal IPTV'),
+    notify: send,
+    awake: { start: () => { if (awakeId == null) awakeId = powerSaveBlocker.start('prevent-app-suspension'); }, stop: () => { if (awakeId != null) powerSaveBlocker.stop(awakeId); awakeId = null; } },
+    freeSpace: async f => { try { fs.mkdirSync(f, { recursive: true }); const s = await fs.promises.statfs(f); return s.bavail * s.bsize; } catch { return null; } }
+  });
+  media.start();
   vpn.on('status', s => send('vpn:status', s));
   vpn.start();
   vpn.check({ force: true }).catch(() => {});
@@ -128,6 +140,18 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.on('focus', () => syncSoon(300));
+  // a recording would end with the window: asked first
+  win.on('close', e => {
+    if (process.env.SEAL_IPTV_SHOTS || !media) return;
+    const b = media.busy();
+    if (!b.recording.length && !b.scheduled) return;
+    const r = dialog.showMessageBoxSync(win, {
+      type: 'warning', buttons: ['Close Seal IPTV', 'Keep it open'], defaultId: 1, cancelId: 1, noLink: true,
+      title: 'Seal IPTV', message: b.recording.length ? `"${b.recording.join('", "')}" ${b.recording.length === 1 ? 'is' : 'are'} being recorded.` : `${b.scheduled} recording${b.scheduled === 1 ? ' is' : 's are'} scheduled for the next 24 hours.`,
+      detail: `Recordings only happen while Seal IPTV is open. Closing it ${b.recording.length ? 'stops the recording (what has been recorded so far is kept)' : 'means they won\'t be recorded'}.${b.downloading ? ' Downloads go on the next time Seal IPTV starts.' : ''}`
+    });
+    if (r === 1) e.preventDefault();
+  });
 }
 
 /* =================================================================
@@ -282,6 +306,27 @@ function registerIpc() {
   handle('lists:set', (id, key, on, meta) => library.setListed(pid(), id, key, on, meta));
   handle('lists:title', (id, key, title) => library.setListedTitle(pid(), id, key, title));
   handle('collections:list', q => catalog.collections(pid(), q));
+
+  /* ---- downloads + recordings (media.js) ---- */
+  // only what may be shown now (a locked category's titles / channels left out)
+  const mediaShown = it => { try { return catalog.visibleKey(it.pid, it.type === 'download' ? it.key : 'live:' + it.channel.id, it.type === 'download' ? { ...it.meta, seriesId: it.req.seriesId } : {}); } catch { return true; } };
+  handle('media:list', () => ({ items: media.list().filter(mediaShown), used: media.used(), limit: media.limit(), folder: media.folder() }));
+  handle('media:of', keys => { const id = pid(), out = {}; for (const k of keys || []) { const d = media.downloadOf(k); if (d && media.get(d.id).pid === id) out[k] = d; } return out; });
+  handle('media:download', async (req, meta) => { const id = pid(); await catalog.streamUrl(id, req); return media.addDownload(id, req, meta); });
+  handle('media:downloadMany', async list => { const id = pid(); for (const { req, meta } of list || []) { await catalog.streamUrl(id, req); media.addDownload(id, req, meta); } return (list || []).length; });
+  handle('media:pause', id => media.pause(id));
+  handle('media:resume', id => media.resume(id));
+  handle('media:remove', (id, deleteFile) => media.remove(id, { deleteFile: deleteFile !== false }));
+  handle('media:recordNow', async (o, force) => { const id = pid(); await catalog.streamUrl(id, { kind: 'live', id: o.channel.id }); return media.recordNow(id, o, { force: !!force }); });
+  handle('media:schedule', async o => { const id = pid(); await catalog.streamUrl(id, { kind: 'live', id: o.channel.id }); return media.schedule(id, o); });
+  handle('media:stop', id => media.stop(id));
+  handle('media:answer', (id, record) => media.answer(id, !!record));
+  handle('media:show', id => { const f = media.fileOf(id); if (f) shell.showItemInFolder(f.file); else shell.openPath(media.folder()); return true; });
+  handle('media:openFolder', () => { fs.mkdirSync(media.folder(), { recursive: true }); return shell.openPath(media.folder()); });
+  handle('media:chooseFolder', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Where downloads and recordings go', defaultPath: media.folder(), properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  });
   handle('collections:get', (id, order, kind) => catalog.collection(pid(), id, order, kind));
 
   /* ---- parental controls + category choices ---- */
@@ -336,7 +381,7 @@ function registerIpc() {
 
   /* ---- playing ---- */
   handle('play:prepare', req => preparePlay(req));
-  handle('play:stopped', () => { playUa = null; playing = false; return true; });
+  handle('play:stopped', () => { playUa = null; playing = false; media.afterPlay(); return true; });
   handle('play:netlog', () => netLog.slice());
   handle('play:external', req => playExternal(req));
   handle('play:findVlc', () => findVlc());
@@ -351,9 +396,17 @@ function registerIpc() {
  * Refuses (code 'VPN') when the VPN is required and not confirmed.
  */
 async function preparePlay(req) {
+  // a downloaded / recorded file: no provider, no stream used
+  if (req.file) {
+    const f = media.playInfo(req.file);
+    netLog.length = 0;
+    return { url: f.url, shown: f.file, ua: userAgent(), live: false, key: f.key, resume: f.resume, local: true };
+  }
   const id = pid();
   await vpn.ensure();
   const s = await catalog.streamUrl(id, req);
+  // one more stream: a download waits, a recording is only stopped when the user said so (STREAMS: asked)
+  media.beforePlay({ force: !!req.force });
   playUa = s.ua || null;
   playing = true;
   netLog.length = 0;
@@ -378,11 +431,17 @@ function findVlc() {
 
 /** Open in VLC (or the player in Settings). Same VPN rule as the built-in player. */
 async function playExternal(req) {
-  const id = pid();
-  await vpn.ensure();
   const exe = findVlc();
   if (!exe) throw new Error('VLC wasn\'t found. Install VLC, or choose a player in Settings → Playback.');
-  const s = await catalog.streamUrl(id, req);
+  let s;
+  if (req.file) s = { url: media.playInfo(req.file).file };
+  else {
+    const id = pid();
+    await vpn.ensure();
+    s = await catalog.streamUrl(id, req);
+    // VLC is one more stream too (Seal IPTV can't see when it's closed: only checked now)
+    if (!media.canStream()) throw new Error(`Seal IPTV is set to use ${media.limit()} stream${media.limit() === 1 ? '' : 's'} at a time, and ${media.limit() === 1 ? 'it is' : 'they are'} in use (a recording). Stop it, or allow more streams in Settings → Recordings & downloads.`);
+  }
   const args = [s.url];
   if (/vlc\.exe$/i.test(exe)) {
     args.push(`--http-user-agent=${s.ua || userAgent()}`, '--no-video-title-show');
@@ -437,7 +496,33 @@ async function runShots(file) {
 /* ================================================================= */
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 // posters / logos as sealimg://img/?u=<address>: kept on disk (imagecache.js)
-protocol.registerSchemesAsPrivileged([{ scheme: 'sealimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'sealimg', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // downloads / recordings as sealfile://media/<id>/<name>: only the files media.js saved (Range for seeking)
+  { scheme: 'sealfile', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
+]);
+function registerFiles() {
+  protocol.handle('sealfile', async req => {
+    let id = '';
+    try { id = new URL(req.url).pathname.split('/')[1] || ''; } catch { /* bad address */ }
+    const f = media && media.fileOf(id);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS' } });
+    if (!f) return new Response('Not found', { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
+    const size = fs.statSync(f.file).size;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') || '');
+    let start = 0, end = size - 1, status = 200;
+    if (m && (m[1] || m[2])) {
+      if (m[1]) { start = Number(m[1]); if (m[2]) end = Math.min(Number(m[2]), size - 1); }
+      else start = Math.max(0, size - Number(m[2]));
+      if (start >= size) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}`, 'Access-Control-Allow-Origin': '*' } });
+      status = 206;
+    }
+    // (the page is file://: the player's requests are cross-origin)
+    const headers = { 'Content-Type': f.type, 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Expose-Headers': '*' };
+    if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    return new Response(size ? Readable.toWeb(fs.createReadStream(f.file, { start, end })) : null, { status, headers });
+  });
+}
 function registerImages() {
   imageCache = new ImageCache({ dir: path.join(app.getPath('userData'), 'images'), fetch: (u, o) => session.defaultSession.fetch(u, o), allowed: () => vpn.allowed() });
   protocol.handle('sealimg', async req => {
@@ -452,9 +537,10 @@ app.whenReady().then(() => {
   init();
   installNetGuard(session.defaultSession);
   registerImages();
+  registerFiles();
   registerIpc();
   registerUpdates();
   createWindow();
 });
-app.on('before-quit', () => { try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); } catch { /* nothing to save */ } try { imageCache.flushFailed(); } catch { /* nothing to save */ } });
+app.on('before-quit', () => { try { if (media) media.shutdown(); } catch { /* saved as it was */ } try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); } catch { /* nothing to save */ } try { imageCache.flushFailed(); } catch { /* nothing to save */ } });
 app.on('window-all-closed', () => app.quit());

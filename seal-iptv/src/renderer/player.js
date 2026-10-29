@@ -6,7 +6,9 @@
  *           seriesId, seriesName, season, episode }
  *   opts: { start: seconds (skips the resume question),
  *           channels: [...], index   — live: channel up / down
- *           queue: [req, ...]        — series: next episode }
+ *           queue: [req, ...]        — series: next episode,
+ *           force: stop a recording if the stream is needed (asked first) }
+ *   req.file: a download / recording's id (media.js): plays the saved file
  *
  * Engines, chosen by the address and tried in turn until one plays:
  *   hls.js   .m3u8 (HLS)            mpegts.js  .ts / live without extension
@@ -48,8 +50,14 @@ const Player = (() => {
     if (cur) await stop({ keepOpen: true });
     let prep;
     try {
-      prep = await call('play:prepare', { kind: req.kind, id: req.id, ext: req.ext, seriesId: req.seriesId });
+      prep = await call('play:prepare', { kind: req.kind, id: req.id, ext: req.ext, seriesId: req.seriesId, file: req.file, force: !!opts.force });
     } catch (e) {
+      // the streams allowed at once are in use by a recording: stop it to play this?
+      if (e.code === 'STREAMS') {
+        if (await confirmBox('Stop the recording?', e.message, 'Stop the recording and play', true)) return play(req, { ...opts, force: true });
+        if (!root.classList.contains('hidden')) close();
+        return;
+      }
       if (e.code === 'LOCKED') {
         if (!root.classList.contains('hidden')) close();
         if (await askPin(e.locked)) return play(req, opts);
@@ -94,6 +102,7 @@ const Player = (() => {
     show($('#pPrevCh'), cur.live && !!cur.opts.channels);
     show($('#pNextCh'), cur.live && !!cur.opts.channels);
     show($('#pNextEp'), !!nextEpisode());
+    show($('#pRec'), cur.live && !TV);
     show($('#pAudio'), false); show($('#pSubs'), false);
     hideMsg(); hideNext();
     $('#pTime').textContent = cur.live ? '' : '0:00';
@@ -268,7 +277,7 @@ const Player = (() => {
 
   function saveProgress(force) {
     const c = cur;
-    if (!c || c.live || c.marked || !c.started) return;
+    if (!c || !c.key || c.live || c.marked || !c.started) return;
     if (!force && Date.now() - c.lastSave < SAVE_EVERY) return;
     c.lastSave = Date.now();
     const dur = Number.isFinite(video.duration) ? video.duration : 0;
@@ -277,7 +286,7 @@ const Player = (() => {
 
   function markWatched() {
     const c = cur;
-    if (!c || c.marked) return;
+    if (!c || !c.key || c.marked) return;
     c.marked = true;
     call('lib:watched', c.key, true, c.meta).then(() => toast(`Marked "${c.req.kind === 'episode' ? `${c.req.seriesName} ${epLabel(c.req.season, c.req.episode)}` : c.req.name}" as watched.`)).catch(() => {});
   }
@@ -328,7 +337,7 @@ const Player = (() => {
     const title = r.kind === 'episode' ? `${r.seriesName} ${epLabel(r.season, r.episode)} ${r.name}` : r.name;
     saveProgress(true);
     close();
-    openExternal({ kind: r.kind, id: r.id, ext: r.ext, seriesId: r.seriesId, title, start });
+    openExternal({ kind: r.kind, id: r.id, ext: r.ext, seriesId: r.seriesId, file: r.file, title, start });
   }
 
   /* =================================================================
@@ -361,6 +370,8 @@ const Player = (() => {
   $('#pFwd30').onclick = () => seekBy(30);
   $('#pFull').onclick = fullscreen;
   $('#pVlc').onclick = openVlc;
+  // Windows: record the channel that's on (app.js recordDialog)
+  $('#pRec').onclick = () => { if (cur && cur.live) recordDialog({ id: cur.req.id, name: cur.req.name, logo: cur.req.image }); };
   $('#pPrevCh').onclick = () => zap(-1);
   $('#pNextCh').onclick = () => zap(1);
   $('#pNextEp').onclick = () => { const nx = nextEpisode(); if (nx) { saveProgress(true); play(nx, { queue: cur.opts.queue, start: 0 }); } };

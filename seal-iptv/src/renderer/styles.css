@@ -130,6 +130,31 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 .badge.ev-sport { left: 6px; font-size: 14px; padding: 1px 6px; }
 .badge.live { top: auto; bottom: 8px; left: 6px; background: #e5484d; color: #fff; font-weight: 700; letter-spacing: .03em; }
 .event-card .title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Downloads + recordings (Windows) */
+html.tv .win-only { display: none !important; }
+.media-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 16px 22px 4px; }
+.media-page .shelf-head { padding: 14px 22px 6px; }
+.media-row { display: flex; gap: 14px; align-items: center; margin: 0 22px 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); }
+.media-row:focus, .media-row:hover { border-color: var(--accent-2); }
+.media-row.is-live { border-color: #e5484d; }
+.m-thumb { flex: none; width: 54px; height: 80px; border-radius: 6px; overflow: hidden; background: var(--bg-3); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.m-thumb.logo { width: 96px; height: 54px; padding: 6px; }
+.m-thumb.logo img { object-fit: contain; }
+.m-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.m-txt { flex: 1; min-width: 0; }
+.m-txt .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-txt .bar { position: static; margin-top: 8px; height: 4px; border-radius: 2px; background: var(--bg-3); overflow: hidden; }
+.m-txt .bar i { display: block; height: 100%; background: var(--accent); }
+.m-act { flex: none; display: flex; gap: 6px; }
+.rec-dot { color: #e5484d; animation: recBlink 1.6s infinite; }
+@keyframes recBlink { 50% { opacity: .35; } }
+.rec-when { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.rec-when .check { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rec-when select, .rec-when input[type=datetime-local] { width: auto; color-scheme: dark; }
+.rec-found { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.dl-btn { flex: none; min-width: 34px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text-2); cursor: pointer; font-size: 12px; margin-right: 6px; }
+.dl-btn.on { color: var(--accent); border-color: var(--accent); }
+#pRec { color: #ff6b6b; }
 .badge.new { top: auto; bottom: 8px; left: 6px; background: var(--amber); color: #0b0d10; font-weight: 600; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); }
 .bar i { display: block; height: 100%; background: var(--accent); }
@@ -246,7 +271,7 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 /* ---------- 10. Forms + buttons ---------- */
 label { font-size: 12px; color: var(--text-2); margin-top: 8px; display: block; }
 label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin-top: 8px; }
-input[type=text], input[type=password], input[type=number], input[type=search], input[type=url], select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=search], input[type=url], input[type=datetime-local], select, textarea {
   background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; outline: none; width: 100%;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent-2); }

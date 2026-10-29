@@ -7,6 +7,7 @@ const CHANNELS = new Set([
   'catalog:refresh', 'catalog:summary', 'catalog:cats', 'catalog:list', 'catalog:item', 'catalog:search', 'catalog:recent', 'trending:home',
   'details:movie', 'details:series', 'epg:short', 'epg:grid',
   'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
+  'media:list', 'media:of', 'media:download', 'media:downloadMany', 'media:pause', 'media:resume', 'media:remove', 'media:recordNow', 'media:schedule', 'media:stop', 'media:answer', 'media:show', 'media:openFolder', 'media:chooseFolder',
   'lib:watchlist', 'lib:onWatchlist', 'lib:watchlistItems', 'events:list', 'events:home',
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
@@ -15,7 +16,7 @@ const CHANNELS = new Set([
   'art:find', 'art:keep', 'art:testKey', 'art:clear',
   'update:check', 'update:install', 'update:restart', 'update:openPage'
 ]);
-const EVENTS = new Set(['vpn:status', 'catalog:step', 'sync:applied', 'sync:status', 'update:progress']);
+const EVENTS = new Set(['vpn:status', 'catalog:step', 'sync:applied', 'sync:status', 'update:progress', 'media:changed', 'media:conflict', 'media:note', 'media:takeover']);
 
 contextBridge.exposeInMainWorld('api', {
   invoke: (channel, ...args) => {

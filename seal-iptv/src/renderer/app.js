@@ -256,6 +256,7 @@ async function start() {
   window.api.on('sync:applied', types => refreshAll(types).catch(() => {}));
   window.api.on('sync:status', s => { state.sync = s; if (state.view === 'settings') drawSyncPanel(); });
   if (TV) window.api.on('phone:done', d => { if (phoneDone) phoneDone(d); });
+  mediaEvents();
   updateLockBtn();
   window.api.on('vpn:status', onVpnStatus);
   window.api.on('catalog:step', t => { if (state.refreshing) { busyText(t); } });
@@ -294,7 +295,7 @@ async function autoRefresh() {
 /* =================================================================
  * 3. NAVIGATION, TOP BAR, SEARCH
  * ================================================================= */
-const TITLES = { home: 'Home', live: 'Live TV', guide: 'TV Guide', movies: 'Movies', series: 'Series', favorites: 'Favorites', watchlist: 'Watchlist', sports: 'Sports', ppv: 'Pay-Per-View', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
+const TITLES = { home: 'Home', live: 'Live TV', guide: 'TV Guide', movies: 'Movies', series: 'Series', favorites: 'Favorites', watchlist: 'Watchlist', downloads: 'Downloads', recordings: 'Recordings', sports: 'Sports', ppv: 'Pay-Per-View', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
 
 function go(view, arg = null, { push = true } = {}) {
   if (view === 'settings' && state.view !== 'settings' && settingsLocked()) {
@@ -388,8 +389,9 @@ function render() {
   const view = $('#view');
   view.innerHTML = '';
   view.scrollTop = 0;
+  state.mediaDraw = null;   // (a page with downloads on it sets it again)
   if (!profile() && v !== 'settings') return renderWelcome(view);
-  ({ home: renderHome, live: renderLive, guide: renderGuide, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, watchlist: renderWatchlist, sports: renderEvents, ppv: renderEvents, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
+  ({ home: renderHome, live: renderLive, guide: renderGuide, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, watchlist: renderWatchlist, downloads: renderDownloads, recordings: renderRecordings, sports: renderEvents, ppv: renderEvents, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
   if (TV && window.tvFocusFirst) window.tvFocusFirst();
 }
 
@@ -1041,10 +1043,11 @@ async function selectChannel(it, el) {
   const i = state.live.items.indexOf(it);
   box.innerHTML = `<div class="big-logo">${pic(it.logo, it.name)}</div>
     <h2 style="font-size:18px">${esc(it.name)}</h2><p class="muted small">${esc(it.catName || '')}</p>
-    <div class="actions"><button class="btn primary" id="liPlay">▶ Watch</button><button class="btn" id="liFav">${it.fav ? '★ Favorite' : '☆ Favorite'}</button><button class="btn" id="liList" title="Put it in one of your own categories">＋ Category</button><button class="btn ghost" id="liVlc" title="${OTHER_PLAYER}">${TV ? 'Other app' : 'VLC'}</button></div>
+    <div class="actions"><button class="btn primary" id="liPlay">▶ Watch</button><button class="btn" id="liFav">${it.fav ? '★ Favorite' : '☆ Favorite'}</button><button class="btn" id="liList" title="Put it in one of your own categories">＋ Category</button>${TV ? '' : '<button class="btn" id="liRec" title="Record this channel, now or at a time">⏺ Record</button>'}<button class="btn ghost" id="liVlc" title="${OTHER_PLAYER}">${TV ? 'Other app' : 'VLC'}</button></div>
     <div id="liEpg"><p class="muted small">Loading what's on…</p></div>`;
   $('#liPlay').onclick = () => playChannel(i);
   $('#liVlc').onclick = () => openExternal({ kind: 'live', id: it.id, title: it.name });
+  if ($('#liRec')) $('#liRec').onclick = () => recordDialog({ id: it.id, name: it.name, logo: it.logo });
   $('#liList').onclick = () => pickLists('live:' + it.id, { name: it.name, image: it.logo, cat: it.cat });
   $('#liFav').onclick = async () => {
     await toggleFav(it, 'live', { name: it.name, image: it.logo, cat: it.cat });
@@ -1206,7 +1209,8 @@ function renderGuide(view) {
     if (!row) return;
     e.preventDefault();
     const it = row._ch;
-    cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo, cat: it.cat });
+    const p = e.target.closest('.g-p');
+    cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo, cat: it.cat, prog: p && p._e && p._e.title ? { title: p._e.title, start: p._e.start, end: p._e.end } : null });
   });
 
   const load = () => {
@@ -1455,10 +1459,16 @@ async function renderMovie(view) {
       try { m.watched = await call('lib:watched', 'movie:' + m.id, !m.watched, { name, image: poster }); if (m.watched) { m.pos = 0; m.wl = false; } draw(); }
       catch (e) { fail(e); }
     });
+    if (!TV) add(dlLabel(dl), () => downloadTitle({ kind: 'movie', id: m.id, ext: req.ext }, { title: name, year: i.year || m.year, image: poster }, dl));
     add(OTHER_PLAYER, () => openExternal({ ...req, title: name, start: m.pos || 0 }), 'btn ghost');
     if (i.trailer) add('Trailer', () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(i.trailer)}`), 'btn ghost');
   });
+  // Windows: is it downloaded / downloading? (kept up to date while the page is open)
+  let dl = null;
+  const dlKey = 'movie:' + m.id;
+  if (!TV) state.mediaDraw = () => call('media:of', [dlKey]).then(r => { const d = r[dlKey] || null; if (JSON.stringify(d) !== JSON.stringify(dl) && actions.isConnected) { dl = d; draw(); } }).catch(() => {});
   draw();
+  if (state.mediaDraw) state.mediaDraw();
   tvStart(actions.firstChild);
 }
 
@@ -1532,6 +1542,15 @@ async function renderShow(view) {
     add(d.wl ? '✓ On watchlist' : '📌 Watchlist', async () => { await toggleWatchlist(d, 'series', { name, image: poster, cat: d.cat }); drawActions(); });
     add('＋ Category', () => pickLists('series:' + d.id, { name, image: poster, cat: d.cat }));
     const inSeason = queue.filter(q => q.season === season);
+    if (!TV && inSeason.length) {
+      const left = inSeason.filter(q => !dls['episode:' + q.id]);
+      if (left.length) add(`⬇ Download season ${season}`, async () => {
+        try {
+          await call('media:downloadMany', left.map(q => ({ req: { kind: 'episode', id: q.id, ext: q.ext, seriesId: d.id }, meta: { seriesName: name, season: q.season, episode: q.episode, name: q.name, image: q.image || poster } })));
+          toast(`Downloading ${left.length} episode${left.length === 1 ? '' : 's'} of ${name}. They're in Downloads.`);
+        } catch (e) { fail(e); }
+      }, 'btn ghost');
+    }
     if (inSeason.length) {
       const allSeen = inSeason.every(q => q.watched);
       add(allSeen ? `○ Season ${season}: mark as not watched` : `✓ Mark season ${season} as watched`, async () => {
@@ -1572,8 +1591,11 @@ async function renderShow(view) {
         <div class="thumb">${q.image ? `<img class="pi" loading="lazy" src="${esc(imgSrc(q.image))}" data-i="E${q.episode}" alt="">` : `<span>E${q.episode}</span>`}${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
         <div class="txt"><div class="t">${q.episode}. ${esc(q.name)}</div>
           <div class="small muted">${q.pos ? esc(fmtLeft(q.pos, q.dur)) : q.watched ? 'Watched' : ''}</div></div>
+        ${TV ? '' : `<button class="dl-btn${dls['episode:' + q.id] ? ' on' : ''}" title="${dls['episode:' + q.id] && dls['episode:' + q.id].status === 'done' ? 'Downloaded — click to play it' : dls['episode:' + q.id] ? 'Downloading — see Downloads' : 'Download this episode'}">${dlMark(dls['episode:' + q.id])}</button>`}
         <button class="seen-btn${q.watched ? ' on' : ''}" title="${q.watched ? 'Watched — click to mark as not watched' : 'Mark as watched'}">✓</button>
       </div>`);
+      const dlb = el.querySelector('.dl-btn');
+      if (dlb) dlb.onclick = e => { e.stopPropagation(); downloadTitle({ kind: 'episode', id: q.id, ext: q.ext, seriesId: d.id }, { seriesName: name, season: q.season, episode: q.episode, name: q.name, image: q.image || poster }, dls['episode:' + q.id]); };
       const ep = (d.info.seasons.find(s => s.num === season) || { episodes: [] }).episodes.find(e => e.id === q.id);
       if (ep && ep.plot) el.querySelector('.txt').appendChild(h(`<div class="p">${esc(ep.plot)}</div>`));
       el.onclick = () => Player.play(q, { queue, start: q.pos || 0 });
@@ -1588,7 +1610,11 @@ async function renderShow(view) {
       box.appendChild(el);
     }
   });
+  // Windows: the episodes downloaded / downloading (kept up to date while the page is open)
+  let dls = {};
+  if (!TV) state.mediaDraw = () => call('media:of', queue.map(q => 'episode:' + q.id)).then(r => { if (JSON.stringify(r) !== JSON.stringify(dls) && page.isConnected) { dls = r; drawSeason(); drawActions(); } }).catch(() => {});
   drawActions(); drawSeasons(); drawSeason();
+  if (state.mediaDraw) state.mediaDraw();
   // on the watchlist: the new episodes are seen now (its "last changed" is kept again)
   if (d.wl) call('lib:watchlist', 'series:' + d.id, true, { name, image: poster, cat: d.cat }).catch(() => {});
   if (i.seasons.length > 1) $('#sActions').dataset.tvDown = '#sSeasons .season.active';   // TV: ↓ from the buttons -> the season in use
@@ -1924,6 +1950,10 @@ async function pickLists(key, meta) {
 async function cardMenu(ev, kind, it) {
   const key = `${kind}:${it.id}`, meta = { name: it.name, image: it.image, cat: it.cat };
   const items = [{ label: '＋ Add to a category…', run: () => pickLists(key, meta) }];
+  if (kind === 'live' && !TV) {
+    if (it.prog && it.prog.end > Date.now()) items.unshift({ label: `⏺ Record "${it.prog.title}"`, run: () => recordDialog({ id: it.id, name: it.name, logo: it.image }, it.prog) });
+    items.push({ label: '⏺ Record this channel…', run: () => recordDialog({ id: it.id, name: it.name, logo: it.image }) });
+  }
   if (kind === 'movie' || kind === 'series') {
     const w = { id: it.id, name: it.name, wl: await call('lib:onWatchlist', key).catch(() => false) };
     items.push({ label: w.wl ? '✕ Take off the watchlist' : '📌 Add to the watchlist', run: () => toggleWatchlist(w, kind, meta) });
@@ -2052,6 +2082,245 @@ async function renderSearch(view) {
   }, 'live');
   block('Movies', r.movies, it => posterCard(it), 'movies');
   block('Series', r.series, it => posterCard(it), 'series');
+}
+
+/* =================================================================
+ * 10c. DOWNLOADS + RECORDINGS (Windows only: main/media.js)
+ *      Movies / episodes saved to watch offline; live TV recorded now
+ *      or at a time. Settings → Recordings & downloads: how many
+ *      streams the provider allows at once.
+ * ================================================================= */
+const fmtSize = b => (b >= 1e9 ? (b / 1e9).toFixed(b >= 1e10 ? 0 : 1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : b > 0 ? Math.max(1, Math.round(b / 1e3)) + ' KB' : '');
+const fmtWhen = t => `${evDay(t) || 'Today '}${fmtClock(t)}`;
+
+/** Play a download / recording (the saved file; resume and watched shared with the streamed one) */
+function playSaved(it) {
+  const r = it.req || {};
+  if (it.type === 'download' && r.kind === 'episode') {
+    return Player.play({ kind: 'episode', id: r.id, file: it.id, ext: r.ext, seriesId: r.seriesId, seriesName: it.meta.seriesName || it.title, season: it.meta.season, episode: it.meta.episode, name: it.meta.name || it.sub, image: it.image });
+  }
+  if (it.type === 'download') return Player.play({ kind: 'movie', id: r.id, file: it.id, ext: r.ext, name: it.title, image: it.image });
+  return Player.play({ kind: 'recording', id: it.id, file: it.id, name: it.title, image: it.channel.logo });
+}
+
+/** ⬇ on a movie page / an episode: start it, or (already there) play it, or see it in Downloads */
+async function downloadTitle(req, meta, have) {
+  if (have && have.status === 'done') { const list = (await call('media:list')).items; const it = list.find(x => x.id === have.id); return it ? playSaved(it) : null; }
+  if (have) return go('downloads');
+  try {
+    await call('media:download', req, meta);
+    toast(`Downloading "${req.kind === 'episode' ? `${meta.seriesName} ${epLabel(meta.season, meta.episode)}` : meta.title}". It's in Downloads.`);
+  } catch (e) { fail(e); }
+}
+const dlLabel = d => !d ? '⬇ Download' : d.status === 'done' ? '▶ Play the download' : d.status === 'downloading' ? `⬇ ${d.total ? Math.floor((d.bytes / d.total) * 100) + ' %' : fmtSize(d.bytes) || 'Starting…'}` : d.status === 'paused' ? '⏸ Download paused' : '⬇ Waiting to download';
+const dlMark = d => !d ? '⬇' : d.status === 'done' ? '✓' : d.status === 'downloading' && d.total ? Math.floor((d.bytes / d.total) * 100) + '%' : '…';
+
+/**
+ * Record a channel: now (until the programme ends, or for a while) or at a time — or a programme from
+ * the guide (prog: { title, start, end }). ch null: the channel is picked in the dialog.
+ */
+async function recordDialog(ch, prog = null) {
+  const now = Date.now();
+  if (prog && prog.end <= now) return toast('That programme is over.');
+  let on = null;
+  if (ch && !prog) { try { const epg = await call('epg:short', ch.id); on = epg.find(e => e.start <= now && now < e.end) || null; } catch { /* no guide */ } }
+  const later = new Date(now + 3600000);
+  later.setMinutes(Math.ceil(later.getMinutes() / 15) * 15, 0, 0);
+  const local = t => { const d = new Date(t - new Date(t).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+  const lens = [[30, '30 minutes'], [60, '1 hour'], [90, '1 ½ hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [360, '6 hours']];
+  let picked = ch;
+  const html = prog
+    ? `<p>Record <b>${esc(prog.title)}</b> on <b>${esc(ch.name)}</b>, ${esc(fmtWhen(prog.start))} – ${esc(fmtClock(prog.end))}.</p>
+       <p class="muted small">It starts a minute early and goes on five minutes after, as programmes rarely keep to the minute.</p>`
+    : `${ch ? `<p>Record <b>${esc(ch.name)}</b>${on ? ` — on now: ${esc(on.title)}` : ''}.</p>` : `<label for="rSearch">Channel</label><input type="text" id="rSearch" placeholder="Type a channel's name" spellcheck="false" autocomplete="off"><div id="rFound" class="rec-found"></div>`}
+       <div class="rec-when">
+         <label class="check"><input type="radio" name="rWhen" value="now" checked> Now, until
+           <select id="rUntil">${on ? `<option value="prog">${esc(fmtClock(on.end))} (the end of ${esc(on.title)})</option>` : ''}${lens.map(([m, t]) => `<option value="${m}">${t} from now</option>`).join('')}</select></label>
+         <label class="check"><input type="radio" name="rWhen" value="at"> At <input type="datetime-local" id="rAt" value="${local(later.getTime())}"> for
+           <select id="rLen">${lens.map(([m, t]) => `<option value="${m}"${m === 60 ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+       </div>
+       <label for="rTitle">Name</label><input type="text" id="rTitle" value="${esc(on ? on.title : ch ? ch.name : '')}" maxlength="120" spellcheck="false">`;
+  // what was chosen -> { now: { channel, title, end } } or { at: { channel, title, start, end, guide } }
+  const read = () => {
+    const title = prog ? prog.title : ($('#rTitle').value.trim() || picked.name);
+    if (prog) return prog.start <= Date.now() ? { now: { channel: picked, title, end: prog.end + 5 * 60000 } } : { at: { channel: picked, title, start: prog.start, end: prog.end, guide: true } };
+    if ($('input[name=rWhen]:checked').value === 'now') {
+      const u = $('#rUntil').value;
+      return { now: { channel: picked, title, end: u === 'prog' ? on.end + 5 * 60000 : Date.now() + Number(u) * 60000 } };
+    }
+    const start = new Date($('#rAt').value).getTime();
+    if (!Number.isFinite(start)) throw new Error('Choose the day and time.');
+    return { at: { channel: picked, title, start, end: start + Number($('#rLen').value) * 60000 } };
+  };
+  const send = (w, force) => (w.now ? call('media:recordNow', w.now, force) : call('media:schedule', w.at));
+  const id = await dialog({
+    title: prog ? 'Record this programme' : 'Record', okText: prog && prog.start > now ? 'Schedule it' : 'Record', wide: !ch,
+    html: html + '<p id="rErr" class="error"></p>',
+    onOpen: () => {
+      const at = $('#rAt');
+      if (at) at.onfocus = at.oninput = () => { $('input[name=rWhen][value=at]').checked = true; };
+      const box = $('#rSearch');
+      if (!box) return;
+      let t;
+      box.oninput = () => {
+        clearTimeout(t);
+        t = setTimeout(async () => {
+          const q = box.value.trim();
+          const found = $('#rFound');
+          if (!q) { found.innerHTML = ''; return; }
+          const r = await call('catalog:list', { section: 'live', q, limit: 8 }).catch(() => ({ items: [] }));
+          found.innerHTML = '';
+          for (const c of r.items) {
+            const b = h(`<button class="btn small${picked && picked.id === c.id ? ' primary' : ''}">${esc(c.name)}</button>`);
+            b.onclick = () => { picked = { id: c.id, name: c.name, logo: c.logo }; $$('#rFound .btn').forEach(x => x.classList.toggle('primary', x === b)); if (!$('#rTitle').value) $('#rTitle').value = c.name; };
+            found.appendChild(b);
+          }
+          if (!r.items.length) found.innerHTML = '<p class="small muted">No channel by that name.</p>';
+        }, 250);
+      };
+      box.focus();
+    },
+    onOk: async () => {
+      const e1 = $('#rErr');
+      if (!picked) { e1.textContent = 'Choose the channel.'; return false; }
+      let w;
+      try { w = read(); return await send(w, false); }
+      catch (e) {
+        if (e.code !== 'STREAMS') { e1.textContent = e.message; return false; }
+        // the stream allowed is playing: stop it to record? (that question takes the dialog's place)
+        if (!(await confirmBox('Stop what\'s playing?', e.message, 'Stop playing and record', true))) return null;
+        Player.close();
+        try { return await send(w, true); } catch (e2) { fail(e2); return null; }
+      }
+    }
+  });
+  if (!id) return;
+  toast(prog && prog.start > now ? `"${prog.title}" will be recorded. Seal IPTV has to be open then.` : 'Recording. It\'s in Recordings.');
+  if (state.view === 'recordings') render();
+}
+
+/** a row in Downloads / Recordings */
+function mediaRow(it, actions) {
+  const pct = it.total && it.status === 'downloading' ? Math.min(100, (it.bytes / it.total) * 100) : 0;
+  const img = it.type === 'download' ? it.image : it.channel.logo;
+  const live = it.status === 'recording';
+  const line = it.type === 'download'
+    ? { queued: 'Waiting to start', waiting: 'Waiting: the stream is in use (it goes on after)', downloading: `${fmtSize(it.bytes)}${it.total ? ' of ' + fmtSize(it.total) : ''}${it.note ? ' · trying again: ' + it.note : ''}`, paused: it.error || 'Paused', failed: it.error || 'Failed', done: `${fmtSize(it.bytes)} · ${new Date(it.finished || it.added).toLocaleDateString()}` }[it.status]
+    : { scheduled: `${fmtWhen(it.start)} – ${fmtClock(it.end)}`, recording: `Until ${fmtClock(it.end)} · ${fmtSize(it.bytes) || 'starting…'}${it.note ? ' · ' + it.note : ''}`, done: `${fmtWhen(it.start)} · ${fmtSize(it.bytes)}`, stopped: `${fmtWhen(it.start)} · ${fmtSize(it.bytes)} · ${it.error || 'Stopped early'}`, failed: it.error || 'Failed', missed: it.error || 'Missed', skipped: it.error || 'Skipped' }[it.status];
+  const el = h(`<div class="media-row${live ? ' is-live' : ''}" tabindex="0">
+    <div class="m-thumb${it.type === 'recording' ? ' logo' : ''}">${img ? pic(img, it.title, 'pi') : `<span>${it.type === 'download' ? '🎬' : '📺'}</span>`}</div>
+    <div class="m-txt"><div class="t">${live ? '<span class="rec-dot">●</span> ' : ''}${esc(it.title)}${it.sub ? ` <span class="muted">· ${esc(it.sub)}</span>` : ''}${it.type === 'recording' ? ` <span class="muted">· ${esc(it.channel.name)}</span>` : ''}</div>
+      <div class="small ${['failed', 'missed', 'skipped'].includes(it.status) ? 'error' : 'muted'}">${esc(line || '')}</div>
+      ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
+    <div class="m-act"></div></div>`);
+  const box = el.querySelector('.m-act');
+  for (const [label, fn, cls] of actions) { const b = h(`<button class="btn small ${cls || ''}">${label}</button>`); b.onclick = e => { e.stopPropagation(); fn(); }; box.appendChild(b); }
+  return el;
+}
+
+const mediaDo = (fn, after) => async () => { try { await fn(); if (after) toast(after); } catch (e) { fail(e); } };
+async function removeSaved(it) {
+  const saved = ['done', 'stopped'].includes(it.status) || (it.bytes > 0);
+  if (saved && !(await confirmBox('Delete', `Delete "${it.title}${it.sub ? ' · ' + it.sub : ''}" from this PC? The file is deleted.`, 'Delete', true))) return;
+  try { await call('media:remove', it.id, true); } catch (e) { fail(e); }
+}
+
+/** the page's head: streams in use, the folder */
+function mediaHead(r, what) {
+  return h(`<div class="media-head"><span class="muted small">${what} are saved in <b>${esc(r.folder)}</b> · streams in use: <b>${r.used} of ${r.limit}</b></span>
+    <span class="row gap"><button class="btn small" data-a="folder">📂 Open the folder</button><button class="btn small ghost" data-a="set">⚙️ Settings</button></span></div>`);
+}
+function wireHead(el) {
+  el.querySelector('[data-a=folder]').onclick = () => call('media:openFolder').catch(fail);
+  el.querySelector('[data-a=set]').onclick = () => { state.setSec = 'media'; go('settings'); };
+}
+
+async function renderDownloads(view) {
+  const page = h('<div class="home media-page"></div>');
+  view.appendChild(page);
+  const draw = async () => {
+    const r = await call('media:list').catch(() => null);
+    if (!r || !page.isConnected) return;
+    keepFocus(page, () => {
+      page.innerHTML = '';
+      const head = mediaHead(r, 'Downloads');
+      page.appendChild(head);
+      wireHead(head);
+      const list = r.items.filter(i => i.type === 'download');
+      if (!list.length) { page.appendChild(h('<div class="empty">Nothing downloaded yet.<br><span class="small">Choose ⬇ Download on a movie, or ⬇ on an episode, to watch it without the internet. A download waits while you watch, if your provider allows only one stream.</span></div>')); return; }
+      const going = list.filter(i => i.status !== 'done'), done = list.filter(i => i.status === 'done');
+      if (going.length) {
+        page.appendChild(h(`<div class="shelf-head"><h2>Downloading</h2><span class="muted small">${going.length}</span></div>`));
+        for (const it of going) {
+          page.appendChild(mediaRow(it, [
+            ...(['downloading', 'queued', 'waiting'].includes(it.status) ? [['⏸ Pause', mediaDo(() => call('media:pause', it.id))]] : [['▶ Go on', mediaDo(() => call('media:resume', it.id))]]),
+            ['✕ Cancel', () => removeSaved(it), 'ghost']
+          ]));
+        }
+      }
+      if (done.length) {
+        page.appendChild(h(`<div class="shelf-head"><h2>Downloaded</h2><span class="muted small">${done.length}</span></div>`));
+        for (const it of done) {
+          const row = mediaRow(it, [['▶ Play', () => playSaved(it), 'primary'], ['VLC', () => openExternal({ file: it.id, title: it.title })], ['📂', mediaDo(() => call('media:show', it.id))], ['🗑️', () => removeSaved(it), 'ghost']]);
+          row.ondblclick = () => playSaved(it);
+          page.appendChild(row);
+        }
+      }
+    });
+  };
+  state.mediaDraw = draw;
+  await draw();
+}
+
+async function renderRecordings(view) {
+  const page = h('<div class="home media-page"></div>');
+  view.appendChild(page);
+  const draw = async () => {
+    const r = await call('media:list').catch(() => null);
+    if (!r || !page.isConnected) return;
+    keepFocus(page, () => {
+      page.innerHTML = '';
+      const head = mediaHead(r, 'Recordings');
+      head.querySelector('.row').prepend(h('<button class="btn small primary" data-a="new">⏺ New recording</button>'));
+      head.querySelector('[data-a=new]').onclick = () => recordDialog(null);
+      page.appendChild(head);
+      wireHead(head);
+      const list = r.items.filter(i => i.type === 'recording');
+      const part = (title, items, acts) => {
+        if (!items.length) return;
+        page.appendChild(h(`<div class="shelf-head"><h2>${title}</h2><span class="muted small">${items.length}</span></div>`));
+        for (const it of items) page.appendChild(mediaRow(it, acts(it)));
+      };
+      if (!list.length) {
+        page.appendChild(h(`<div class="empty">No recordings yet.<br><span class="small">Record a channel with ⏺ in Live TV or the player, or a programme from the TV Guide (right-click it). Recordings only happen while Seal IPTV is open.</span></div>`));
+        return;
+      }
+      part('🔴 Recording now', list.filter(i => i.status === 'recording'), it => [['⏹ Stop', mediaDo(() => call('media:stop', it.id), `Stopped recording "${it.title}". What was recorded is kept.`), 'danger']]);
+      part('Scheduled', list.filter(i => i.status === 'scheduled').sort((a, b) => a.start - b.start), it => [['✕ Cancel', mediaDo(() => call('media:stop', it.id), `"${it.title}" won't be recorded.`), 'ghost']]);
+      part('Recorded', list.filter(i => ['done', 'stopped'].includes(i.status)), it => [['▶ Play', () => playSaved(it), 'primary'], ['VLC', () => openExternal({ file: it.id, title: it.title })], ['📂', mediaDo(() => call('media:show', it.id))], ['🗑️', () => removeSaved(it), 'ghost']]);
+      part('Missed or failed', list.filter(i => ['failed', 'missed', 'skipped'].includes(i.status)), it => [['🗑️', () => removeSaved(it), 'ghost']]);
+      if (list.some(i => i.status === 'scheduled')) page.appendChild(h('<p class="muted small" style="padding:6px 22px">Scheduled recordings only happen while Seal IPTV is open (it keeps Windows awake while it records).</p>'));
+    });
+  };
+  state.mediaDraw = draw;
+  await draw();
+}
+
+/** main/media.js events: pages drawn again, toasts, a scheduled recording that needs the stream that's playing */
+function mediaEvents() {
+  if (TV) return;
+  window.api.on('media:changed', () => { if (state.mediaDraw) state.mediaDraw(); });
+  window.api.on('media:note', n => toast(n.text, n.error ? 'err' : ''));
+  window.api.on('media:takeover', d => { if (Player.isOpen()) { Player.close(); toast(`Stopped playing to record "${d.title}".`); } });
+  window.api.on('media:conflict', async d => {
+    const r = await dialog({
+      title: 'A recording is starting',
+      html: `<p><b>${esc(d.title)}</b> on ${esc(d.channel)} is about to be recorded. Seal IPTV is set to use ${d.streams} stream${d.streams === 1 ? '' : 's'} at a time, and ${d.streams === 1 ? 'it is' : 'they are'} in use.</p><p class="muted small">Without an answer, the recording starts in a minute and what's playing stops.</p>`,
+      okText: 'Record (stop playing)', cancelText: 'Skip the recording'
+    });
+    if (r) Player.close();
+    call('media:answer', d.id, !!r).catch(() => {});
+  });
 }
 
 /* =================================================================
@@ -2344,6 +2613,24 @@ function renderSettings(view) {
     <div class="row gap" style="margin-top:14px"><button class="btn danger" id="cClear" ${profile() ? '' : 'disabled'}>Clear watched marks and resume points…</button></div>
     <p class="faint small">Only for the playlist in use. Favorites are kept.</p></div>`);
   add('library', lp);
+
+  // Windows: downloads + recordings (media.js)
+  if (!TV) {
+    const md = state.settings.media || { streams: 1, folder: '' };
+    const mp = h(`<div class="panel"><h2>Recordings &amp; downloads</h2>
+      <label for="mStreams">Streams at the same time</label>
+      <select id="mStreams" style="max-width:320px">${[1, 2, 3, 4, 5, 6, 8, 10].map(n => `<option value="${n}" ${Number(md.streams || 1) === n ? 'selected' : ''}>${n} stream${n === 1 ? '' : 's'}${n === 1 ? ' (most providers)' : ''}</option>`).join('')}</select>
+      <p class="muted small">How many your provider allows at once (it's in your subscription: "connections" or "devices"). Watching, each recording and a download use one each. With 1, a download waits while you watch, and playing something while a recording runs asks first, because it stops the recording. Watching on your other devices counts with the provider too.</p>
+      <label style="margin-top:14px">Saved in</label>
+      <div class="row gap"><input type="text" id="mFolder" readonly value="${esc(md.folder || '')}" placeholder="Videos\\Seal IPTV (the default)" style="max-width:420px"><button class="btn" id="mPick">Change…</button><button class="btn ghost" id="mOpen">📂 Open</button>${md.folder ? '<button class="btn ghost" id="mDefault">Default</button>' : ''}</div>
+      <p class="faint small">Movies, Series and Recordings go in folders of their own there. Recordings are saved as .ts videos (they play here and in VLC). Recordings only happen while Seal IPTV is open.</p></div>`);
+    add('media', mp);
+    mp.querySelector('#mStreams').onchange = e => saveSettings({ media: { streams: Number(e.target.value) } }, `Seal IPTV uses up to ${e.target.value} stream${e.target.value === '1' ? '' : 's'} at a time.`);
+    mp.querySelector('#mPick').onclick = async () => { const f = await call('media:chooseFolder').catch(fail); if (f) { await saveSettings({ media: { folder: f } }, 'New downloads and recordings go there.'); render(); } };
+    mp.querySelector('#mOpen').onclick = () => call('media:openFolder').catch(fail);
+    const def = mp.querySelector('#mDefault');
+    if (def) def.onclick = async () => { await saveSettings({ media: { folder: '' } }, 'New downloads and recordings go in Videos\\Seal IPTV.'); render(); };
+  }
   lp.querySelector('#cRefresh').onchange = e => saveSettings({ catalog: { refreshHours: Number(e.target.value) } });
   lp.querySelector('#cClear').onclick = async () => {
     if (!(await confirmBox('Clear history', `Forget every watched mark and resume point for "${profile().name}"?`, 'Clear', true))) return;
@@ -2373,6 +2660,7 @@ const SETTINGS_SECTIONS = [
   ['parental', '🔒', 'Parental controls', () => !state.parental.hasPin ? 'No PIN' : state.parental.lockSettings ? 'PIN set · Settings locked' : 'PIN set'],
   ['categories', '🗂️', 'Categories', () => 'Hide, lock, languages'],
   ['posters', '🖼️', 'Home page & posters', () => ((state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only') + ((state.settings.artwork || {}).trending !== false ? ' · trending on' : '')],
+  ['media', '⏺️', 'Recordings & downloads', () => `${(state.settings.media || {}).streams || 1} stream${((state.settings.media || {}).streams || 1) === 1 ? '' : 's'} at a time`],
   ['library', '🕘', 'Updates & history', () => 'Playlist reloads, watch history'],
   ['about', 'ℹ️', 'About', () => 'Version ' + state.version]
 ];
