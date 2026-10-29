@@ -925,7 +925,7 @@ function spotlight(p, movie) {
   const ep = it.kind === 'episode';
   const title = ep ? (it.seriesName || it.name) : it.name;
   const pct = p && p.dur ? Math.min(100, Math.max(2, (p.pos / p.dur) * 100)) : 0;
-  const line = p ? (ep ? `${epLabel(p.season, p.episode)} · ${esc(p.name || '')} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur))
+  const line = p ? (p.upNext ? `Up next: ${epLabel(p.season, p.episode)} · ${esc(p.name || '')}` : ep ? `${epLabel(p.season, p.episode)} · ${esc(p.name || '')} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur))
     : ['New in your playlist', movie.year || '', movie.rating ? `★ ${movie.rating}` : ''].filter(Boolean).join(' · ');
   const el = h(`<section class="spotlight">
     <div class="spot-bg">${pic(it.image || it.poster, title, 'pi', null, it.poster)}</div>
@@ -935,16 +935,19 @@ function spotlight(p, movie) {
       <h2>${esc(title)}</h2>
       <div class="spot-line">${p ? line : esc(line)}</div>
       ${pct ? `<div class="bar spot-bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}
-      <div class="spot-actions"><button class="btn primary big" data-a="play">▶ ${p ? 'Resume' : 'Play'}</button><button class="btn big" data-a="info">More info</button></div>
+      <div class="spot-actions"><button class="btn primary big" data-a="play">▶ ${p ? (p.upNext ? `Play ${epLabel(p.season, p.episode)}` : 'Resume') : 'Play'}</button><button class="btn big" data-a="info">More info</button></div>
     </div></section>`);
   el.querySelector('[data-a=play]').onclick = () => p ? resumeFromHome(p) : Player.play({ kind: 'movie', id: movie.id, name: movie.name, image: movie.poster, ext: movie.ext });
   el.querySelector('[data-a=info]').onclick = () => ep ? (it.seriesId ? go('show', it.seriesId) : resumeFromHome(p)) : go('movie', it.id);
   return el;
 }
 
+/** a play request for the next episode -> what library.setNext keeps (null: none) */
+const upNextOf = q => (q ? { id: q.id, name: q.name, image: q.image, seriesName: q.seriesName, season: q.season, episode: q.episode, ext: q.ext } : null);
+
 function continueCard(p) {
   const name = p.kind === 'episode' ? (p.seriesName || p.name) : p.name;
-  const sub = p.kind === 'episode' ? `${epLabel(p.season, p.episode)} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur);
+  const sub = p.upNext ? `Up next · ${epLabel(p.season, p.episode)}` : p.kind === 'episode' ? `${epLabel(p.season, p.episode)} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur);
   const el = posterCard({ name, poster: p.image || p.poster, fb: p.poster, pos: p.pos, dur: p.dur, sub }, { wide: true, onClick: () => resumeFromHome(p) });
   return el;
 }

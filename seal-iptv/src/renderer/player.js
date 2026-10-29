@@ -289,6 +289,7 @@ const Player = (() => {
     if (!c || !c.key || c.marked) return;
     c.marked = true;
     call('lib:watched', c.key, true, c.meta).then(() => toast(`Marked "${c.req.kind === 'episode' ? `${c.req.seriesName} ${epLabel(c.req.season, c.req.episode)}` : c.req.name}" as watched.`)).catch(() => {});
+    if (c.req.kind === 'episode' && c.req.seriesId && c.opts.queue) call('lib:next', c.req.seriesId, upNextOf(nextEpisode())).catch(() => {});
   }
 
   function nextEpisode() {

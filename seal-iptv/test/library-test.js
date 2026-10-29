@@ -131,6 +131,31 @@ try {
   ok(!lib.onWatchlist(W, 'movie:8') && lib.onWatchlist(W, 'movie:80') && lib.entries(W).some(e => e.key === 'movie:80'), 'a new playlist link: the watchlist moves with the title');
   lib.setWatchlist(W, 'movie:80', false);
   ok(!lib.onWatchlist(W, 'movie:80') && lib.setWatchlist(W, 'movie:80', false) === false, 'taken off');
+
+  /* ---- up next: a finished episode's next one in Continue watching ---- */
+  const N = 'n1';
+  lib.setProgress(N, 'episode:101', 600, 2400, { name: 'Ep 1', seriesId: 'old', seriesName: 'Old Show', season: 1, episode: 1 });
+  lib.setProgress(N, 'episode:201', 600, 2400, { name: 'Ep 3', seriesId: 'from', seriesName: 'FROM', season: 2, episode: 3 });
+  lib.setWatched(N, 'episode:207', true, { seriesId: 'from', seriesName: 'FROM', season: 2, episode: 7 });
+  ok(lib.continueWatching(N).every(p => !p.upNext) && lib.finishedWithoutNext(N).map(x => x.seriesId).join() === 'from', 'an episode finished without its next one known: listed to be looked up');
+  lib.setNext(N, 'from', { id: '208', name: 'Ep 8', seriesName: 'FROM', season: 2, episode: 8 });
+  const cwn = lib.continueWatching(N);
+  ok(cwn[0].key === 'episode:208' && cwn[0].upNext && cwn[0].pos === 0 && cwn[0].season === 2 && cwn[0].episode === 8, 'the next episode is first in Continue watching');
+  ok(!cwn.some(p => p.key === 'episode:201') && cwn.some(p => p.key === 'episode:101'), 'one entry per series (the older half-watched episode of it gone); other series stay');
+  ok(!lib.finishedWithoutNext(N).length, '… nothing left to look up');
+  lib.setProgress(N, 'episode:208', 300, 2400, { name: 'Ep 8', seriesId: 'from', seriesName: 'FROM', season: 2, episode: 8 });
+  ok(lib.continueWatching(N)[0].key === 'episode:208' && !lib.continueWatching(N)[0].upNext && lib.continueWatching(N)[0].pos === 300, 'started: its resume point instead');
+  lib.setWatched(N, 'episode:208', true, { seriesId: 'from', season: 2, episode: 8 });
+  lib.setNext(N, 'from', null);
+  ok(!lib.continueWatching(N).some(p => p.seriesId === 'from'), 'the last episode finished: the series is done');
+  const nsent = [];
+  lib.onChange = (n, d) => nsent.push([n, d]);
+  lib.setNext(N, 'from', { id: '301', season: 3, episode: 1, seriesName: 'FROM' });
+  ok(nsent.some(([n, d]) => n === `next:${N}:from` && d.key === 'episode:301'), 'up next syncs to the other devices');
+  lib.applyRecord('next', N, 'other', { key: 'episode:900', seriesId: 'other', seriesName: 'Other', season: 1, episode: 2, at: Date.now() + 60000 });
+  ok(lib.continueWatching(N)[0].key === 'episode:900', 'up next from another device');
+  lib.clearHistory(N);
+  ok(!lib.continueWatching(N).length, 'clearing the history clears up next too');
   lib.onChange = null;
   lib.flush();
 } finally {

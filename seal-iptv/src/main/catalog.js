@@ -106,6 +106,7 @@ class Catalog {
     this.fetch = fetchImpl || globalThis.fetch;
     this.mem = new Map();
     this.details = new Map();      // "<pid>|series|<id>" -> info (this session only)
+    this._nextTried = new Set();   // "<pid>|<series id>": up next looked up this session
     this.evFresh = new Map();      // pid -> { at, cats: Map(category id -> its channels now), job } (event channels' new names)
     this.guide = new Guide({ dir: this.dir, vpn, userAgent: this.userAgent, fetch: this.fetch });
   }
@@ -681,6 +682,30 @@ class Catalog {
   eventsHome(pid, limit = 20) {
     this.refreshEvents(pid).catch(() => {});
     return { sports: this.events(pid, 'sports', { home: true }).live.slice(0, limit), ppv: this.events(pid, 'ppv', { home: true }).live.slice(0, limit) };
+  }
+
+  /* ---- Continue watching, with up next (library.js 6c) ---- */
+  /**
+   * Home's row: resume points and next episodes that may be on Home. Series finished without an up
+   * next kept (watched before 1.7.1, or on a device without it) get one from the series' episodes —
+   * looked up once per session, waited for at most `wait` ms (it's there next time otherwise).
+   */
+  async continueWatching(pid, { wait = 3000 } = {}) {
+    const todo = this.library.finishedWithoutNext(pid).filter(x => !this._nextTried.has(pid + '|' + x.seriesId));
+    if (todo.length) {
+      const job = Promise.all(todo.map(async x => {
+        this._nextTried.add(pid + '|' + x.seriesId);
+        try {
+          const d = await this.seriesInfo(pid, x.seriesId);
+          const eps = (d.info.seasons || []).flatMap(s => s.episodes.map(e => ({ ...e, season: s.num })));
+          const i = eps.findIndex(e => e.season === x.season && Number(e.num) === Number(x.episode));
+          const nx = i >= 0 ? eps[i + 1] : null;
+          this.library.setNext(pid, x.seriesId, nx ? { id: nx.id, name: nx.title || `Episode ${nx.num}`, image: nx.image || d.info.poster || x.meta.image, seriesName: d.info.name || x.meta.seriesName, season: nx.season, episode: nx.num, ext: nx.ext } : null, x.at);
+        } catch { /* the series isn't there, or no network: not now */ }
+      }));
+      await Promise.race([job, new Promise(ok => later(ok, wait))]);
+    }
+    return this.library.continueWatching(pid, 60).filter(p => this.homeSafe(pid, p.key, p)).slice(0, 20).map(p => ({ ...p, poster: this.posterFor(pid, p.key, p) }));
   }
 
   /* ---- the watchlist (library.js 6b) ---- */

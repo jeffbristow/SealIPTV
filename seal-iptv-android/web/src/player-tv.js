@@ -111,6 +111,8 @@ const Player = (() => {
     if (!c || c.marked) return;
     c.marked = true;
     call('lib:watched', c.key, true, c.meta).catch(() => {});
+    // Continue watching: the next episode (none: the series is done)
+    if (c.req.kind === 'episode' && c.req.seriesId && c.opts.queue) call('lib:next', c.req.seriesId, upNextOf(nextEpisode(c))).catch(() => {});
   }
 
   function finish(c) {

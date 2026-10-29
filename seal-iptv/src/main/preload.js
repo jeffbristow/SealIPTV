@@ -6,7 +6,7 @@ const CHANNELS = new Set([
   'profiles:test', 'profiles:save', 'profiles:delete', 'profiles:use', 'profiles:fromLink', 'dialog:m3uFile', 'dialog:exe',
   'catalog:refresh', 'catalog:summary', 'catalog:cats', 'catalog:list', 'catalog:item', 'catalog:search', 'catalog:recent', 'trending:home',
   'details:movie', 'details:series', 'epg:short', 'epg:grid',
-  'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
+  'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:next', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
   'media:list', 'media:of', 'media:download', 'media:downloadMany', 'media:pause', 'media:resume', 'media:remove', 'media:recordNow', 'media:schedule', 'media:stop', 'media:answer', 'media:show', 'media:openFolder', 'media:chooseFolder',
   'lib:watchlist', 'lib:onWatchlist', 'lib:watchlistItems', 'events:list', 'events:home',
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',

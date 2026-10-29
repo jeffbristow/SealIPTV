@@ -90,6 +90,15 @@ http://${host}/series/${user}/${pass}/3002.mkv
     const ep1b = (await cat.seriesInfo(p.id, show2)).info.seasons[0].episodes[0];
     ok(library.flags(p.id, ['episode:' + ep1b.id])['episode:' + ep1b.id].watched && library.seriesStarted(p.id).has(show2), 'an episode found by its show, season and number; it knows its show\'s new id');
     ok(r.carried >= 3, `the reload says how many titles were kept (${r.carried})`);
+
+    // Continue watching: a series finished up to an episode before up next was kept -> its next episode
+    const ep2b = (await cat.seriesInfo(p.id, show2)).info.seasons[0].episodes[1];
+    const cont = await cat.continueWatching(p.id);
+    const nx = cont.find(c => c.upNext);
+    ok(nx && nx.key === 'episode:' + ep2b.id && nx.seriesId === show2 && nx.season === 1 && nx.episode === 2, 'Continue watching: the next episode of a series whose last one was finished (looked up)');
+    library.setWatched(p.id, 'episode:' + ep2b.id, true, { seriesId: show2, season: 1, episode: 2 });
+    cat._nextTried.clear();
+    ok(!(await cat.continueWatching(p.id)).some(c => c.upNext && c.seriesId === show2), '… and none once the last episode is finished');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
