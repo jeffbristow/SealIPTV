@@ -4,7 +4,9 @@
  * Collections: Marvel, Star Wars, Star Trek … in release order or in
  * story order, movies and the shows that belong with them.
  *
- *   1. The list (franchises.json, kept by hand; ships with each release)
+ *   1. The list (franchises.json, kept by hand; ships with each release),
+ *      and the studios' collections (Disney, Netflix, Prime: studios.js),
+ *      newest first, only what the playlist has
  *   2. Matching the playlist's titles to it
  *   3. Search
  *
@@ -49,8 +51,17 @@ function prepare(data) {
   });
 }
 
-let ALL = null;
-const all = () => (ALL = ALL || prepare(require('./franchises.json')));
+let ALL = null, STUDIOS = null, VERSION = 0;
+const all = () => (ALL = ALL || [...prepare(require('./franchises.json')), ...(STUDIOS ? prepareStudios(STUDIOS) : [])]);
+
+/** studios.json -> collections like the others (id "studio-netflix"), marked studio */
+function prepareStudios(data) {
+  const list = prepare({ franchises: data.studios.map(s => ({ id: 'studio-' + s.id, name: s.name, words: s.words, items: s.items.map(e => ({ t: e.t, d: String(e.y), k: e.k })) })) });
+  return list.map(f => ({ ...f, studio: true }));
+}
+/** A new list of the studios' titles (studios.js): matches made with the old one are done again (version). */
+function setStudios(data) { STUDIOS = data; ALL = null; VERSION++; }
+const version = () => VERSION;
 const byId = id => all().find(f => f.id === id) || null;
 
 /* =================================================================
@@ -82,7 +93,8 @@ function match(movies, series, list = all()) {
       for (const c of found) { if (!per.has(c.f.id)) per.set(c.f.id, []); per.get(c.f.id).push(c.e); }
       for (const [fid, entries] of per) {
         let ok = entries;
-        if (year) ok = entries.filter(e => !e.y || Math.abs(e.y - year) <= 1 || (kind === 'series' && entries.length === 1));
+        // a show's year may be a later season's — but not before it started (a 2005 "Barbershop" isn't 2026's)
+        if (year) ok = entries.filter(e => !e.y || Math.abs(e.y - year) <= 1 || (kind === 'series' && entries.length === 1 && year >= e.y - 1));
         if (ok.length !== 1) continue;
         const key = fid + ':' + ok[0].i;
         if (!out.has(key)) out.set(key, []);
@@ -105,4 +117,4 @@ function matchesQuery(f, q) {
   return f.words.some(w => w === s || (s.length >= 3 && w.startsWith(s)));
 }
 
-module.exports = { all, byId, match, matchesQuery, prepare, keyOf };
+module.exports = { all, byId, match, matchesQuery, prepare, keyOf, setStudios, version };

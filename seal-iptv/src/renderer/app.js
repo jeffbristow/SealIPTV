@@ -1168,7 +1168,7 @@ function renderBrowse(view) {
       if (!cols.length || !grid.isConnected) return;
       const hint = h('<div class="col-hint"></div>');
       for (const c of cols) {
-        const b = h(`<button class="btn small">📚 ${esc(c.name)} in order <span class="faint">· ${c.have} of ${c.total}</span></button>`);
+        const b = h(c.studio ? `<button class="btn small">📚 ${esc(c.name)} <span class="faint">· ${c.have.toLocaleString()} in your playlist</span></button>` : `<button class="btn small">📚 ${esc(c.name)} in order <span class="faint">· ${c.have} of ${c.total}</span></button>`);
         b.onclick = () => go('collection', c.id);
         hint.appendChild(b);
       }
@@ -1472,7 +1472,7 @@ function collectionCard(c) {
   // the cover title's poster (looked up like any other when the playlist has none) …
   const cv = c.cover || {};
   const own = c.art && artKnown.get(artKey({ kind: 'collection', name: c.art }));   // its own poster, found earlier this run
-  const el = posterCard({ name: cv.name || c.name, kind: cv.kind, year: cv.year, poster: own || c.poster, sub: `${c.have} of ${c.total} in your playlist` }, { title: c.name, onClick: () => go('collection', c.id) });
+  const el = posterCard({ name: cv.name || c.name, kind: cv.kind, year: cv.year, poster: own || c.poster, sub: c.studio ? `${c.have.toLocaleString()} in your playlist` : `${c.have} of ${c.total} in your playlist` }, { title: c.name, onClick: () => go('collection', c.id) });
   const ini = el.querySelector('.poster > .initials');
   if (ini) ini.textContent = initials(c.name);
   else el.querySelector('.poster > .pi').dataset.i = initials(c.name);
@@ -1494,10 +1494,10 @@ async function renderCollections(view) {
   const list = await call('collections:list').catch(e => { fail(e); return null; });
   if (!list || !page.isConnected) return;
   if (!list.length) {
-    page.appendChild(h('<div class="empty">None of the collections are in your playlist yet.<br><span class="small">Marvel, Star Wars, Star Trek, Harry Potter and more show up here when the playlist has their movies or shows.</span></div>'));
+    page.appendChild(h('<div class="empty">None of the collections are in your playlist yet.<br><span class="small">Disney, Netflix and Prime Video, Marvel, Star Wars, Star Trek, Harry Potter and more show up here when the playlist has their movies or shows.</span></div>'));
     return;
   }
-  page.appendChild(h('<div class="shelf"><p class="muted small col-note">The big franchises, movies and the shows that go with them, in the order they came out or in story order.</p></div>'));
+  page.appendChild(h('<div class="shelf"><p class="muted small col-note">Disney\'s movies and what Netflix and Prime Video made, newest first; and the big franchises, movies and the shows that go with them, in the order they came out or in story order.</p></div>'));
   const g = h('<div class="grid" style="padding-top:0"></div>');
   list.forEach(c => g.appendChild(collectionCard(c)));
   page.appendChild(g);
@@ -1520,7 +1520,42 @@ async function openCollectionEntry(x) {
   if (pick) open(pick.id);
 }
 
+/**
+ * A studio's collection (Disney, Netflix, Prime): what the playlist has of it, newest first
+ * or oldest first, all / movies / shows; drawn a page at a time (a thousand titles or more).
+ */
+async function renderStudio(view, focus) {
+  const st = state.studio || (state.studio = { order: 'newest', kind: '' });
+  const page = h('<div class="home"></div>');
+  view.appendChild(page);
+  const col = await call('collections:get', state.arg, st.order, st.kind).catch(e => { fail(e); return null; });
+  if (!page.isConnected) return;
+  if (!col) { page.appendChild(h('<div class="empty">This collection isn\'t there any more.</div>')); return; }
+  const both = col.counts.movie && col.counts.series;
+  const seg = (k, opts) => `<div class="seg" data-k="${k}">${opts.map(([v, t]) => `<button data-v="${v}" class="${st[k] === v ? 'active' : ''}">${t}</button>`).join('')}</div>`;
+  const head = h(`<div class="shelf"><div class="shelf-head"><h2>${esc(col.name)}</h2><span class="muted small">${col.have.toLocaleString()} in your playlist</span>
+    ${seg('order', [['newest', 'Newest first'], ['oldest', 'Oldest first']])}
+    ${both ? seg('kind', [['', 'All'], ['movie', `Movies (${col.counts.movie.toLocaleString()})`], ['series', `Shows (${col.counts.series.toLocaleString()})`]]) : ''}</div>
+    <p class="muted small col-note">${col.id === 'studio-disney' ? 'Disney\'s movies: Walt Disney Pictures, Disney Animation, Pixar, Disney+ and Disney Channel films.' : `Made for ${esc(col.name)}: its own movies and shows.`} The list comes from Wikipedia and is brought up to date every few days.</p></div>`);
+  head.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+    const k = b.parentElement.dataset.k;
+    if (st[k] === b.dataset.v) return;
+    st[k] = b.dataset.v;
+    view.innerHTML = '';
+    renderStudio(view, `.seg[data-k="${k}"] [data-v="${b.dataset.v}"]`);
+  });
+  page.appendChild(head);
+  const g = h('<div class="grid" style="padding-top:0"></div>');
+  page.appendChild(g);
+  infinite(g, page, offset => Promise.resolve({ items: col.items.slice(offset, offset + 120), total: col.items.length }),
+    x => posterCard({ ...x.item, name: x.title, year: x.year, sub: [x.year, x.kind === 'series' ? 'Series' : '', x.versions.length > 1 ? `${x.versions.length} versions` : ''].filter(Boolean).join(' · ') }, { title: x.title, onClick: () => openCollectionEntry(x) }),
+    st.kind ? 'None of these in your playlist.' : 'None of this collection is in your playlist.');
+  const f = focus && page.querySelector(focus);
+  if (f) f.focus();
+}
+
 async function renderCollection(view, focus) {
+  if (/^studio-/.test(state.arg)) return renderStudio(view, focus);
   const page = h('<div class="home"></div>');
   view.appendChild(page);
   const col = await call('collections:get', state.arg, (state.settings.collections || {}).order || 'release').catch(e => { fail(e); return null; });

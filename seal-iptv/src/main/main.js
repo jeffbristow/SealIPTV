@@ -24,6 +24,8 @@ const { Parental } = require('./parental');
 const { SyncService } = require('./sync');
 const { Artwork } = require('./artwork');
 const { Trending } = require('./trending');
+const { Studios } = require('./studios');
+const franchises = require('./franchises');
 const { ImageCache } = require('./imagecache');
 const { Updater } = require('./updater');
 
@@ -60,6 +62,10 @@ function init() {
   catalog = new Catalog({ dir, store, vpn, library, userAgent, parental });
   artwork = new Artwork({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   trending = new Trending({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+  // the Disney / Netflix / Prime collections: the newest list we have now, a newer one looked for a little later
+  const studios = new Studios({ dir, allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+  franchises.setStudios(studios.data());
+  setTimeout(() => studios.refresh().then(d => { if (d) franchises.setStudios(d); }).catch(() => { /* next time */ }), 20000).unref();
   sync = new SyncService({
     dataDir: dir, store, library, secure, appVersion: VERSION,
     onApplied: types => send('sync:applied', [...types]),
@@ -270,7 +276,7 @@ function registerIpc() {
   handle('lists:set', (id, key, on, meta) => library.setListed(pid(), id, key, on, meta));
   handle('lists:title', (id, key, title) => library.setListedTitle(pid(), id, key, title));
   handle('collections:list', q => catalog.collections(pid(), q));
-  handle('collections:get', (id, order) => catalog.collection(pid(), id, order));
+  handle('collections:get', (id, order, kind) => catalog.collection(pid(), id, order, kind));
 
   /* ---- parental controls + category choices ---- */
   handle('parental:status', () => parental.status());

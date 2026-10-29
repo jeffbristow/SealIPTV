@@ -31,6 +31,8 @@ const { Parental } = require('../../../seal-iptv/src/main/parental');
 const { SyncService } = require('../../../seal-iptv/src/main/sync');
 const { Artwork } = require('../../../seal-iptv/src/main/artwork');
 const { Trending } = require('../../../seal-iptv/src/main/trending');
+const { Studios } = require('../../../seal-iptv/src/main/studios');
+const franchises = require('../../../seal-iptv/src/main/franchises');
 
 /* =================================================================
  * 1. START-UP
@@ -59,6 +61,10 @@ function userAgent() {
 const catalog = new Catalog({ dir: DATA, store, vpn, library, userAgent, parental });
 const artwork = new Artwork({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 const trending = new Trending({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+// the Disney / Netflix / Prime collections: the newest list we have now, a newer one looked for a little later
+const studios = new Studios({ dir: DATA, allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+franchises.setStudios(studios.data());
+setTimeout(() => studios.refresh().then(d => { if (d) { franchises.setStudios(d); trace('studios: a newer list,', d.built); } }).catch(e => trace('studios:', e.message)), 20000);
 const sync = new SyncService({
   dataDir: DATA, store, library, secure, appVersion: VERSION,
   onApplied: types => send('sync:applied', [...types]),
@@ -230,7 +236,7 @@ handle('lists:of', key => library.listsOf(pid(), key));
 handle('lists:set', (id, key, on, meta) => library.setListed(pid(), id, key, on, meta));
 handle('lists:title', (id, key, title) => library.setListedTitle(pid(), id, key, title));
 handle('collections:list', q => catalog.collections(pid(), q));
-handle('collections:get', (id, order) => catalog.collection(pid(), id, order));
+handle('collections:get', (id, order, kind) => catalog.collection(pid(), id, order, kind));
 handle('lib:clearHistory', () => library.clearHistory(pid()));
 
 /* ---- parental + categories ---- */

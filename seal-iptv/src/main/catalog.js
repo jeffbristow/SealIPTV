@@ -568,7 +568,7 @@ class Catalog {
   /** Matches per catalogue load (a reload makes a new one). */
   _franchiseMatches(pid) {
     const c = this.get(pid);
-    if (!c._fr) c._fr = franchises.match(c.movies.items, c.series.items);
+    if (!c._fr || c._frV !== franchises.version()) { c._fr = franchises.match(c.movies.items, c.series.items); c._frV = franchises.version(); }
     return c._fr;
   }
 
@@ -651,7 +651,7 @@ class Catalog {
     const posterOf = its => (its.find(i => i.poster) || {}).poster || '';
     for (const f of wanted) {
       let have = 0, poster = '';
-      for (const n of f.release) {
+      for (const n of f.studio ? [...f.release].reverse() : f.release) {   // a studio's card: its newest title's poster
         const its = get(f, f.items[n]);
         if (!its.length) continue;
         have++;
@@ -659,9 +659,9 @@ class Catalog {
       }
       const c = f.cover === null ? null : f.items[f.cover];
       if (c) poster = posterOf(get(f, c)) || poster;
-      if (have) out.push({ id: f.id, name: f.name, have, total: f.items.length, poster, art: f.art, cover: c && { kind: c.kind, name: c.t, year: c.y } });
+      if (have) out.push({ id: f.id, name: f.name, have, total: f.items.length, poster, art: f.art, cover: c && { kind: c.kind, name: c.t, year: c.y }, studio: !!f.studio });
     }
-    return out;
+    return out.sort((a, b) => b.studio - a.studio);   // Disney, Netflix, Prime first
   }
 
   /**
@@ -669,9 +669,33 @@ class Catalog {
    * null when the playlist doesn't have it. next: the place to go on from (the
    * title after the last one watched or started; one half watched itself).
    */
-  collection(pid, id, order = 'release') {
+  /**
+   * A studio's collection (Disney, Netflix, Prime): only what the playlist has, newest first
+   * (order 'oldest': the other way); kind 'movie' / 'series' for one kind only.
+   */
+  _studio(pid, f, order, kind) {
+    const c = this.get(pid), get = this._franchiseItems(pid);
+    const started = this.library.seriesStarted(pid);
+    const counts = { movie: 0, series: 0 };
+    const items = [];
+    for (const n of order === 'oldest' ? f.release : [...f.release].reverse()) {
+      const e = f.items[n];
+      const its = get(f, e);
+      if (!its.length) continue;
+      counts[e.kind]++;
+      if (kind && e.kind !== kind) continue;
+      const versions = this._decorate(pid, e.kind, its, c[e.kind === 'series' ? 'series' : 'movies']);
+      for (const v of versions) v.started = e.kind === 'series' ? started.has(String(v.id)) : !!(v.watched || v.pos);
+      const best = versions.find(v => v.started) || versions.find(v => v.poster) || versions[0];
+      items.push({ n: items.length + 1, title: e.t, year: e.y, kind: e.kind, item: best, versions: versions.map(v => ({ id: v.id, name: v.name })) });
+    }
+    return { id: f.id, name: f.name, studio: true, order: order === 'oldest' ? 'oldest' : 'newest', kind: kind || '', counts, have: counts.movie + counts.series, total: f.items.length, items, next: -1 };
+  }
+
+  collection(pid, id, order = 'release', kind = '') {
     const f = franchises.byId(id);
     if (!f) return null;
+    if (f.studio) return this._studio(pid, f, order, kind);
     const c = this.get(pid), get = this._franchiseItems(pid);
     const started = this.library.seriesStarted(pid);
     order = order === 'story' && f.story ? 'story' : 'release';

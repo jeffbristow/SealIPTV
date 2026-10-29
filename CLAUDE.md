@@ -66,6 +66,14 @@ seal-iptv/
                            catalog/<id>.trend.json (first run: read in the background once).
                            FlixPatrol has the other services' Top 10s but sits behind a Cloudflare bot
                            check: not used.
+    studios.js             the Disney / Netflix / Prime collections: studios.json (shipped) or a newer
+                           copy fetched from GitHub (raw .../main/seal-iptv/src/main/studios.json) every
+                           3 days -> franchises.setStudios (collections "studio-<id>", newest first, only
+                           what the playlist has; catalog._studio). Built from Wikipedia's lists by
+                           ../tools/studios.js (sections like "Exclusive international distribution" and
+                           "(seasons 4–5)" continuations left out; a list 20 % smaller than before fails),
+                           weekly by .github/workflows/studios.yml. Wikidata's "distributed by Netflix"
+                           was tried: thousands of licensed films, not usable.
     xtream.js              Xtream Codes player_api client + stream URLs + normalizers
     m3u.js                 M3U parser, live/movies/series sorting, show grouping
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)

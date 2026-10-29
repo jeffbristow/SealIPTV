@@ -1,0 +1,32 @@
+# The Disney / Netflix / Prime collections: tools/studios.js rebuilds their lists from
+# Wikipedia every week; the apps fetch seal-iptv/src/main/studios.json from here.
+# A list that came out much smaller than before fails the run and the old one stays.
+name: Studio collections
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/studios.js
+      - name: Commit when the lists changed
+        run: |
+          if git diff --quiet -- seal-iptv/src/main/studios.json; then echo "No changes."; exit 0; fi
+          # only the date changed: not worth a commit
+          if [ "$(git diff -U0 -- seal-iptv/src/main/studios.json | grep -c '^[-+]{"t"')" = "0" ]; then echo "Only the date changed."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add seal-iptv/src/main/studios.json
+          git commit -m "Studio collections: this week's lists"
+          git push
