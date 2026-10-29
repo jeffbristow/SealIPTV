@@ -14,6 +14,8 @@
  *   big files  fileSize / fileChunk / appendFile: the same for saved files
  *              (the playlist cache), read and written a piece at a time
  *   network    interfaces(), vpnActive() (Android's own "a VPN is on")
+ *   phone      phoneStart(port, html, hello) / phoneReply(id, json) / phoneStop():
+ *              "Set up from your phone" (PhoneServer; posts come as "phonePost")
  *   sound      audioOutput() — the audio device's name, for audio sync
  *   apps       launchApp(package), openExternal(url, title, ua)
  *   player     play(json), playerCommand(json)   (PlayerActivity)
@@ -331,6 +333,16 @@ public class NativeBridge {
         } catch (Exception ignored) { }
         return StandardCharsets.UTF_8;
     }
+
+    /* ---------------- set up from a phone (PhoneServer) ---------------- */
+    private PhoneServer phone;
+    /** Serve html (and /hello) on the home network at port (or the next free one) -> the port, -1 if none */
+    @JavascriptInterface public synchronized int phoneStart(int port, String html, String hello) {
+        if (phone == null) phone = new PhoneServer(this);
+        return phone.start(port, html, hello);
+    }
+    @JavascriptInterface public void phoneReply(String id, String json) { if (phone != null) phone.reply(id, json); }
+    @JavascriptInterface public synchronized void phoneStop() { if (phone != null) phone.stop(); }
 
     /* ---------------- network ---------------- */
     @JavascriptInterface public String interfaces() {

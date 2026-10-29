@@ -61,6 +61,12 @@ swap(`<script src="../../node_modules/hls.js/dist/hls.min.js"></script>
 <script src="tvnav.js"></script>
 <script src="player-tv.js"></script>`);
 fs.writeFileSync(path.join(OUT, 'index.html'), html);
+
+// the page a phone opens for "Set up from your phone" (phone/page.js, served by PhoneServer.java): one file, its script inline
+const phoneJs = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src', 'phone', 'page.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['chrome80', 'safari14'], minify: true, legalComments: 'none', logLevel: 'warning' }).outputFiles[0].text;
+const phoneHtml = fs.readFileSync(path.join(__dirname, 'src', 'phone', 'phone.html'), 'utf8');
+if (!phoneHtml.includes('/*PAGE_JS*/')) throw new Error('phone.html changed: no /*PAGE_JS*/');
+fs.writeFileSync(path.join(OUT, 'phone.html'), phoneHtml.replace('/*PAGE_JS*/', () => phoneJs.replace(/<\/(script)/gi, '<\/$1')));
 fs.writeFileSync(path.join(OUT, 'version.json'), JSON.stringify({ version: VERSION, minNative: MIN_NATIVE }) + '\n');
 
 const kb = f => Math.round(fs.statSync(path.join(OUT, f)).size / 1024);

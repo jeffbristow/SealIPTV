@@ -9,7 +9,7 @@ const CHANNELS = new Set([
   'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
-  'sync:status', 'sync:probe', 'sync:connect', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',
+  'sync:status', 'sync:probe', 'sync:connect', 'tv:find', 'tv:send', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',
   'play:prepare', 'play:stopped', 'play:external', 'play:findVlc', 'play:netlog',
   'art:find', 'art:keep', 'art:testKey', 'art:clear',
   'update:check', 'update:install', 'update:restart', 'update:openPage'

@@ -155,6 +155,27 @@ const PASS = 'correct horse battery staple';
     const C = pc('C');
     await C.sync.connect({ server: URL_, username: 'sam', passphrase: PASS, deviceName: 'PC C' });
     ok(C.store.listProfiles().length === 1 && C.store.getSettings().playback.watchedPercent === 80, 'a new PC gets everything');
+    /* ---- "Connect a TV": a device in sync brings another one in, without the passphrase ---- */
+    const inv = await C.sync.invite();
+    ok(inv.server.startsWith(C.sync.status().server) && /^[0-9a-f]{64}$/.test(inv.authKey) && Buffer.from(inv.vaultKey, 'base64').length === 32 && !inv.fresh, 'a device in sync can invite another (no passphrase needed)');
+    const T = pc('T');
+    const st = await T.sync.joinWith({ ...inv, deviceName: 'Living room TV' });
+    ok(st.connected && T.store.listProfiles().length === 1 && T.store.getProfile(pA.id).password === 'provider-secret', 'the TV joins with what was sent and gets everything');
+    const tvDevs = await C.sync.devices();
+    ok(tvDevs.length >= 2 && JSON.stringify(tvDevs).includes('Living room TV'), '… as a device of its own');
+    T.library.setFavorite(pA.id, 'live:303', true, { name: 'Three' });
+    await T.sync.sync();
+    await C.sync.sync();
+    ok(C.library.favorites(pA.id, 'live').some(f => f.id === '303'), 'and its changes reach the others');
+    // a device connected before 1.5.0 doesn't keep the login key: the passphrase once
+    delete C.sync.state.authKey;
+    await rejects(C.sync.invite(), /passphrase/, 'an older connection asks for the passphrase once');
+    const inv2 = await C.sync.invite(PASS);
+    ok(inv2.fresh && inv2.authKey === inv.authKey, '… which gives the same login key');
+    C.sync.keepAuthKey(inv2.authKey);
+    ok(!(await C.sync.invite()).fresh, '… kept for next time');
+    await rejects(pc('U').sync.joinWith({ ...inv, authKey: 'a'.repeat(64) }), /./, 'a wrong login key is refused by the server');
+
     await rejects(A.sync.destroy('wrong passphrase'), /not correct/, 'deleting the vault needs the passphrase');
     await A.sync.destroy(PASS);
     ok(!(await A.sync.probe(URL_)).vault && A.store.listProfiles().length === 1, 'vault deleted; the PC keeps its data');

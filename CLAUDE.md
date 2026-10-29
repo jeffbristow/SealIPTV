@@ -125,6 +125,16 @@ dist/                      Seal-IPTV-Sync-Server-<ver>.zip (upload; never contai
                            the page reads them in 1 MB base64 pieces (blobChunk); big saved files use
                            fileSize/fileChunk/appendFile (shims/fs.js). Test: web/test-pieces.js.
                            Crash logs: adb connect <TV IP>:5555, adb logcat -b crash -d.
+                           "Set up from your phone" (welcome page, Settings → Playlists / Sync): core.js
+                           phone:start makes a code and a QR (qrcode-generator) of http://<LAN ip>:8765/#<code>;
+                           PhoneServer.java (APK 1.5.0+) serves www/phone.html (built from web/src/phone by
+                           build.js) and POST /send to the page ("phonePost"), GET /hello for finding it;
+                           ../seal-iptv/src/main/setuplink.js seals it with XChaCha20-Poly1305, key =
+                           PBKDF2(code) — the code is only after the #. Test: web/test-phone.js.
+                           "Connect a TV" (Settings → Sync, Windows or TV, in sync): tvfind.js finds TVs
+                           with that window open (/hello on the /24) and sends sync.invite() = server,
+                           username, loginKey, vault key; the TV's sync.joinWith logs in as its own device.
+                           Devices keep loginKey since 1.5.0 (older: the passphrase once).
                            devtest/tv-harness.js turns off Chromium's window-occlusion check: with the
                            PC's screen locked the page otherwise stops drawing (no screenshots,
                            IntersectionObserver never fires — the TV Guide / lists never load).

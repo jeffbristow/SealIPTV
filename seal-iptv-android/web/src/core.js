@@ -266,6 +266,90 @@ handle('sync:connect', opts => sync.connect(opts || {}));
 handle('sync:now', async () => { await sync.sync(); return sync.status(); });
 handle('sync:disconnect', () => sync.disconnect());
 handle('sync:devices', () => sync.devices());
+
+/* ---- "Set up from your phone": a QR code; the phone's page sends the sync server or a playlist
+   (PhoneServer.java serves it; phone/link.js seals what's sent with the code in the QR code) ---- */
+const phoneLink = require('../../../seal-iptv/src/main/setuplink');
+const qrcode = require('qrcode-generator');
+let phone = null;   // { key, bad } while the QR code is on the screen
+const tvfind = require('../../../seal-iptv/src/main/tvfind');
+/** the TV's address on the home network (Wi-Fi / Ethernet, not the VPN's) */
+function lanAddress() {
+  let all = {};
+  try { all = JSON.parse(N.interfaces()); } catch { /* none */ }
+  return tvfind.lanAddresses(all)[0] || '';
+}
+handle('phone:start', async () => {
+  if (typeof N.phoneStart !== 'function') throw new Error('Install the newest Seal IPTV for Fire TV (Settings → About → Check for updates) to set it up from a phone.');
+  const ip = lanAddress();
+  if (!ip) throw new Error('The TV isn\'t on a home network (Wi-Fi or Ethernet), so a phone can\'t reach it.');
+  const html = await (await globalThis.__pageFetch('phone.html')).text();
+  // /hello: how another Seal IPTV on the network finds this TV ("Connect a TV")
+  const port = N.phoneStart(8765, html, JSON.stringify({ app: 'seal-iptv-setup', v: 1, name: N.deviceName ? N.deviceName() : 'Fire TV' }));
+  if (port < 0) throw new Error('The TV couldn\'t open its setup page on the home network.');
+  const code = phoneLink.newCode();
+  phone = { key: phoneLink.keyFrom(code), bad: 0 };
+  const url = `http://${ip}:${port}/#${code}`;
+  const qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  trace('phone setup: open on port', port);
+  return { url, address: `${ip}:${port}`, code: phoneLink.pretty(code), svg: qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true }) };
+});
+// (the server a few seconds later: the phone's answer may still be on its way when the window closes)
+let phoneStopping = null;
+// "Connect a TV" from this TV: find the others showing the setup window, send them this vault
+handle('tv:find', () => {
+  let all = {};
+  try { all = JSON.parse(N.interfaces()); } catch { /* none */ }
+  return tvfind.find({ addresses: tvfind.lanAddresses(all), timeout: 450, ports: [8765] });
+});
+handle('tv:send', async ({ address, code, passphrase }) => {
+  const inv = await sync.invite(passphrase);
+  const r = await tvfind.send({ address, code, data: { kind: 'join', server: inv.server, username: inv.username, authKey: inv.authKey, vaultKey: inv.vaultKey, from: N.deviceName ? N.deviceName() : 'Fire TV' } });
+  if (r.ok && inv.fresh) sync.keepAuthKey(inv.authKey);
+  return r;
+});
+handle('phone:stop', () => {
+  phone = null;
+  clearTimeout(phoneStopping);
+  phoneStopping = setTimeout(() => { if (!phone) try { N.phoneStop(); } catch { /* old APK */ } }, 4000);
+  return true;
+});
+onEvent('phonePost', async ({ id, body }) => {
+  const answer = o => { try { N.phoneReply(id, JSON.stringify(o)); } catch { /* gone */ } };
+  if (!phone) return answer({ ok: false, error: 'On the TV, open "Set up from your phone" again.' });
+  let m;
+  try { m = phoneLink.open(phone.key, body); }
+  catch {
+    // not sealed with this code: someone else on the network, or an old QR code — after 20, the TV stops listening
+    if (++phone.bad >= 20) { phone = null; try { N.phoneStop(); } catch { /* gone */ } }
+    return answer({ ok: false, error: 'That isn\'t the code on the TV. Scan the QR code on the TV again.' });
+  }
+  try { answer({ ok: true, text: await phoneDo(m) }); }
+  catch (e) { answer({ ok: false, error: e.message || 'Something went wrong.' }); }
+});
+async function phoneDo(m) {
+  // from a Seal IPTV that's in sync already ("Connect a TV"): its vault, joined as a device of our own
+  if (m.kind === 'join') {
+    const r = await sync.joinWith({ server: m.server, username: m.username, authKey: m.authKey, vaultKey: m.vaultKey, deviceName: N.deviceName ? N.deviceName() : 'Fire TV' });
+    send('phone:done', { kind: 'sync', from: m.from || '' });
+    return `${N.deviceName ? N.deviceName() : 'The TV'} is connected: ${Number(r.items || 0).toLocaleString()} records in sync. It's updating now.`;
+  }
+  if (m.kind === 'sync') {
+    const r = await sync.connect({ server: m.server, username: m.username, passphrase: m.passphrase, create: false, deviceName: m.deviceName || (N.deviceName ? N.deviceName() : 'Fire TV') });
+    send('phone:done', { kind: 'sync' });
+    return `The TV is connected: ${Number(r.items || 0).toLocaleString()} records in sync. It's updating now.`;
+  }
+  if (m.kind === 'xtream' || m.kind === 'm3u') {
+    const form = m.kind === 'xtream' ? { type: 'xtream', name: m.name || '', server: m.server, username: m.username, password: m.password } : { type: 'm3u', name: m.name || '', m3uUrl: m.m3uUrl };
+    await catalog.test(Store.cleanProfile(form, null));   // the login works / the link is a playlist
+    const saved = store.saveProfile(form);
+    send('phone:done', { kind: 'playlist', id: saved.id, name: saved.name });
+    return `"${saved.name}" was added. The TV is loading it now.`;
+  }
+  throw new Error('The TV doesn\'t know what to do with that.');
+}
 handle('sync:revoke', id => sync.revoke(id));
 handle('sync:destroy', pass => sync.destroy(pass));
 

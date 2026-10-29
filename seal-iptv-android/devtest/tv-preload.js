@@ -38,6 +38,10 @@ window.SealNative = {
   encrypt: s => 'K' + Buffer.from(s).toString('base64'),
   decrypt: s => (s && s[0] === 'K' ? Buffer.from(s.slice(1), 'base64').toString() : null),
   interfaces: () => JSON.stringify(os.networkInterfaces()),
+  // "Set up from your phone" (PhoneServer.java): the page it would serve, the answers it would send back
+  phoneStart: (port, html, hello) => { window.__phone = { port, html, replies: [], stopped: false }; window.__phoneHello = hello; return port; },
+  phoneReply: (id, json) => { if (window.__phone) window.__phone.replies.push({ id, ...JSON.parse(json) }); },
+  phoneStop: () => { if (window.__phone) window.__phone.stopped = true; },
   vpnActive: () => (os.networkInterfaces().ProtonVPN ? 'Android VPN (tun0)' : null),
   audioOutput: () => 'Roku Streambar SE (Bluetooth)',
   deviceName: () => 'Living room Fire TV',

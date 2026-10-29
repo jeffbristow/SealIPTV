@@ -12,8 +12,9 @@
  *   id is bound in as associated data). The server has it only wrapped
  *   with wrapKey. Item ids are "<type>:" + HMAC(vault key, name), so the
  *   server can't see which channel / show / category an item is about.
- *   This PC keeps the vault key and the device token protected by your
- *   Windows login (Electron safeStorage).
+ *   This PC keeps the vault key, the device token and loginKey protected by
+ *   your Windows login (Electron safeStorage) — loginKey so it can add a TV
+ *   without the passphrase ("Connect a TV": invite / joinWith).
  *
  * WHAT SYNCS — small records, each with the time it was changed:
  *   profile:<pid>                 a playlist, with its login (encrypted)
@@ -387,20 +388,63 @@ class SyncService {
     if (!passphrase || passphrase.length < 10) throw new Error('Use a vault passphrase of at least 10 characters.');
     deviceName = String(deviceName || os.hostname() || 'Seal IPTV').slice(0, 64);
 
-    let vaultKey, r;
+    let vaultKey, r, auth;
     if (create) {
       const { authKey, wrapKey } = await deriveKeys(passphrase, username);
       vaultKey = crypto.randomBytes(32);
       r = await this._api('setup', { setupCode, username, authKey, kdf: DEFAULT_KDF, wrappedKey: seal(wrapKey, vaultKey, WRAP_AAD), deviceName }, { server, auth: false });
+      auth = authKey;
     } else {
       const pre = await this._api('prelogin', { username }, { server, auth: false });
       const { authKey, wrapKey } = await deriveKeys(passphrase, username, pre.kdf);
       r = await this._api('login', { username, authKey, deviceName }, { server, auth: false });
       try { vaultKey = unseal(wrapKey, r.wrappedKey, WRAP_AAD); } catch { throw new Error('The vault key couldn\'t be opened with that passphrase.'); }
+      auth = authKey;
     }
+    return this._signedIn({ server, username, r, vaultKey, deviceName, authKey: auth });
+  }
+
+  /**
+   * "Connect a TV": what another Seal IPTV needs to join this vault as a device of its own,
+   * without the passphrase: { server, username, authKey, vaultKey (base64) }. It goes to the TV
+   * sealed with the code on its screen (setuplink.js). A device connected before 1.5.0 doesn't
+   * keep the login key: the passphrase once (fresh: true — kept after the TV has joined with it).
+   */
+  async invite(passphrase = '') {
+    if (!this.state) throw new Error('This device isn\'t connected to a sync server.');
+    const kept = this._unprotect(this.state.authKey);
+    let authKey = kept ? kept.toString('utf8') : '';
+    if (!authKey) {
+      if (!passphrase) { const e = new Error('Type the vault passphrase once (this device didn\'t keep what\'s needed to add a device).'); e.code = 'PASSPHRASE'; throw e; }
+      const pre = await this._api('prelogin', { username: this.state.username }, { auth: false });
+      authKey = (await deriveKeys(passphrase, this.state.username, pre.kdf)).authKey;
+    }
+    return { server: this.state.server, username: this.state.username, authKey, vaultKey: this._vaultKey().toString('base64'), fresh: !kept };
+  }
+
+  /** after a TV joined with a login key worked out from the passphrase: kept for next time */
+  keepAuthKey(authKey) {
+    if (!this.state || this.state.authKey || !authKey) return;
+    this.state.authKey = this._protect(Buffer.from(authKey, 'utf8'));
+    this._save();
+  }
+
+  /** Join with what another device sent ("Connect a TV"): signed in as a new device; the vault key as sent. */
+  async joinWith({ server: serverInput, username, authKey, vaultKey, deviceName }) {
+    const server = normalizeServer(serverInput);
+    username = String(username || '').trim().toLowerCase();
+    deviceName = String(deviceName || os.hostname() || 'Seal IPTV').slice(0, 64);
+    const key = Buffer.from(String(vaultKey || ''), 'base64');
+    if (key.length !== 32 || !/^[0-9a-f]{64}$/.test(String(authKey || ''))) throw new Error('What was sent isn\'t a sync connection.');
+    const r = await this._api('login', { username, authKey, deviceName }, { server, auth: false });
+    return this._signedIn({ server, username, r, vaultKey: key, deviceName, authKey });
+  }
+
+  /** Signed in (a new vault, the passphrase, or another device's invitation): the first sync. */
+  async _signedIn({ server, username, r, vaultKey, deviceName, authKey }) {
     this.state = {
       server, username, deviceId: r.deviceId, deviceName,
-      token: this._protect(Buffer.from(r.token, 'utf8')), vaultKey: this._protect(vaultKey),
+      token: this._protect(Buffer.from(r.token, 'utf8')), vaultKey: this._protect(vaultKey), authKey: this._protect(Buffer.from(authKey, 'utf8')),
       keyVersion: r.keyVersion || 1, seq: 0, pullVersion: PULL_VERSION, known: {}, pending: {}, lastSync: null, lastError: null, needs: null
     };
     this._save();

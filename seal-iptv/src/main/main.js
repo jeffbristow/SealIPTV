@@ -25,6 +25,7 @@ const { SyncService } = require('./sync');
 const { Artwork } = require('./artwork');
 const { Trending } = require('./trending');
 const { Studios } = require('./studios');
+const tvfind = require('./tvfind');
 const franchises = require('./franchises');
 const { ImageCache } = require('./imagecache');
 const { Updater } = require('./updater');
@@ -294,6 +295,14 @@ function registerIpc() {
   handle('sync:now', async () => { await sync.sync(); return sync.status(); });
   handle('sync:disconnect', () => sync.disconnect());
   handle('sync:devices', () => sync.devices());
+  // "Connect a TV": the TVs on the home network showing "Set up from your phone"; send one this vault
+  handle('tv:find', () => tvfind.find({ addresses: tvfind.lanAddresses(require('os').networkInterfaces()) }));
+  handle('tv:send', async ({ address, code, passphrase }) => {
+    const inv = await sync.invite(passphrase);
+    const r = await tvfind.send({ address, code, data: { kind: 'join', server: inv.server, username: inv.username, authKey: inv.authKey, vaultKey: inv.vaultKey, from: require('os').hostname() } });
+    if (r.ok && inv.fresh) sync.keepAuthKey(inv.authKey);
+    return r;
+  });
   handle('sync:revoke', id => sync.revoke(id));
   handle('sync:destroy', pass => sync.destroy(pass));
   handle('cats:flag', (section, catId, patch, pin) => {

@@ -2,11 +2,14 @@
   "name": "seal-iptv-tv-web",
   "private": true,
   "description": "Builds the Fire TV app's web part (app/src/main/assets/www) from ../../seal-iptv",
-  "scripts": { "build": "node build.js" },
+  "scripts": {
+    "build": "node build.js"
+  },
   "devDependencies": {
-    "esbuild": "0.24.0",
-    "@noble/hashes": "1.5.0",
     "@noble/ciphers": "1.0.0",
-    "buffer": "6.0.3"
+    "@noble/hashes": "1.5.0",
+    "buffer": "6.0.3",
+    "esbuild": "0.24.0",
+    "qrcode-generator": "1.4.4"
   }
 }
