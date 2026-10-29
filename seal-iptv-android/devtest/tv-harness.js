@@ -156,7 +156,7 @@ app.whenReady().then(async () => {
 
     // every page fits the screen: nothing wider than the window
     const wide = {};
-    for (const v of ['home', 'live', 'movies', 'series', 'favorites', 'settings']) {
+    for (const v of ['home', 'live', 'movies', 'series', 'favorites', 'watchlist', 'sports', 'ppv', 'settings']) {
       await js(`go('${v}')`);
       await sleep(1000);
       wide[v] = await js("(() => { const W = document.documentElement.clientWidth; const over = [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > W + 1 && getComputedStyle(e).position !== 'fixed' && !e.closest('.hidden, .shelf-row, #player')).length; return { width: W, scrollWidth: document.documentElement.scrollWidth, sticksOut: over }; })()");
@@ -211,6 +211,44 @@ app.whenReady().then(async () => {
     await shot('t10-my-category');
     log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
     log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
+
+    // the watchlist: ☰ Menu on a poster -> on it; on Home and its own page
+    await js("go('movies')");
+    await sleep(1500);
+    await js("document.querySelector('#grid .card').focus()");
+    await js('window.__tvMenu()');
+    await sleep(400);
+    log('☰ Menu on a poster (watchlist)', await js("[...document.querySelectorAll('#ctxMenu button')].map(b => b.textContent).join(' | ')"));
+    await js("[...document.querySelectorAll('#ctxMenu button')].find(b => /watchlist/.test(b.textContent)).focus()");
+    await js('window.__tvOk()');
+    await sleep(800);
+    await js("go('watchlist')");
+    await sleep(1000);
+    await shot('t15-watchlist');
+    log('watchlist page', await js("JSON.stringify([...document.querySelectorAll('#view .card .title')].map(t => t.textContent))"));
+    await js("go('home')");
+    await sleep(2500);
+    await shot('t16-home-rows');
+    log('Home rows', await js("JSON.stringify([...document.querySelectorAll('#view .shelf-head h2')].map(t => t.textContent))"));
+
+    // Sports: the event channels' games (one game on two feeds = one card), OK -> pick a feed -> plays
+    await js("go('sports')");
+    await sleep(2500);
+    await shot('t17-sports');
+    log('Sports page', await js("JSON.stringify({ sections: [...document.querySelectorAll('#view .shelf-head h2')].map(t => t.textContent), events: [...document.querySelectorAll('#view .event-card')].map(c => c.querySelector('.title').textContent + ' — ' + c.querySelector('.sub').textContent), chips: [...document.querySelectorAll('.ev-filters .chip')].map(c => c.textContent) })"));
+    await js("[...document.querySelectorAll('#view .event-card')].find(c => /Walruses/.test(c.textContent)).focus()");
+    await js('window.__tvOk()');
+    await sleep(500);
+    log('OK on a game on two feeds', await js("JSON.stringify({ menu: [...document.querySelectorAll('#ctxMenu:not(.hidden) button')].map(b => b.textContent), focus: document.activeElement.textContent })"));
+    await js('window.__tvOk()');
+    await sleep(2000);
+    log('… a feed picked -> plays', await js("JSON.stringify(window.__played && { title: window.__played.title, live: window.__played.live, canZap: window.__played.canZap })"));
+    await js("window.__nativeEvent('player', JSON.stringify({ type: 'closed', pos: 0, dur: 0 }))");
+    await sleep(800);
+    await js("go('ppv')");
+    await sleep(2000);
+    await shot('t18-ppv');
+    log('Pay-Per-View page', await js("JSON.stringify([...document.querySelectorAll('#view .event-card')].map(c => c.querySelector('.title').textContent + ' — ' + c.querySelector('.sub').textContent))"));
 
     // Back puts the focus back on the poster that was opened
     await js("state.history = []; go('movies', null, { push: false })");

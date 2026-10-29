@@ -294,7 +294,7 @@ async function autoRefresh() {
 /* =================================================================
  * 3. NAVIGATION, TOP BAR, SEARCH
  * ================================================================= */
-const TITLES = { home: 'Home', live: 'Live TV', guide: 'TV Guide', movies: 'Movies', series: 'Series', favorites: 'Favorites', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
+const TITLES = { home: 'Home', live: 'Live TV', guide: 'TV Guide', movies: 'Movies', series: 'Series', favorites: 'Favorites', watchlist: 'Watchlist', sports: 'Sports', ppv: 'Pay-Per-View', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
 
 function go(view, arg = null, { push = true } = {}) {
   if (view === 'settings' && state.view !== 'settings' && settingsLocked()) {
@@ -389,7 +389,7 @@ function render() {
   view.innerHTML = '';
   view.scrollTop = 0;
   if (!profile() && v !== 'settings') return renderWelcome(view);
-  ({ home: renderHome, live: renderLive, guide: renderGuide, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
+  ({ home: renderHome, live: renderLive, guide: renderGuide, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, watchlist: renderWatchlist, sports: renderEvents, ppv: renderEvents, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
   if (TV && window.tvFocusFirst) window.tvFocusFirst();
 }
 
@@ -662,7 +662,7 @@ async function refreshAll(types = []) {
   }
   // resume points alone don't change the lists; everything else (or pages that show them) is drawn again
   const onlyPos = types.length && types.every(t => t === 'pos');
-  if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'collection', 'list'].includes(state.view)) render();
+  if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'watchlist', 'collection', 'list'].includes(state.view)) render();
 }
 // the PIN may run out (Settings → "Stay unlocked"): check now and then
 setInterval(async () => {
@@ -739,6 +739,8 @@ function showMenu(ev, items) {
   const r = m.getBoundingClientRect();
   m.style.left = Math.min(ev.clientX, innerWidth - r.width - 8) + 'px';
   m.style.top = Math.min(ev.clientY, innerHeight - r.height - 8) + 'px';
+  // TV: the remote is on its first choice (also when the menu comes up a moment later: cardMenu asks first)
+  if (TV) { const f = m.querySelector('button'); if (f) f.focus(); }
 }
 function hideMenu() { show($('#ctxMenu'), false); }
 
@@ -879,9 +881,9 @@ async function renderHome(view) {
   const top = h('<div class="spot-slot"></div>');
   home.appendChild(top);
 
-  const [cont, favLive, favMovies, favSeries, newMovies, newSeries] = await Promise.all([
+  const [cont, favLive, favMovies, favSeries, newMovies, newSeries, wl] = await Promise.all([
     call('lib:continue'), call('lib:favorites', 'live'), call('lib:favorites', 'movie'), call('lib:favorites', 'series'),
-    call('catalog:recent', 'movies', { homeSafe: true }), call('catalog:recent', 'series', { homeSafe: true })
+    call('catalog:recent', 'movies', { homeSafe: true }), call('catalog:recent', 'series', { homeSafe: true }), call('lib:watchlistItems', { home: true })
   ].map(p => p.catch(() => [])));
   const mine = await Promise.all(state.lists.map(l => call('lists:items', l.id).catch(() => [])));
   if (!home.isConnected) return;
@@ -889,6 +891,11 @@ async function renderHome(view) {
   const spot = cont[0] ? spotlight(cont[0]) : newMovies.find(m => m.poster) ? spotlight(null, newMovies.find(m => m.poster)) : null;
   if (spot) top.appendChild(spot);
   if (cont.length > 1) home.appendChild(shelf('Continue watching', cont.slice(1), continueCard, { wide: true }));
+  if (wl.length) home.appendChild(shelf('📌 My watchlist', wl.slice(0, 30), w => posterCard(w), { more: () => go('watchlist') }));
+  // games and events on now (Sports / Pay-Per-View), filled in when they're found
+  const evSlot = h('<div class="ev-slot"></div>');
+  home.appendChild(evSlot);
+  homeEvents(evSlot);
   // what's popular on the streaming services, the titles this playlist has (filled in when they're in)
   const trend = h('<div class="trend-slot"></div>');
   home.appendChild(trend);
@@ -905,8 +912,8 @@ async function renderHome(view) {
   if (favSeries.length) home.appendChild(shelf('Favorite series', favSeries.slice(0, 30), f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }), { more: () => { state.sec.series.cat = '*fav'; go('series'); } }));
   if (newMovies.length) home.appendChild(shelf('Recently added movies', newMovies, posterCard, { more: () => { state.sec.movies.sort = 'added'; state.sec.movies.cat = ''; go('movies'); } }));
   if (newSeries.length) home.appendChild(shelf('Recently added series', newSeries, posterCard, { more: () => { state.sec.series.sort = 'added'; state.sec.series.cat = ''; go('series'); } }));
-  if (!cont.length && !favLive.length && !favMovies.length && !favSeries.length) {
-    home.appendChild(h('<p class="muted" style="padding:10px 22px">Tip: click ☆ on a channel, movie or series to keep it on this page. Movies and episodes you start show up here so you can pick up where you left off.</p>'));
+  if (!cont.length && !favLive.length && !favMovies.length && !favSeries.length && !wl.length) {
+    home.appendChild(h('<p class="muted" style="padding:10px 22px">Tip: click ☆ on a channel, movie or series to keep it on this page, or 📌 Watchlist on a movie or series to watch it later. Movies and episodes you start show up here so you can pick up where you left off.</p>'));
   }
 }
 
@@ -1069,6 +1076,15 @@ function channelCard(it) {
   return el;
 }
 
+/** 📌 Watchlist on a movie / series page or a card's menu. it: { id, name, wl } */
+async function toggleWatchlist(it, kind, meta) {
+  try {
+    it.wl = await call('lib:watchlist', `${kind}:${it.id}`, !it.wl, meta);
+    toast(it.wl ? `Added "${it.name}" to your watchlist.` : `Took "${it.name}" off your watchlist.`);
+    if (state.view === 'watchlist' || state.view === 'home') render();
+  } catch (e) { fail(e); }
+}
+
 async function toggleFav(it, kind, meta) {
   try {
     it.fav = await call('lib:favorite', `${kind}:${it.id}`, !it.fav, meta);
@@ -1229,6 +1245,115 @@ function renderGuide(view) {
 }
 
 /* =================================================================
+ * 6c. SPORTS + PAY-PER-VIEW (main/events.js) — games and events on now and later,
+ * from the event channels' names and the sports channels' guide
+ * ================================================================= */
+const evDay = t => {
+  const d = new Date(t), now = new Date();
+  const days = Math.round((new Date(d).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86400000);
+  return days === 0 ? '' : days === 1 ? 'Tomorrow ' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ';
+};
+const evWhen = ev => ev.live ? `Live · since ${fmtClock(ev.start)}` : evDay(ev.start) + fmtClock(ev.start);
+
+/** a game / event: its channel's logo (or the sport), the name, when, on how many channels */
+function eventCard(ev) {
+  const ch = ev.channels[0];
+  const sub = [ev.league, evWhen(ev), ev.channels.length > 1 ? `${ev.channels.length} channels` : ''].filter(Boolean).join(' · ');
+  const el = h(`<div class="card wide event-card${ev.live ? ' is-live' : ''}" tabindex="0">
+    <div class="poster ev-poster">${ch.logo ? `${pic(ch.logo, ch.name, 'pi logo-img')}<span class="badge ev-sport" title="${esc(ev.sport.name)}">${ev.sport.icon}</span>` : `<span class="ev-icon" title="${esc(ev.sport.name)}">${ev.sport.icon}</span>`}${ev.live ? '<span class="badge live">● LIVE</span>' : ''}</div>
+    <div class="title" title="${esc(ev.title)}">${esc(ev.title)}</div><div class="sub">${esc(sub)}</div></div>`);
+  const img = el.querySelector('img');
+  if (img) img.style.objectFit = 'contain';
+  el.onclick = () => playEvent(ev, el);
+  el.oncontextmenu = e => { e.preventDefault(); playEvent(ev, el, true); };
+  return el;
+}
+
+/** one channel: play it; several (feeds, SD / HD): pick one (the player can go between them) */
+function playEvent(ev, el, pick = false) {
+  const chans = ev.channels.map(c => ({ id: c.id, name: c.name, logo: c.logo }));
+  const play = i => Player.play({ kind: 'live', id: chans[i].id, name: chans[i].name, image: chans[i].logo }, { channels: chans, index: i });
+  if (chans.length === 1 && !pick) return play(0);
+  const r = el.getBoundingClientRect();
+  // after this click is done (a click elsewhere closes menus)
+  setTimeout(() => showMenu({ clientX: r.left + 20, clientY: r.top + 40 }, ev.channels.map((c, i) => ({ label: `▶ ${[c.feed, c.label || c.name].filter(Boolean).join(' · ')}`, run: () => play(i) }))), 0);
+}
+
+/** Sports / Pay-Per-View: Live now, Later today, Tomorrow, Coming up — by sport and region */
+async function renderEvents(view) {
+  const kind = state.view;
+  const f = state.evFilter || (state.evFilter = { sports: { sport: '', region: '' }, ppv: { sport: '', region: '' } });
+  const page = h('<div class="home events"><p class="muted" style="padding:18px 22px">Looking for what\'s on…</p></div>');
+  view.appendChild(page);
+  let r;
+  try { r = await call('events:list', kind); }
+  catch (e) {
+    if (!page.isConnected) return;
+    page.innerHTML = '';
+    if (e.code === 'VPN') { page.appendChild(h('<div class="empty">🛡️ Connect your VPN to see what\'s on.</div>')); return vpnBlocked(e.vpn); }
+    return fail(e);
+  }
+  if (!page.isConnected || state.view !== kind) return;
+  const all = [...r.live, ...r.later, ...r.tomorrow, ...r.soon];
+  const draw = () => keepFocus(page, () => {
+    page.innerHTML = '';
+    const fk = f[kind];
+    if (fk.sport && !r.sports.some(s => s.id === fk.sport)) fk.sport = '';
+    if (fk.region && !r.regions.includes(fk.region)) fk.region = '';
+    const keep = ev => (!fk.sport || ev.sport.id === fk.sport) && (!fk.region || ev.region === fk.region);
+    if (!all.length) {
+      page.appendChild(h(kind === 'ppv'
+        ? '<div class="empty">No pay-per-view events on now or later today.<br><span class="small">Events show up here when your provider\'s pay-per-view channels have one scheduled (their names say what\'s on and when).</span></div>'
+        : '<div class="empty">No games on now or later today.<br><span class="small">Games show up here from your provider\'s event channels and the TV Guide of its sports channels.</span></div>'));
+      return;
+    }
+    // filters: the sports there are, and the regions (from the categories: USA, UK, CA …)
+    const bar = h('<div class="ev-filters" data-tv-group></div>');
+    const chip = (label, on, fn) => { const b = h(`<button class="chip${on ? ' active' : ''}">${label}</button>`); b.onclick = fn; bar.appendChild(b); };
+    if (r.sports.length > 1) {
+      chip('All', !fk.sport, () => { fk.sport = ''; draw(); });
+      r.sports.forEach(s => chip(`${s.icon} ${esc(s.name)} <span class="faint">${s.count}</span>`, fk.sport === s.id, () => { fk.sport = s.id; draw(); }));
+    }
+    if (r.regions.length > 1) {
+      bar.appendChild(h('<span class="ev-sep"></span>'));
+      chip('🌍 All', !fk.region, () => { fk.region = ''; draw(); });
+      r.regions.forEach(g => chip(esc(g), fk.region === g, () => { fk.region = g; draw(); }));
+    }
+    if (bar.children.length) page.appendChild(bar);
+    let any = false;
+    for (const [title, list] of [['🔴 Live now', r.live], ['Later today', r.later], ['Tomorrow', r.tomorrow], ['Coming up', r.soon]]) {
+      const shown = list.filter(keep);
+      if (!shown.length) continue;
+      any = true;
+      page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${shown.length}</span></div></div>`));
+      const g = h('<div class="grid ev-grid" style="padding-top:0"></div>');
+      shown.forEach(ev => g.appendChild(eventCard(ev)));
+      page.appendChild(g);
+    }
+    if (!any) page.appendChild(h('<div class="empty">Nothing for this choice right now.</div>'));
+  });
+  draw();
+  // what's live changes as the clock goes: drawn again every 5 minutes while the page is open
+  clearTimeout(state.evTimer);
+  state.evTimer = setTimeout(() => { if (state.view === kind && page.isConnected && $('#player').classList.contains('hidden')) render(); }, 5 * 60000);
+}
+
+/** Home's "Live sports now" / "Pay-Per-View now" rows (Settings → Home page), filled in when they're found */
+function homeEvents(slot) {
+  const ev = state.settings.events || {};
+  if (ev.homeSports === false && ev.homePpv === false) return;
+  call('events:home').then(r => {
+    if (!slot.isConnected || !r) return;
+    // an event on both lists is shown once, with the pay-per-view ones
+    const ppv = ev.homePpv !== false ? r.ppv : [];
+    const seen = new Set(ppv.map(e => e.id));
+    const sports = ev.homeSports !== false ? r.sports.filter(e => !seen.has(e.id)) : [];
+    if (sports.length) slot.appendChild(shelf('🔴 Live sports now', sports, eventCard, { more: () => go('sports') }));
+    if (ppv.length) slot.appendChild(shelf('🔴 Pay-Per-View now', ppv, eventCard, { more: () => go('ppv') }));
+  }).catch(() => { /* none now */ });
+}
+
+/* =================================================================
  * 7. MOVIES + SERIES (poster grids)
  * ================================================================= */
 function renderBrowse(view) {
@@ -1265,7 +1390,7 @@ function posterCard(it, opts = {}) {
   const sub = it.sub != null ? it.sub : [it.year || '', it.rating ? `★ ${it.rating}` : ''].filter(Boolean).join(' · ');
   const el = h(`<div class="card${wide ? ' wide' : ''}" tabindex="0">
     <div class="poster">${pic(it.poster || it.image, it.name, 'pi', { kind: it.kind, name: it.name, year: it.year }, it.fb)}
-      ${it.fav ? '<span class="badge fav">★</span>' : ''}${it.watched ? '<span class="badge seen">✓ Watched</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}
+      ${it.fav ? '<span class="badge fav">★</span>' : ''}${it.newEps ? '<span class="badge new">New episodes</span>' : ''}${it.watched ? '<span class="badge seen">✓ Watched</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}
       ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
     <div class="title" title="${esc(opts.title || it.name)}">${esc(opts.title || it.name)}</div><div class="sub">${esc(sub)}</div></div>`);
   el.onclick = opts.onClick || (() => go(it.kind === 'series' ? 'show' : 'movie', it.id));
@@ -1324,9 +1449,10 @@ async function renderMovie(view) {
       add('▶ Play', () => Player.play(req), 'btn primary big');
     }
     add(m.fav ? '★ Favorite' : '☆ Favorite', async () => { await toggleFav(m, 'movie', { name, image: poster, cat: m.cat }); draw(); });
+    if (!m.watched || m.wl) add(m.wl ? '✓ On watchlist' : '📌 Watchlist', async () => { await toggleWatchlist(m, 'movie', { name, image: poster, cat: m.cat }); draw(); });
     add('＋ Category', () => pickLists('movie:' + m.id, { name, image: poster, cat: m.cat }));
     add(m.watched ? '✓ Watched' : '○ Mark as watched', async () => {
-      try { m.watched = await call('lib:watched', 'movie:' + m.id, !m.watched, { name, image: poster }); if (m.watched) m.pos = 0; draw(); }
+      try { m.watched = await call('lib:watched', 'movie:' + m.id, !m.watched, { name, image: poster }); if (m.watched) { m.pos = 0; m.wl = false; } draw(); }
       catch (e) { fail(e); }
     });
     add(OTHER_PLAYER, () => openExternal({ ...req, title: name, start: m.pos || 0 }), 'btn ghost');
@@ -1403,6 +1529,7 @@ async function renderShow(view) {
     if (nx) add(`▶ ${nx.pos ? 'Resume' : queue.indexOf(nx) === 0 ? 'Play' : 'Continue'} ${epLabel(nx.season, nx.episode)}`, () => Player.play(nx, { queue, start: nx.pos || 0 }), 'btn primary big');
     else if (queue.length) add('↺ Watch again from the start', () => Player.play(queue[0], { queue, start: 0 }), 'btn big');
     add(d.fav ? '★ Favorite' : '☆ Favorite', async () => { await toggleFav(d, 'series', { name, image: poster, cat: d.cat }); drawActions(); });
+    add(d.wl ? '✓ On watchlist' : '📌 Watchlist', async () => { await toggleWatchlist(d, 'series', { name, image: poster, cat: d.cat }); drawActions(); });
     add('＋ Category', () => pickLists('series:' + d.id, { name, image: poster, cat: d.cat }));
     const inSeason = queue.filter(q => q.season === season);
     if (inSeason.length) {
@@ -1462,6 +1589,8 @@ async function renderShow(view) {
     }
   });
   drawActions(); drawSeasons(); drawSeason();
+  // on the watchlist: the new episodes are seen now (its "last changed" is kept again)
+  if (d.wl) call('lib:watchlist', 'series:' + d.id, true, { name, image: poster, cat: d.cat }).catch(() => {});
   if (i.seasons.length > 1) $('#sActions').dataset.tvDown = '#sSeasons .season.active';   // TV: ↓ from the buttons -> the season in use
   tvStart($('#sActions').firstChild);
 }
@@ -1546,6 +1675,26 @@ async function renderFavorites(view, focus) {
   grid('Series', 'series', series, f => posterCard({ kind: 'series', id: f.id, name: f.name, poster: f.image, fav: true }));
   const f = focus && page.querySelector(focus);
   if (f) f.focus();
+}
+
+/* ---- Watchlist (library.js 6b): movies and series to watch later; a movie goes once it's watched ---- */
+async function renderWatchlist(view) {
+  const page = h('<div class="home"></div>');
+  view.appendChild(page);
+  const items = await call('lib:watchlistItems').catch(() => []);
+  if (!page.isConnected) return;
+  if (!items.length) {
+    page.appendChild(h('<div class="empty">Your watchlist is empty.<br><span class="small">Choose 📌 Watchlist on a movie or series to watch it later. A movie goes off the list once it has been watched; a series shows <b>New episodes</b> when there are more.</span></div>'));
+    return;
+  }
+  for (const [kind, title] of [['movie', 'Movies'], ['series', 'Series']]) {
+    const list = items.filter(w => w.kind === kind);
+    if (!list.length) continue;
+    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${list.length}</span></div></div>`));
+    const g = h('<div class="grid" style="padding-top:0"></div>');
+    list.forEach(w => g.appendChild(posterCard(w)));
+    page.appendChild(g);
+  }
 }
 
 /* ---- Collections (main/franchises.js): Marvel, Star Wars … in release or story order ---- */
@@ -1772,9 +1921,13 @@ async function pickLists(key, meta) {
 }
 
 /** Right-click (☰ Menu on Fire TV) on a channel, movie or series. */
-function cardMenu(ev, kind, it) {
+async function cardMenu(ev, kind, it) {
   const key = `${kind}:${it.id}`, meta = { name: it.name, image: it.image, cat: it.cat };
   const items = [{ label: '＋ Add to a category…', run: () => pickLists(key, meta) }];
+  if (kind === 'movie' || kind === 'series') {
+    const w = { id: it.id, name: it.name, wl: await call('lib:onWatchlist', key).catch(() => false) };
+    items.push({ label: w.wl ? '✕ Take off the watchlist' : '📌 Add to the watchlist', run: () => toggleWatchlist(w, kind, meta) });
+  }
   const l = state.view === 'list' && listOf(state.arg);
   if (l) items.push({ label: `✏️ Rename in "${l.name}"…`, run: () => renameListed(l, { key, name: it.name, shown: it.name }) }, { label: `✕ Take out of "${l.name}"`, run: async () => {
     try { await call('lists:set', l.id, key, false); } catch (e) { return fail(e); }
@@ -2157,7 +2310,7 @@ function renderSettings(view) {
 
   /* ---- posters the provider doesn't have (artwork.js) ---- */
   const art = s.artwork || { lookup: true, tmdbKey: '' };
-  const ap = h(`<div class="panel"><h2>Posters &amp; trending</h2>
+  const ap = h(`<div class="panel"><h2>Home page &amp; posters</h2>
     <label class="check"><input type="checkbox" id="aOn" ${art.lookup ? 'checked' : ''}> Fill in missing posters: series from TVmaze, movies and series from TMDB</label>
     <p class="muted small">Only the title and year are sent to look a poster up, never your provider or login. Nothing is looked up while the VPN check is blocking.</p>
     <label for="aKey">TMDB API key (needed for movies)</label>
@@ -2165,8 +2318,13 @@ function renderSettings(view) {
     <p class="faint small">Free: sign up at themoviedb.org, then Settings → API. The "API Key" or the "API Read Access Token" works. ${TV ? 'Easiest to paste on a PC: it syncs to this TV.' : 'It syncs to your other devices, so you only paste it once.'}</p>
     <label class="check" style="margin-top:14px"><input type="checkbox" id="aTrend" ${art.trending !== false ? 'checked' : ''}> Trending movies and series on Home</label>
     <p class="muted small">What's popular on Netflix, Disney+, Apple TV, Hulu, Peacock, Paramount+, Prime Video and HBO Max, when your playlist has it: from Netflix's own Top 10 and TVmaze, and from TMDB when a key is set (it adds movies from the other services). These are the same lists for everyone: nothing about you or your provider is sent.</p>
-    <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters and streaming schedules from TVmaze (tvmaze.com). Netflix Top 10 from top10.netflix.com.</p></div>`);
+    <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters and streaming schedules from TVmaze (tvmaze.com). Netflix Top 10 from top10.netflix.com.</p>
+    <label class="check" style="margin-top:14px"><input type="checkbox" id="aSports" ${(state.settings.events || {}).homeSports !== false ? 'checked' : ''}> Live sports now on Home</label>
+    <label class="check"><input type="checkbox" id="aPpv" ${(state.settings.events || {}).homePpv !== false ? 'checked' : ''}> Pay-per-view events now on Home</label>
+    <p class="muted small">The games and events on right now, from your provider's event channels and the TV Guide of its sports channels. All of them are on the Sports and Pay-Per-View pages.</p></div>`);
   add('posters', ap);
+  ap.querySelector('#aSports').onchange = e => saveSettings({ events: { homeSports: e.target.checked } }, e.target.checked ? 'Live sports will be on Home.' : 'No live sports on Home.');
+  ap.querySelector('#aPpv').onchange = e => saveSettings({ events: { homePpv: e.target.checked } }, e.target.checked ? 'Pay-per-view events will be on Home.' : 'No pay-per-view events on Home.');
   ap.querySelector('#aTrend').onchange = e => saveSettings({ artwork: { trending: e.target.checked } }, e.target.checked ? 'Trending movies and series will be on Home.' : 'No trending on Home.');
   ap.querySelector('#aOn').onchange = e => saveSettings({ artwork: { lookup: e.target.checked } }, e.target.checked ? 'Missing posters will be filled in.' : 'Posters are only taken from your provider.');
   ap.querySelector('#aKey').onchange = e => saveSettings({ artwork: { tmdbKey: e.target.value } }, e.target.value.trim() ? 'TMDB key saved.' : 'TMDB key removed.');
@@ -2214,7 +2372,7 @@ const SETTINGS_SECTIONS = [
   ['playback', '▶️', 'Playback', () => 'Watched, resume, screensaver, audio sync'],
   ['parental', '🔒', 'Parental controls', () => !state.parental.hasPin ? 'No PIN' : state.parental.lockSettings ? 'PIN set · Settings locked' : 'PIN set'],
   ['categories', '🗂️', 'Categories', () => 'Hide, lock, languages'],
-  ['posters', '🖼️', 'Posters & trending', () => ((state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only') + ((state.settings.artwork || {}).trending !== false ? ' · trending on' : '')],
+  ['posters', '🖼️', 'Home page & posters', () => ((state.settings.artwork || {}).lookup ? 'Filling in missing posters' : 'From the provider only') + ((state.settings.artwork || {}).trending !== false ? ' · trending on' : '')],
   ['library', '🕘', 'Updates & history', () => 'Playlist reloads, watch history'],
   ['about', 'ℹ️', 'About', () => 'Version ' + state.version]
 ];

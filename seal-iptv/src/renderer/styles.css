@@ -119,6 +119,18 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 .badge { position: absolute; top: 6px; font-size: 11px; padding: 2px 6px; border-radius: 6px; background: rgba(10,12,16,.82); }
 .badge.fav { left: 6px; color: var(--amber); }
 .badge.seen { right: 6px; color: var(--accent); }
+/* Sports / Pay-Per-View (events) */
+.ev-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 22px 4px; align-items: center; }
+.ev-filters .chip.active { background: var(--accent); border-color: var(--accent); color: #0b0d10; }
+.ev-filters .chip.active .faint { color: inherit; opacity: .7; }
+.ev-sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+.ev-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.ev-poster { display: flex; align-items: center; justify-content: center; padding: 14px; background: var(--bg-3); }
+.ev-icon { font-size: 44px; }
+.badge.ev-sport { left: 6px; font-size: 14px; padding: 1px 6px; }
+.badge.live { top: auto; bottom: 8px; left: 6px; background: #e5484d; color: #fff; font-weight: 700; letter-spacing: .03em; }
+.event-card .title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.badge.new { top: auto; bottom: 8px; left: 6px; background: var(--amber); color: #0b0d10; font-weight: 600; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); }
 .bar i { display: block; height: 100%; background: var(--accent); }
 .card.wide .poster { aspect-ratio: 16 / 9; }

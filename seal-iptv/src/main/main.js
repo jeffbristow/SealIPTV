@@ -269,6 +269,11 @@ function registerIpc() {
   handle('lib:continue', () => library.continueWatching(pid(), 60).filter(p => catalog.homeSafe(pid(), p.key, p)).slice(0, 20).map(p => ({ ...p, poster: catalog.posterFor(pid(), p.key, p) })));
   handle('lib:favorites', kind => catalog.withLogos(pid(), library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f))));
   handle('lib:arrangeFavorites', (kind, keys) => catalog.withLogos(pid(), library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f))));
+  handle('lib:watchlist', (key, on, meta) => library.setWatchlist(pid(), key, on, catalog.watchMeta(pid(), key, meta)));
+  handle('lib:onWatchlist', key => library.onWatchlist(pid(), key));
+  handle('lib:watchlistItems', (opts = {}) => catalog.watchlist(pid(), { home: !!opts.home }));
+  handle('events:list', kind => catalog.eventsPage(pid(), kind === 'ppv' ? 'ppv' : 'sports'));
+  handle('events:home', () => catalog.eventsHome(pid()));
   handle('lists:all', () => library.lists(pid()));
   handle('lists:save', (id, o) => library.saveList(pid(), id, o));
   handle('lists:remove', id => library.removeList(pid(), id));

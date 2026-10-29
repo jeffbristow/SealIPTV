@@ -25,6 +25,7 @@
  *   cat:<pid>:<section>:<id>      a category's hide / lock / show-anyway choice
  *   list:<pid>:<list id>          one of the user's own categories (Kids …)
  *   listed:<pid>:<list id>/<key>  a channel / movie / series in one of them
+ *   watch:<pid>:<key>             a movie / series on the watchlist
  *   A removal is a record too ({ d: null }), so it reaches every device.
  *   Not synced: the downloaded channel lists, which playlist is in use,
  *   the VPN adapter / home IP, the VLC location, whether the PIN is
@@ -54,10 +55,10 @@ const pbkdf2 = promisify(crypto.pbkdf2);
 const API_VERSION = 1;
 const DEFAULT_KDF = { alg: 'pbkdf2-sha256', iter: 600000 };
 const WRAP_AAD = 'sealiptv-vault-key';
-const TYPES = ['profile', 'settings', 'fav', 'seen', 'pos', 'cat', 'list', 'listed'];
+const TYPES = ['profile', 'settings', 'fav', 'seen', 'pos', 'cat', 'list', 'listed', 'watch'];
 /* Raised when TYPES grows: versions before skipped the new kinds of records while pulling,
    so the vault is read once more from the start (what's known already isn't applied again). */
-const PULL_VERSION = 2;
+const PULL_VERSION = 3;   // 3: watch (1.6.0)
 
 /* =================================================================
  * 1. CRYPTO
@@ -250,6 +251,7 @@ class SyncService {
       for (const [k, v] of Object.entries(L.cats)) add(`cat:${p.id}:${k}`, v, 1);
       for (const [k, v] of Object.entries(L.lists)) add(`list:${p.id}:${k}`, v, v.at || 1);
       for (const [k, v] of Object.entries(L.listed)) add(`listed:${p.id}:${k}`, v, v.at || 1);
+      for (const [k, v] of Object.entries(L.watch)) add(`watch:${p.id}:${k}`, v, v.at || 1);
     }
     this._save();
   }

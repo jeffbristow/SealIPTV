@@ -15,6 +15,7 @@
  *   4. Resume points
  *   5. Category choices
  *   6. My categories (the user's own: Kids, Date night …)
+ *   6b. Watchlist (movies and series to watch later)
  *   7. Sync
  *   8. Titles that got a new id (a new playlist link: catalog.js moves them)
  * ===================================================================== */
@@ -27,7 +28,7 @@ const MIN_RESUME = 30;      // seconds: earlier than this isn't worth resuming
 const cleanMeta = m => {
   const out = {};
   for (const k of ['name', 'image', 'seriesId', 'seriesName', 'ext', 'cat']) if (m && m[k] != null) out[k] = String(m[k]).slice(0, 500);
-  for (const k of ['season', 'episode']) if (m && Number.isFinite(Number(m[k]))) out[k] = Number(m[k]);
+  for (const k of ['season', 'episode', 'upd']) if (m && Number.isFinite(Number(m[k]))) out[k] = Number(m[k]);
   return out;
 };
 
@@ -55,7 +56,7 @@ class Library {
     let d = this.cache.get(pid);
     if (d) return d;
     try { d = JSON.parse(fs.readFileSync(this._file(pid), 'utf8')); } catch { d = {}; }
-    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {}, lists: d.lists || {}, listed: d.listed || {} };
+    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {}, lists: d.lists || {}, listed: d.listed || {}, watch: d.watch || {} };
     this.cache.set(pid, d);
     return d;
   }
@@ -87,12 +88,12 @@ class Library {
     try { fs.unlinkSync(this._file(pid)); } catch { /* none */ }
   }
 
-  /** { fav, watched, pos, dur } for a list of keys. */
+  /** { fav, watched, pos, dur, wl } for a list of keys (wl: on the watchlist). */
   flags(pid, keys) {
     const d = this._get(pid), out = {};
     for (const k of keys) {
       const p = d.progress[k];
-      out[k] = { fav: !!d.favorites[k], watched: !!d.watched[k], pos: p ? p.pos : 0, dur: p ? p.dur : 0 };
+      out[k] = { fav: !!d.favorites[k], watched: !!d.watched[k], pos: p ? p.pos : 0, dur: p ? p.dur : 0, wl: !!d.watch[k] };
     }
     return out;
   }
@@ -165,6 +166,8 @@ class Library {
     if (on) {
       d.watched[key] = { ...cleanMeta(meta), at: this._now() };
       delete d.progress[key];          // finished: nothing to resume
+      // a movie watched is off the watchlist (a series stays: there may be more episodes)
+      if (key.startsWith('movie:') && d.watch[key]) { delete d.watch[key]; this._emit('watch', pid, key, null); }
     } else {
       delete d.watched[key];
     }
@@ -335,11 +338,39 @@ class Library {
   }
 
   /* =================================================================
+   * 6b. WATCHLIST — "watch:<key>" -> meta + at   (key = movie:9, series:4)
+   *     a series keeps upd: the provider's "last changed" when it was added (or last opened),
+   *     so a newer one means new episodes
+   * ================================================================= */
+  /** add a movie / series, or take it off; on again only updates it (upd), keeping its place */
+  setWatchlist(pid, key, on, meta) {
+    if (!/^(movie|series):/.test(key)) throw new Error('Only movies and series go on the watchlist.');
+    const d = this._get(pid), old = d.watch[key];
+    if (on) {
+      const w = { ...(old || {}), ...cleanMeta(meta), at: old ? old.at : this._now() };
+      if (old && JSON.stringify(w) === JSON.stringify(old)) return true;   // nothing new: nothing to sync
+      d.watch[key] = w;
+    } else if (old) delete d.watch[key];
+    else return false;
+    this._changed(pid);
+    this._emit('watch', pid, key, d.watch[key]);
+    return !!on;
+  }
+
+  onWatchlist(pid, key) { return !!this._get(pid).watch[key]; }
+
+  /** [{ key, kind, id, name, image, upd … }], the newest added first */
+  watchlist(pid) {
+    return Object.entries(this._get(pid).watch).sort((a, b) => (b[1].at || 0) - (a[1].at || 0))
+      .map(([key, m]) => ({ key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }));
+  }
+
+  /* =================================================================
    * 7. SYNC (sync.js)
    * ================================================================= */
-  /** A record from another PC: type fav | seen | pos | cat | list | listed; d null = removed. */
+  /** A record from another PC: type fav | seen | pos | cat | list | listed | watch; d null = removed. */
   applyRecord(type, pid, key, d) {
-    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats', list: 'lists', listed: 'listed' }[type];
+    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats', list: 'lists', listed: 'listed', watch: 'watch' }[type];
     if (!map || !pid || !key) return;
     const L = this._get(pid);
     if (d && typeof d === 'object') {
@@ -356,10 +387,10 @@ class Library {
   /* =================================================================
    * 8. TITLES THAT GOT A NEW ID (a new playlist link, another provider: catalog.js _carryOver)
    * ================================================================= */
-  /** Every title the library has something about: [{ key, meta }] (favorites, watched, resume points, my categories). */
+  /** Every title the library has something about: [{ key, meta }] (favorites, watched, resume points, watchlist, my categories). */
   entries(pid) {
     const d = this._get(pid), seen = new Map();
-    for (const map of ['favorites', 'watched', 'progress']) for (const [k, m] of Object.entries(d[map])) if (!seen.has(k)) seen.set(k, m);
+    for (const map of ['favorites', 'watched', 'progress', 'watch']) for (const [k, m] of Object.entries(d[map])) if (!seen.has(k)) seen.set(k, m);
     for (const [k, m] of Object.entries(d.listed)) { const key = k.slice(k.indexOf('/') + 1); if (!seen.has(key)) seen.set(key, m); }
     return [...seen].map(([key, meta]) => ({ key, meta }));
   }
@@ -387,6 +418,7 @@ class Library {
       move('favorites', 'fav', from, to, meta);
       move('watched', 'seen', from, to, meta);
       move('progress', 'pos', from, to, meta);
+      move('watch', 'watch', from, to, meta);
       for (const lid of Object.keys(d.lists)) move('listed', 'listed', lid + '/' + from, lid + '/' + to, meta);
       if (moved && to !== from) n++;
     }
@@ -398,7 +430,7 @@ class Library {
   /** The same playlist under two ids (set up on two PCs before syncing): move one library into the other. */
   mergeInto(from, to) {
     const a = this._get(from), b = this._get(to);
-    for (const map of ['favorites', 'watched', 'progress', 'lists', 'listed']) {
+    for (const map of ['favorites', 'watched', 'progress', 'lists', 'listed', 'watch']) {
       for (const [k, v] of Object.entries(a[map])) if (!b[map][k] || (v.at || 0) > (b[map][k].at || 0)) b[map][k] = v;
     }
     for (const [k, v] of Object.entries(a.cats)) if (!b.cats[k]) b.cats[k] = v;

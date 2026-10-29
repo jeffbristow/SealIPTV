@@ -73,7 +73,9 @@ const DEFAULTS = {
   // how Favorites are listed, per kind: 'added' (newest first) | 'name' (A–Z) | 'custom'
   favorites: { live: 'added', movie: 'added', series: 'added' },
   // Collections (franchises.js): 'release' | 'story' order
-  collections: { order: 'release' }
+  collections: { order: 'release' },
+  // Home's rows of games and events on now (events.js)
+  events: { homeSports: true, homePpv: true }
 };
 const FAV_SORTS = ['added', 'name', 'custom'];
 const SAVER_MINUTES = [2, 5, 10, 15, 30, 60];
@@ -89,6 +91,7 @@ const SYNC_GROUPS = {
   artwork: ['lookup', 'tmdbKey', 'trending'],
   favorites: ['live', 'movie', 'series'],
   collections: ['order'],
+  events: ['homeSports', 'homePpv'],
   vpn: ['required', 'provider'],
   parental: ['pinHash', 'pinSalt', 'autoAdult', 'unlockMinutes', 'lockSettings']
 };
@@ -274,6 +277,7 @@ class Store {
       if (SAVER_MINUTES.includes(Number(patch.screensaver.minutes))) s.screensaver.minutes = Number(patch.screensaver.minutes);
     }
     if (patch.collections && ['release', 'story'].includes(patch.collections.order)) s.collections.order = patch.collections.order;
+    if (patch.events) for (const k of ['homeSports', 'homePpv']) if (typeof patch.events[k] === 'boolean') s.events[k] = patch.events[k];
     if (patch.favorites) for (const k of ['live', 'movie', 'series']) if (FAV_SORTS.includes(patch.favorites[k])) s.favorites[k] = patch.favorites[k];
     // patch.parental is ignored on purpose: that goes through parental.js (needs the PIN)
     if (patch.catalog && Number.isFinite(Number(patch.catalog.refreshHours))) {

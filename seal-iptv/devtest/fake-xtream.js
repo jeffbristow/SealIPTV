@@ -39,6 +39,19 @@ const SERIES = ['Harbor Patrol', 'The Colony', 'Fjord', 'Station Zero', 'Fisherm
 
 const pad = n => String(n).padStart(2, '0');
 const live = CHANNELS.map((name, i) => ({ num: i + 1, name, stream_type: 'live', stream_id: 1000 + i, stream_icon: `http://127.0.0.1:${PORT}/img/logo/${i}.svg`, epg_channel_id: `ch${i}`, added: '1700000000', category_id: String(1 + (i % LIVE_CATS.length)), tv_archive: 0 }));
+// event channels (the Sports / Pay-Per-View pages): the event and its start in the name, made from the time now
+const EVENT_CATS = ['Pay Per View Events', 'USA Sports Events'];
+const et = (t, o) => new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', ...o });
+const evName = (label, title, t) => `${label}: ${title} (${et(t, { month: '2-digit' })}.${et(t, { day: '2-digit' })} ${et(t, { hour: 'numeric', minute: '2-digit' })} ET)`;
+function eventChannels() {
+  const now = Date.now(), m = 60000;
+  const list = [
+    ['Pay Per View 01', 'Seal Fight Night: Main Card', now - 40 * m, 1], ['Pay Per View 02', '', 0, 1], ['Pay Per View 03', 'Harbor Grand Prix', now + 150 * m, 1],
+    ['USA NHL 01', 'Seals vs Walruses (Home Feed )', now - 30 * m, 2], ['USA NHL 02', 'Seals vs Walruses (Away Feed )', now - 30 * m, 2],
+    ['USA NBA 01', 'Orcas vs Pelicans', now + 90 * m, 2], ['USA Soccer01', 'Premier League: Harbor FC vs Iceberg United', now + 26 * 60 * m, 2]
+  ];
+  return list.map(([label, title, t, c], i) => ({ num: CHANNELS.length + i + 1, name: title ? evName(label, title, t) : label + ':', stream_type: 'live', stream_id: 1100 + i, stream_icon: '', epg_channel_id: '', added: '1700000000', category_id: String(LIVE_CATS.length + c), tv_archive: 0 }));
+}
 const NOART = process.env.FAKE_NOART === '1';
 const vod = MOVIES.map((name, i) => ({ num: i + 1, name: `${name} (${2005 + (i % 19)})`, stream_type: 'movie', stream_id: 2000 + i, stream_icon: NOART && i % 3 === 0 ? `http://127.0.0.1:${PORT}/gone/m${i}.jpg` : `http://127.0.0.1:${PORT}/img/poster/m${i}.svg`, rating: String(5 + (i % 5)), rating_5based: 2.5 + (i % 5) / 2, added: String(1760000000 + i * 86400), category_id: String(1 + (i % VOD_CATS.length)), container_extension: i % 3 === 0 ? 'mp4' : 'm3u8' }));
 const series = SERIES.map((name, i) => ({ num: i + 1, name, series_id: 3000 + i, cover: NOART && i % 2 === 0 ? '' : `http://127.0.0.1:${PORT}/img/poster/s${i}.svg`, plot: `${name} follows a crew of seals keeping the north coast safe.`, cast: 'Sam Seal, Pat Pup', genre: SERIES_CATS[i % SERIES_CATS.length], releaseDate: `${2016 + i}-03-01`, last_modified: String(1760000000 + i * 3600), rating: '8', rating_5based: 4, category_id: String(1 + (i % SERIES_CATS.length)) }));
@@ -149,10 +162,10 @@ http.createServer((req, res) => {
     switch (q.action) {
       case undefined: case '':
         return json(res, { user_info: { username: USER, password: PASS, auth: 1, status: 'Active', exp_date: String(Math.floor(Date.now() / 1000) + 86400 * 200), is_trial: '0', active_cons: '0', max_connections: '2', allowed_output_formats: ['m3u8', 'ts'] }, server_info: { url: '127.0.0.1', port: String(PORT), server_protocol: 'http', timezone: 'UTC' } });
-      case 'get_live_categories': return json(res, cats(LIVE_CATS));
+      case 'get_live_categories': return json(res, cats([...LIVE_CATS, ...EVENT_CATS]));
       case 'get_vod_categories': return json(res, cats(VOD_CATS));
       case 'get_series_categories': return json(res, cats(SERIES_CATS));
-      case 'get_live_streams': return json(res, q.category_id ? live.filter(x => x.category_id === q.category_id) : live);
+      case 'get_live_streams': { const all = [...live, ...eventChannels()]; return json(res, q.category_id ? all.filter(x => x.category_id === q.category_id) : all); }
       case 'get_vod_streams': return json(res, vod);
       case 'get_series': return json(res, series);
       case 'get_series_info': return json(res, seriesInfo(q.series_id));

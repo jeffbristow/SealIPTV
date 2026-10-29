@@ -82,6 +82,8 @@ class Xtream {
 
   async categories(section) { return arr(await this.api({ action: Xtream.ACTIONS[section][0] })); }
   async streams(section) { return arr(await this.api({ action: Xtream.ACTIONS[section][1] }, 120000)); }
+  /** one category's titles (the Sports / Pay-Per-View pages: event channels' names change during the day) */
+  async streamsIn(section, catId) { return arr(await this.api({ action: Xtream.ACTIONS[section][1], category_id: catId }, 20000)); }
 
   /* =================================================================
    * 3. DETAILS

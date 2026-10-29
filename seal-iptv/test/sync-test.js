@@ -128,10 +128,18 @@ const PASS = 'correct horse battery staple';
     for (const k of Object.keys(B.sync.state.known)) if (/^list(ed)?:/.test(k)) delete B.sync.state.known[k];
     B.sync.state.pullVersion = 1;
     await B.sync.sync();
-    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 2, 'after updating from an older version: the categories are fetched again');
+    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 3, 'after updating from an older version: the categories are fetched again');
     A.library.removeList(pA.id, kids);
     await A.sync.sync(); await B.sync.sync();
     ok(!B.library.lists(pA.id).length && !Object.keys(B.library._get(pA.id).listed).length, 'a category deleted on A goes on B, with its titles');
+
+    /* ---- the watchlist ---- */
+    A.library.setWatchlist(pA.id, 'movie:2001', true, { name: 'Film' });
+    await A.sync.sync(); await B.sync.sync();
+    ok(B.library.onWatchlist(pA.id, 'movie:2001'), 'a title put on the watchlist on A is on it on B');
+    B.library.setWatched(pA.id, 'movie:2001', true, { name: 'Film' });
+    await B.sync.sync(); await A.sync.sync();
+    ok(!A.library.onWatchlist(pA.id, 'movie:2001'), 'watched on B: off the watchlist on A too');
 
     /* ---- clear history, delete a playlist ---- */
     A.library.clearHistory(pA.id);

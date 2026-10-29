@@ -24,6 +24,7 @@ const franchises = require('./franchises');
 const { networkLogo } = require('./networks');
 const { Guide } = require('./guide');
 const { titleKey } = require('./trending');
+const events = require('./events');
 
 const SECTIONS = ['live', 'movies', 'series'];
 const KIND = { live: 'live', movies: 'movie', series: 'series' };
@@ -80,6 +81,7 @@ const writeJson = (f, o) => {
   fs.renameSync(tmp, f);
 };
 /** setTimeout that doesn't keep Node running (tests) */
+const EVENT_FRESH = 20 * 60000;   // event channels' names are fetched again after this (Sports / Pay-Per-View)
 const later = (fn, ms) => { const t = setTimeout(fn, ms); if (t && t.unref) t.unref(); return t; };
 
 const EMPTY = () => ({ live: { cats: [], items: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] } });
@@ -104,6 +106,7 @@ class Catalog {
     this.fetch = fetchImpl || globalThis.fetch;
     this.mem = new Map();
     this.details = new Map();      // "<pid>|series|<id>" -> info (this session only)
+    this.evFresh = new Map();      // pid -> { at, cats: Map(category id -> its channels now), job } (event channels' new names)
     this.guide = new Guide({ dir: this.dir, vpn, userAgent: this.userAgent, fetch: this.fetch });
   }
 
@@ -205,6 +208,7 @@ class Catalog {
       for (const k of ['live', 'movie', 'series', 'episode']) keys.push(...this.library.favorites(pid, k));
       keys.push(...this.library.continueWatching(pid, 60));
       for (const l of this.library.lists(pid)) keys.push(...this.library.listItems(pid, l.id));
+      keys.push(...this.library.watchlist(pid));
     } catch { return out; }
     for (const m of keys) {
       const [s, id] = Catalog.where(m.key, m);
@@ -345,7 +349,7 @@ class Catalog {
       const x = this.client(p);
       onStep('Signing in…');
       const acc = await x.login();
-      c = { ...EMPTY(), account: acc.user };
+      c = { ...EMPTY(), account: { ...acc.user, timezone: String((acc.server && acc.server.timezone) || '').slice(0, 60) } };
       for (const s of SECTIONS) {
         onStep(`Loading ${s === 'live' ? 'Live TV' : s === 'movies' ? 'Movies' : 'Series'}…`);
         const [cats, items] = await Promise.all([x.categories(s), x.streams(s)]);
@@ -363,6 +367,7 @@ class Catalog {
     this.mem.set(pid, c);
     this._save(pid, c);
     for (const k of [...this.details.keys()]) if (k.startsWith(pid + '|')) this.details.delete(k);
+    this.evFresh.delete(pid);
     return { ...this.summary(pid), carried };
   }
 
@@ -606,6 +611,99 @@ class Catalog {
       const i = this._find(c, 'live', f.id);
       const net = i ? networkLogo(i.name, c.live._catNames.get(i.cat)) : networkLogo(f.name);
       return net ? { ...f, image: net } : f;
+    });
+  }
+
+  /* =================================================================
+   * SPORTS + PAY-PER-VIEW (events.js): games and events on now and later
+   * ================================================================= */
+  /** the categories with event channels ("Pay Per View 04: …"): their names change during the day */
+  _eventCats(c) {
+    const n = new Map();
+    for (const i of c.live.items) if (/^.{1,48}?\d\s*:/.test(i.name)) n.set(i.cat, (n.get(i.cat) || 0) + 1);
+    return [...n].filter(([, k]) => k >= 2).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([cat]) => cat);
+  }
+
+  /**
+   * Fetch the event channels' names again (Xtream: one category at a time, four at once),
+   * at most every 20 minutes. An M3U playlist has them as of its last reload.
+   */
+  refreshEvents(pid) {
+    const p = this.store.getProfile(pid);
+    if (!p || p.type !== 'xtream') return Promise.resolve(false);
+    const f = this.evFresh.get(pid);
+    if (f && f.job) return f.job;
+    if (f && Date.now() - f.at < EVENT_FRESH) return Promise.resolve(false);
+    const c = this.get(pid);
+    const job = (async () => {
+      await this.vpn.ensure();
+      const x = this.client(p), cats = new Map(), todo = this._eventCats(c);
+      const one = async () => {
+        for (let cat; (cat = todo.shift()) !== undefined;) {
+          try { cats.set(cat, (await x.streamsIn('live', cat)).map(i => Xtream.normItem('live', i)).filter(i => i.id && i.id !== 'undefined')); }
+          catch { /* that category as it was */ }
+        }
+      };
+      await Promise.all([one(), one(), one(), one()]);
+      this.evFresh.set(pid, { at: Date.now(), cats });
+      return true;
+    })().catch(() => { this.evFresh.set(pid, { at: Date.now() - EVENT_FRESH + 3 * 60000, cats: (f && f.cats) || new Map() }); return false; });   // try again in 3 minutes
+    this.evFresh.set(pid, { ...(f || { at: 0, cats: new Map() }), job });
+    return job;
+  }
+
+  /**
+   * kind 'sports' | 'ppv' -> events.build(): { live, later, tomorrow, soon, sports, regions }.
+   * Only channels that may be shown now (home: only ones that may be on Home).
+   */
+  events(pid, kind, { home = false } = {}) {
+    const c = this.get(pid), p = this.store.getProfile(pid);
+    const rules = this.rules(pid, 'live'), open = this.parental.isUnlocked();
+    const fresh = (this.evFresh.get(pid) || {}).cats || new Map();
+    const ok = i => (home ? this._homeSafeItem(i, rules) : this._visible(i, rules, open));
+    const items = c.live.items.filter(i => !fresh.has(i.cat));
+    for (const list of fresh.values()) items.push(...list);
+    const chans = items.filter(ok).map(i => ({ id: i.id, name: i.name, logo: i.logo, cat: i.cat, epg: i.epg, catName: c.live._catNames.get(i.cat) || '' }));
+    // the sports channels that aren't event channels: what the guide has on them
+    const want = chans.filter(ch => ch.epg && !events.parseName(ch.name) && (kind === 'ppv' ? events.isPpv(ch.name, ch.catName) : events.isSports(ch.name, ch.catName)));
+    const guide = p && want.length ? this._fromGuide(pid, p, want.map(ch => ch.id), false) : {};
+    for (const ch of chans) ch.guide = guide[ch.id] || null;
+    return events.build(chans, { ppv: kind === 'ppv', zone: (c.account && c.account.timezone) || undefined });
+  }
+
+  /** The Sports / Pay-Per-View page: with the event channels' names fetched again first (waited for up to 6 s). */
+  async eventsPage(pid, kind) {
+    await Promise.race([this.refreshEvents(pid), new Promise(ok => later(ok, 6000))]);
+    return this.events(pid, kind);
+  }
+
+  /** Home's rows: what's on now (the names fetched again in the background, for next time). */
+  eventsHome(pid, limit = 20) {
+    this.refreshEvents(pid).catch(() => {});
+    return { sports: this.events(pid, 'sports', { home: true }).live.slice(0, limit), ppv: this.events(pid, 'ppv', { home: true }).live.slice(0, limit) };
+  }
+
+  /* ---- the watchlist (library.js 6b) ---- */
+  /** what's kept with a title put on the watchlist: a series' "last changed" now (newer later = new episodes) */
+  watchMeta(pid, key, meta = {}) {
+    const [section, id] = Catalog.where(key, meta);
+    const it = section === 'series' && this._find(this.get(pid), section, id);
+    return it && it.added ? { ...meta, upd: it.added } : meta;
+  }
+
+  /**
+   * The watchlist's titles that may be shown now (home: only ones that may be on Home), with
+   * the playlist's poster / year / rating and newEps for a series changed since it was added.
+   */
+  watchlist(pid, { home = false } = {}) {
+    const c = this.get(pid);
+    return this.library.watchlist(pid).filter(w => (home ? this.homeSafe(pid, w.key, w) : this.visibleKey(pid, w.key, w))).map(w => {
+      const it = this._find(c, w.kind === 'movie' ? 'movies' : 'series', w.id);
+      return {
+        kind: w.kind, id: w.id, name: (it && it.name) || w.name, poster: (it && it.poster) || w.image || '', cat: (it && it.cat) || w.cat,
+        year: it && it.year, rating: it && it.rating, wl: true,
+        newEps: w.kind === 'series' && !!(it && it.added && w.upd && it.added > w.upd)
+      };
     });
   }
 

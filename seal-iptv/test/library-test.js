@@ -107,6 +107,30 @@ try {
   ok(lib.lists(K).some(l => l.name === 'From the TV' && l.count === 1), 'a category made on another device');
   lib.applyRecord('list', K, 'other1', null);
   ok(!lib.lists(K).some(l => l.id === 'other1') && !Object.keys(lib._get(K).listed).some(k => k.startsWith('other1/')), 'deleted on another device: gone here, with its titles');
+
+  /* ---- the watchlist ---- */
+  const W = 'w1';
+  const wsent = [];
+  lib.onChange = (n, d) => wsent.push([n, d]);
+  lib.setWatchlist(W, 'movie:1', true, { name: 'Up', image: 'http://x/up.jpg' });
+  lib.setWatchlist(W, 'series:4', true, { name: 'Show', upd: 1000 });
+  ok(lib.watchlist(W).map(w => w.key).join() === 'series:4,movie:1' && lib.watchlist(W)[1].kind === 'movie', 'watchlist: newest first');
+  ok(lib.flags(W, ['movie:1'])['movie:1'].wl && !lib.flags(W, ['movie:2'])['movie:2'].wl, 'flags say what is on it');
+  assert.throws(() => lib.setWatchlist(W, 'live:1', true, {}), /movies and series/);
+  const before = wsent.length;
+  ok(lib.setWatchlist(W, 'series:4', true, { name: 'Show', upd: 1000 }) && wsent.length === before, 'adding again with nothing new: nothing to sync');
+  lib.setWatchlist(W, 'series:4', true, { name: 'Show', upd: 2000 });
+  ok(lib.watchlist(W)[0].key === 'series:4' && lib.watchlist(W)[0].upd === 2000 && wsent.length === before + 1, 'a series opened again: its "last changed" is kept, in the same place');
+  lib.setWatched(W, 'movie:1', true, { name: 'Up' });
+  ok(!lib.onWatchlist(W, 'movie:1') && wsent.some(([n, d]) => n === `watch:${W}:movie:1` && d === null), 'a movie watched goes off the watchlist, on every device');
+  lib.setWatched(W, 'episode:40', true, { seriesId: '4' });
+  ok(lib.onWatchlist(W, 'series:4'), 'a series stays when an episode is watched');
+  lib.applyRecord('watch', W, 'movie:8', { name: 'From the TV', at: Date.now() });
+  ok(lib.onWatchlist(W, 'movie:8'), 'added on another device');
+  lib.remap(W, new Map([['movie:8', { key: 'movie:80' }]]));
+  ok(!lib.onWatchlist(W, 'movie:8') && lib.onWatchlist(W, 'movie:80') && lib.entries(W).some(e => e.key === 'movie:80'), 'a new playlist link: the watchlist moves with the title');
+  lib.setWatchlist(W, 'movie:80', false);
+  ok(!lib.onWatchlist(W, 'movie:80') && lib.setWatchlist(W, 'movie:80', false) === false, 'taken off');
   lib.onChange = null;
   lib.flush();
 } finally {

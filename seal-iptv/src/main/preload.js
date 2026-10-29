@@ -7,6 +7,7 @@ const CHANNELS = new Set([
   'catalog:refresh', 'catalog:summary', 'catalog:cats', 'catalog:list', 'catalog:item', 'catalog:search', 'catalog:recent', 'trending:home',
   'details:movie', 'details:series', 'epg:short', 'epg:grid',
   'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
+  'lib:watchlist', 'lib:onWatchlist', 'lib:watchlistItems', 'events:list', 'events:home',
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
   'sync:status', 'sync:probe', 'sync:connect', 'tv:find', 'tv:send', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',
