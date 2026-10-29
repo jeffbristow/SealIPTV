@@ -13,7 +13,12 @@ channels or content.
 - Sources: **Xtream Codes** logins (server / username / password) and
   **M3U / M3U8** playlists (link or file). A pasted `get.php?username=…` link
   is turned into an Xtream login automatically.
-- Live TV / Movies / Series, categories, search, sort, short EPG (Xtream).
+- Live TV / Movies / Series, categories, search, sort.
+- TV guide: the full XMLTV guide (Xtream: the provider's own xmltv.php, made
+  from the login; any playlist: a guide address of its own, or Off — playlist
+  editor) plus the provider's per-channel listings (get_short_epg) for the
+  channels the full guide hasn't got. TV Guide page: channels down the side,
+  time across, favorites first.
 - Favorites, watched marks (manual + automatic at a % of the runtime),
   resume points, "Continue watching", next-episode countdown.
 - **VPN guard** (Settings → VPN → "Only play when my VPN is on"): nothing
@@ -48,6 +53,10 @@ seal-iptv/
                            counts, categories, newest titles for Home, titles the library points to)
                            + catalog/<id>.<live|movies|series>.json, each read when first needed.
                            An older single-file <id>.json is still read and saved the new way.
+    guide.js               the full TV guide (XMLTV): downloaded every 6 h (1 h when it had little
+                           ahead of now), read as it arrives (TV: res.pieces, 1 MB at a time), only
+                           the next 26 h for the playlist's tvg ids kept -> catalog/<id>.guide.json.
+                           catalog.epg / epgMany use it first, then get_short_epg (kept 15 min).
     xtream.js              Xtream Codes player_api client + stream URLs + normalizers
     m3u.js                 M3U parser, live/movies/series sorting, show grouping
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)
@@ -91,6 +100,9 @@ dist/                      Seal-IPTV-Sync-Server-<ver>.zip (upload; never contai
                            the page reads them in 1 MB base64 pieces (blobChunk); big saved files use
                            fileSize/fileChunk/appendFile (shims/fs.js). Test: web/test-pieces.js.
                            Crash logs: adb connect <TV IP>:5555, adb logcat -b crash -d.
+                           devtest/tv-harness.js turns off Chromium's window-occlusion check: with the
+                           PC's screen locked the page otherwise stops drawing (no screenshots,
+                           IntersectionObserver never fires — the TV Guide / lists never load).
                            Start-up steps, slow commands (> 0.5 s) and page errors: adb logcat -s SealWeb
                            (core.js trace() -> console "[seal] …" -> MainActivity.onConsoleMessage).
                            Never change the WebView's own User-Agent: it reloads the page (that was

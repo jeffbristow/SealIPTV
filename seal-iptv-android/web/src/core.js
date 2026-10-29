@@ -169,7 +169,12 @@ handle('profiles:test', async p => {
   if (clean.type === 'xtream' && !clean.password && existing) clean.password = existing.password;
   return catalog.test(clean);
 });
-handle('profiles:save', p => store.saveProfile(p));
+handle('profiles:save', p => {
+  const was = p && p.id ? catalog.guideAddress(p.id) : '';
+  const saved = store.saveProfile(p);
+  if (catalog.guideAddress(saved.id) !== was) catalog.guide.forget(saved.id);
+  return saved;
+});
 handle('profiles:delete', id => { store.deleteProfile(id); library.remove(id); catalog.remove(id); return store.listProfiles(); });
 handle('profiles:use', id => { store.getProfile(id); store.setSettings({ activeProfile: id }); return { summary: catalog.summary(id), stale: catalog.stale(id) }; });
 handle('profiles:fromLink', link => Xtream.fromM3uUrl(link));
@@ -187,6 +192,7 @@ handle('catalog:recent', (section, opts = {}) => catalog.recent(pid(), section, 
 handle('details:movie', id => catalog.movieInfo(pid(), id));
 handle('details:series', id => catalog.seriesInfo(pid(), id));
 handle('epg:short', id => catalog.epg(pid(), id));
+handle('epg:grid', ids => catalog.epgMany(pid(), ids));
 
 /* ---- library ---- */
 handle('lib:favorite', (key, on, meta) => library.setFavorite(pid(), key, on, meta));

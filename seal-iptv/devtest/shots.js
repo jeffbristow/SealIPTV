@@ -102,6 +102,19 @@ const searchSteps = [
   { js: "go('movies'); const b = $('#search'); b.focus(); b.value = 'the'; b.oninput()", wait: 1500, file: shot('q1-movies-the'),
     log: 'movies "the"', logJs: "JSON.stringify({ focus: document.activeElement === $('#search'), sort: $('#sortSel').selectedOptions[0].textContent, first: [...document.querySelectorAll('.card .title')].slice(0, 6).map(t => t.textContent) })" }
 ];
+// `node devtest/shots.js <folder> guide`: the TV Guide page, the playlist's TV guide choice, a series page
+const guideSteps = [
+  { js: 'reload()', wait: 4000 },
+  { js: "go('guide')", wait: 2500, file: shot('g1-guide'),
+    log: 'TV Guide', logJs: "JSON.stringify({ cat: state.guide.cat, rows: document.querySelectorAll('.g-row').length, filled: [...document.querySelectorAll('.g-row')].filter(r => r._list).length, info: $('#gInfo').innerText.replace(/\\s+/g, ' ').slice(0, 100) })" },
+  { js: "document.querySelectorAll('.g-row')[3].querySelectorAll('.g-p')[1].focus()", wait: 500, file: shot('g2-guide-programme'),
+    log: 'a programme chosen', logJs: "$('#gInfo').innerText.replace(/\\s+/g, ' ').slice(0, 140)" },
+  { js: "(window.__ed = editProfile(state.profiles[0]), 0)", wait: 800, file: shot('g3-playlist-guide'),
+    log: 'playlist editor', logJs: "JSON.stringify({ mode: $('#pfGuideMode').value, hint: $('#pfGuideHint').textContent, field: !$('#pfGuide').classList.contains('hidden') })" },
+  { js: "$('#pfGuideMode').value = 'url'; $('#pfGuideMode').onchange()", wait: 300, file: shot('g4-playlist-guide-url'),
+    log: 'guide address chosen', logJs: "JSON.stringify({ hint: $('#pfGuideHint').textContent, field: !$('#pfGuide').classList.contains('hidden') })" },
+  { js: "$('#dlgCancel').click(); call('catalog:list', { section: 'series', offset: 0, limit: 1 }).then(r => go('show', r.items[0].id))", wait: 2000, file: shot('g5-series') }
+];
 // `node devtest/shots.js <folder> smooth`: frame timing with no delay (the <video>) vs +200 ms (the canvas)
 // Counts how often the picture changes over 4 s: gaps between new frames, their spread, long stalls.
 const measure = `new Promise(done => {
@@ -146,7 +159,7 @@ const parentalSteps = [
   { js: "go('movies')", wait: 1500, file: shot('p8-movies-foreign-hidden'), log: 'movie categories', logJs: "JSON.stringify([...document.querySelectorAll('#cats .cat')].map(b => b.innerText.replace(/\s+/g, ' ').trim()))" }
 ];
 const stepsFile = path.join(data, 'steps.json');
-fs.writeFileSync(stepsFile, JSON.stringify(process.argv[3] === 'sync' ? syncSteps : process.argv[3] === 'http' ? httpSteps : process.argv[3] === 'fail' ? failSteps : process.argv[3] === 'search' ? searchSteps : process.argv[3] === 'smooth' ? smoothSteps : process.argv[3] === 'parental' ? parentalSteps : steps));
+fs.writeFileSync(stepsFile, JSON.stringify(process.argv[3] === 'sync' ? syncSteps : process.argv[3] === 'http' ? httpSteps : process.argv[3] === 'fail' ? failSteps : process.argv[3] === 'search' ? searchSteps : process.argv[3] === 'guide' ? guideSteps : process.argv[3] === 'smooth' ? smoothSteps : process.argv[3] === 'parental' ? parentalSteps : steps));
 
 const server = spawn(process.execPath, [path.join(__dirname, 'fake-xtream.js'), String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'], env: process.env });
 const served = [];

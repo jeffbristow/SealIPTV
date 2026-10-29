@@ -388,3 +388,36 @@ img.net-logo { background: #f2f3f5; border-radius: 6px; padding: 4px; box-sizing
 .apart { margin-left: 18px; }
 .btn.primary.danger-ok { background: var(--red); border-color: var(--red); color: #fff; }
 .btn.primary.danger-ok:hover { background: #ff8080; }
+
+/* ---- TV Guide: channels down the side, time across ---- */
+.guide { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; --g-ch: 230px; --g-row: 52px; }
+.g-top { order: -1; display: flex; gap: 20px; align-items: flex-start; padding: 12px 22px 10px; height: 112px; flex: none; border-bottom: 1px solid var(--line); }
+.g-info { flex: 1; min-width: 0; }
+.g-info h3 { font-size: 19px; margin: 3px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 900px; margin: 0 0 3px; }
+.g-live { color: var(--accent); }
+.g-pick { display: flex; flex-direction: column; gap: 4px; width: 260px; flex: none; }
+.g-scroll { flex: 1; min-height: 0; overflow: auto; position: relative; scroll-padding-left: var(--g-ch); scroll-padding-top: 30px; }
+.g-grid { position: relative; min-height: 100%; }
+.g-times { position: sticky; top: 0; z-index: 4; display: flex; height: 30px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.g-corner { position: sticky; left: 0; z-index: 5; width: var(--g-ch); flex: none; background: var(--bg-2); border-right: 1px solid var(--line); }
+.g-marks { position: relative; flex: none; }
+.g-marks span { position: absolute; top: 0; bottom: 0; padding: 7px 0 0 6px; border-left: 1px solid var(--line); font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.g-row { display: flex; height: var(--g-row); border-bottom: 1px solid var(--line); }
+.g-ch { position: sticky; left: 0; z-index: 3; width: var(--g-ch); flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: var(--bg); border-right: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.g-ch .num { width: 30px; color: var(--text-3); font-size: 12px; text-align: right; flex: none; }
+.g-ch .logo { width: 44px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; }
+.g-ch .logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.g-ch .logo .initials { font-size: 11px; color: var(--text-3); }
+.g-ch .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.g-progs { position: relative; flex: none; }
+.g-p { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: var(--bg-2); padding: 4px 9px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+.g-p .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+.g-p .s { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.g-p.now { background: var(--bg-3); }
+.g-p.tiny { padding: 0; }
+.g-p.none, .g-p.wait { background: none; color: var(--text-3); }
+.g-p:hover, .g-ch:hover { background: var(--bg-4); }
+.g-p:focus, .g-ch:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); background: var(--bg-4); }
+.g-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: .75; z-index: 2; pointer-events: none; }
+.guide .empty { padding: 30px; }

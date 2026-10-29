@@ -12,6 +12,9 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// runs unattended too: a locked or sleeping screen would otherwise stop the page drawing (no screenshots, no IntersectionObserver)
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 const out = path.resolve(process.argv[2] || 'tv-shots');
 fs.mkdirSync(out, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -19,7 +22,7 @@ const log = (k, v) => console.log(k, typeof v === 'string' ? v : JSON.stringify(
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 1280, height: 720, useContentSize: true, show: true, backgroundColor: '#121418',
-    webPreferences: { preload: path.join(__dirname, 'tv-preload.js'), contextIsolation: false, nodeIntegration: false, sandbox: false } });
+    webPreferences: { backgroundThrottling: false, preload: path.join(__dirname, 'tv-preload.js'), contextIsolation: false, nodeIntegration: false, sandbox: false } });
   win.webContents.on('console-message', e => { if (e.level === 'error' || e.level === 'warning') console.log('console:', e.message); });
   await win.loadFile(path.join(__dirname, '..', 'app', 'src', 'main', 'assets', 'www', 'index.html'));
   const js = code => win.webContents.executeJavaScript(code, true);

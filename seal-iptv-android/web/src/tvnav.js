@@ -222,6 +222,13 @@
       if (!list.length && sec) { focusEl(sec); return true; }
     }
     if (!cur) { if (list[0]) focusEl(list[0]); return true; }
+    // ↓ from a row that says where down goes (a series' buttons: the season in use)
+    const hop = dir === 'down' && cur.closest('[data-tv-down]');
+    if (hop) { const t = document.querySelector(hop.dataset.tvDown); if (t && visible(t)) { focusEl(t); return true; } }
+    // an episode: → to its ✓ (watched) button, ← from there back to the episode
+    const ep = cur.closest('.episode');
+    if (ep && dir === 'right' && cur === ep) { const b = ep.querySelector('.seen-btn'); if (b) { focusEl(b); return true; } }
+    if (ep && dir === 'left' && cur !== ep) { focusEl(ep); return true; }
     const a = cur.getBoundingClientRect();
     const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
     let best = null, bestScore = Infinity;
@@ -241,7 +248,7 @@
     }
     if (best) {
       const grp = best.closest('#sidebar, [data-tv-group]');
-      if (grp && !grp.contains(cur)) { const act = grp.querySelector('.nav.active, .set-item.active'); if (act && visible(act)) best = act; }
+      if (grp && !grp.contains(cur)) { const act = grp.querySelector('.nav.active, .set-item.active, .season.active'); if (act && visible(act)) best = act; }
       focusEl(best);
       return true;
     }

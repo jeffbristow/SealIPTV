@@ -22,6 +22,7 @@ const { categoryLanguage, titleLanguage, languageName } = require('./language');
 const { isAdult } = require('./parental');
 const franchises = require('./franchises');
 const { networkLogo } = require('./networks');
+const { Guide } = require('./guide');
 
 const SECTIONS = ['live', 'movies', 'series'];
 const KIND = { live: 'live', movies: 'movie', series: 'series' };
@@ -102,6 +103,7 @@ class Catalog {
     this.fetch = fetchImpl || globalThis.fetch;
     this.mem = new Map();
     this.details = new Map();      // "<pid>|series|<id>" -> info (this session only)
+    this.guide = new Guide({ dir: this.dir, vpn, userAgent: this.userAgent, fetch: this.fetch });
   }
 
   /* =================================================================
@@ -265,6 +267,7 @@ class Catalog {
   /** A playlist joined with the same one from another PC: keep the downloaded lists. */
   rename(from, to) {
     this.mem.delete(from); this.mem.delete(to);
+    this.guide.forget(from);
     const have = fs.existsSync(this._file(to));
     const a = this._files(from), b = this._files(to);
     a.forEach((f, n) => { try { if (!have) fs.renameSync(f, b[n]); else fs.unlinkSync(f); } catch { /* nothing downloaded */ } });
@@ -272,8 +275,12 @@ class Catalog {
 
   remove(pid) {
     this.mem.delete(pid);
+    this.guide.forget(pid);
     for (const f of this._files(pid)) try { fs.unlinkSync(f); } catch { /* none */ }
   }
+
+  /** Where the playlist's TV guide comes from ('' for none) — an edit that changes it drops the saved guide. */
+  guideAddress(pid) { try { return Guide.address(this.store.getProfile(pid)); } catch { return ''; } }
 
   summary(pid) {
     const c = this.get(pid);
@@ -679,11 +686,74 @@ class Catalog {
     return { ...base, info: { ...info, seasons } };
   }
 
+  /** Now / next for a channel: from the full guide when it has the channel, else the provider's own listings. */
   async epg(pid, id) {
     const p = this.store.getProfile(pid);
+    const full = this._fromGuide(pid, p, [id], false)[id];
+    if (full) return full.slice(0, 4);
     if (p.type !== 'xtream') return [];
     await this.vpn.ensure();
     try { return await this.client(p).shortEpg(id); } catch { return []; }
+  }
+
+  /**
+   * The full guide's programmes for some channels: { id: [...] } for the ones it has.
+   * A new copy is fetched when it's due — waited for (wait) only when there's none yet.
+   */
+  _fromGuide(pid, p, ids, wait) {
+    if (!Guide.address(p)) return {};
+    const c = this.get(pid);
+    const g = this.guide;
+    if (g.due(pid)) {
+      const want = this._isRead(c, 'live') ? new Set(c.live.items.map(i => i.epg).filter(Boolean)) : null;
+      const job = g.refresh(pid, p, want);
+      // none yet: wait a little for it (the TV Guide page), then go on with the provider's own listings
+      if (wait && !g.get(pid)) return Promise.race([job, new Promise(ok => later(ok, 4000))]).then(() => this._fromGuide(pid, p, ids, false), () => ({}));
+    }
+    const out = {};
+    for (const id of ids) {
+      const ch = this._find(c, 'live', id);
+      const list = ch && ch.epg ? g.lookup(pid, ch.epg) : null;
+      if (list) out[id] = list;
+    }
+    return wait ? Promise.resolve(out) : out;
+  }
+
+  /**
+   * The guide for several channels (the TV Guide page): { id: [{ title, desc, start, end }] },
+   * from now on. The full guide first; the rest asked of the provider four channels at a time,
+   * kept 15 minutes, so scrolling back costs nothing.
+   */
+  async epgMany(pid, ids, limit = 12) {
+    const p = this.store.getProfile(pid);
+    if (!Array.isArray(ids) || !ids.length) return {};
+    ids = ids.slice(0, 60).map(String);
+    const out = await this._fromGuide(pid, p, ids, true);
+    if (p.type !== 'xtream') return out;
+    await this.vpn.ensure();
+    const x = this.client(p), now = Date.now();
+    const cache = this._epg || (this._epg = new Map());
+    const todo = [];
+    for (const id of ids) {
+      if (out[id]) continue;
+      const c = cache.get(pid + ':' + id);
+      if (c && now - c.at < 15 * 60000) out[id] = c.list;
+      else todo.push(id);
+    }
+    let next = 0;
+    const worker = async () => {
+      while (next < todo.length) {
+        const id = todo[next++];
+        let list = null;
+        try { list = await x.shortEpg(id, limit); } catch { /* none for this one */ }
+        if (list) cache.set(pid + ':' + id, { at: Date.now(), list });
+        out[id] = list || [];
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    while (cache.size > 3000) cache.delete(cache.keys().next().value);
+    for (const id of Object.keys(out)) out[id] = out[id].filter(e => !e.end || e.end > now);
+    return out;
   }
 
   /** The address to play. kind: live | movie | episode */

@@ -62,12 +62,15 @@ function vodInfo(id) {
   return { info: { name: m.name, movie_image: m.stream_icon, backdrop_path: [m.stream_icon], plot: `${m.name.replace(/ \(\d+\)$/, '')} is a story about a seal who wouldn't give up. A made-up movie on a made-up provider.`, genre: VOD_CATS[(Number(m.category_id) - 1) % VOD_CATS.length], cast: 'Sam Seal, Pat Pup, Robin Walrus', director: 'Jo Orca', releasedate: `${m.name.match(/\((\d+)\)/)[1]}-06-01`, duration_secs: m.container_extension === 'mp4' ? 10 : 596, rating_5based: m.rating_5based }, movie_data: { stream_id: m.stream_id, name: m.name, container_extension: m.container_extension } };
 }
 
-function shortEpg(id) {
-  const now = Math.floor(Date.now() / 1000), start = now - (now % 1800);
+function shortEpg(id, limit = 4) {
+  const now = Math.floor(Date.now() / 1000);
   const b = s => Buffer.from(s).toString('base64');
   const ch = live.find(x => x.stream_id === Number(id));
-  const shows = ['Morning Edition', 'The Big Story', 'Seal Talk', 'Late Report'];
-  return { epg_listings: shows.map((t, i) => ({ title: b(`${t}${ch ? '' : ''}`), description: b(`${t} on ${ch ? ch.name : 'this channel'}: news and stories from the coast.`), start_timestamp: String(start + i * 1800), stop_timestamp: String(start + (i + 1) * 1800) })) };
+  const n = ch ? ch.num : 0;
+  // programmes of 30, 60 or 90 minutes (by channel), the first one already on
+  const len = 1800 * (1 + (n % 3)), start = now - (now % 1800) - (n % 2) * 1800;
+  const shows = ['Morning Edition', 'The Big Story', 'Seal Talk', 'Late Report', 'Coast Watch', 'Harbour Lights', 'Night Desk', 'Tide Tables'];
+  return { epg_listings: Array.from({ length: Math.min(Number(limit) || 4, 20) }, (_, i) => shows[(i + n) % shows.length]).map((t, i) => ({ title: b(t), description: b(`${t} on ${ch ? ch.name : 'this channel'}: news and stories from the coast.`), start_timestamp: String(start + i * len), stop_timestamp: String(start + (i + 1) * len) })) };
 }
 
 /* ---------- drawn pictures ---------- */
@@ -154,7 +157,7 @@ http.createServer((req, res) => {
       case 'get_series': return json(res, series);
       case 'get_series_info': return json(res, seriesInfo(q.series_id));
       case 'get_vod_info': return json(res, vodInfo(q.vod_id));
-      case 'get_short_epg': return json(res, shortEpg(q.stream_id));
+      case 'get_short_epg': return json(res, shortEpg(q.stream_id, q.limit));
       default: return json(res, []);
     }
   }

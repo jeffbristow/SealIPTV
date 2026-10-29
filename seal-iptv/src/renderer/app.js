@@ -293,7 +293,7 @@ async function autoRefresh() {
 /* =================================================================
  * 3. NAVIGATION, TOP BAR, SEARCH
  * ================================================================= */
-const TITLES = { home: 'Home', live: 'Live TV', movies: 'Movies', series: 'Series', favorites: 'Favorites', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
+const TITLES = { home: 'Home', live: 'Live TV', guide: 'TV Guide', movies: 'Movies', series: 'Series', favorites: 'Favorites', collections: 'Collections', collection: 'Collections', settings: 'Settings', search: 'Search', movie: 'Movies', show: 'Series' };
 
 function go(view, arg = null, { push = true } = {}) {
   if (view === 'settings' && state.view !== 'settings' && settingsLocked()) {
@@ -344,6 +344,27 @@ function focusBack(m, tries = 0) {
   el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
+/** Re-draw part of a page, keeping the focus where it was in it (the remote's place: the same button). */
+function keepFocus(box, draw) {
+  const a = document.activeElement, all = () => [...box.querySelectorAll(FOCUSABLE_IN_VIEW)];
+  const i = a && box.contains(a) ? all().indexOf(a) : -1;
+  draw();
+  if (i < 0) return;
+  const now = all();
+  const el = now[Math.min(i, now.length - 1)];
+  if (el) el.focus({ preventScroll: true });
+}
+
+/* TV: a page drawn once it has loaded (a movie, a series) starts on its main button —
+   unless the remote has already moved onto the page, or a dialog is up */
+function tvStart(el) {
+  if (!TV || !el || !el.isConnected) return;
+  const a = document.activeElement;
+  if (a && a !== document.body && $('#view').contains(a)) return;
+  if (document.querySelector('#dlgModal:not(.hidden), #ctxMenu:not(.hidden), #tvPick')) return;
+  el.focus({ preventScroll: true });
+}
+
 /** The sort list's first choice: what "no sort chosen" means right now. */
 function sortDefaultLabel() {
   const sec = state.sec[state.view];
@@ -367,7 +388,7 @@ function render() {
   view.innerHTML = '';
   view.scrollTop = 0;
   if (!profile() && v !== 'settings') return renderWelcome(view);
-  ({ home: renderHome, live: renderLive, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
+  ({ home: renderHome, live: renderLive, guide: renderGuide, movies: renderBrowse, series: renderBrowse, favorites: renderFavorites, collections: renderCollections, collection: renderCollection, list: renderList, settings: renderSettings, search: renderSearch, movie: renderMovie, show: renderShow }[v] || renderHome)(view);
   if (TV && window.tvFocusFirst) window.tvFocusFirst();
 }
 
@@ -965,6 +986,158 @@ async function toggleFav(it, kind, meta) {
 }
 
 /* =================================================================
+ * 6b. TV GUIDE — channels down the side, time across, favorites first
+ * (the full guide, catalog.js / guide.js; a channel it hasn't got: the provider's own listings)
+ * ================================================================= */
+const GUIDE_HOURS = 12;
+function renderGuide(view) {
+  const ppm = TV ? 4 : 5;                                                   // pixels a minute
+  const t0 = Math.floor((Date.now() - 30 * 60000) / 1800000) * 1800000;    // from the half hour before now
+  const end = t0 + GUIDE_HOURS * 3600000;
+  const x = ms => Math.max(0, Math.round((ms - t0) / 60000 * ppm));
+  const width = x(end);
+  const g = state.guide || (state.guide = { cat: null });
+  let marks = '';
+  for (let t = t0; t < end; t += 1800000) marks += `<span style="left:${x(t)}px">${esc(fmtClock(t))}</span>`;
+  // (the choice of channels comes after the grid in the page, so the remote starts on the first channel; shown on top)
+  const page = h(`<div class="guide">
+    <div class="g-scroll" id="gScroll"><div class="g-grid" style="width:calc(var(--g-ch) + ${width}px)">
+      <div class="g-times"><div class="g-corner"></div><div class="g-marks" style="width:${width}px">${marks}</div></div>
+      <div id="gRows"></div>
+      <div class="g-now" id="gNow"></div>
+    </div></div>
+    <div class="g-top"><div class="g-info" id="gInfo"><p class="muted small">Loading the TV guide…</p></div>
+      <div class="g-pick"><label for="gCat" class="small muted">Channels</label><select id="gCat" disabled></select></div></div></div>`);
+  view.appendChild(page);
+  const scroller = $('#gScroll'), rows = $('#gRows'), info = $('#gInfo');
+  const tick = () => {
+    if (!page.isConnected) return clearInterval(timer);
+    $('#gNow').style.left = `calc(var(--g-ch) + ${x(Date.now())}px)`;
+    const a = document.activeElement, row = a && rows.contains(a) && a.closest('.g-row');
+    if (row) showInfo(row, a._e);   // "Starts in 1 min" -> "On now"
+  };
+  const timer = setInterval(tick, 60000);
+  tick();
+
+  let items = [], vpnOff = false;
+  const play = row => Player.play({ kind: 'live', id: row._ch.id, name: row._ch.name, image: row._ch.logo, cat: row._ch.catName }, { channels: items, index: row._i, list: { cat: g.cat, q: '' } });
+
+  // what's selected, above the grid
+  const showInfo = (row, e) => {
+    const it = row._ch;
+    if (!e) e = (row._list || []).find(p => p.start <= Date.now()) || null;
+    if (!e) { info.innerHTML = `<h3>${esc(it.name)}</h3><p class="small muted">${vpnOff ? '🛡️ The TV guide needs the VPN.' : row._list ? 'No guide for this channel.' : 'Loading what\'s on…'}</p>`; return; }
+    const now = Date.now(), on = e.start <= now && now < e.end;
+    const mins = Math.max(1, Math.round(((on ? e.end : e.start) - now) / 60000));
+    const span = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60 ? (mins % 60) + ' min' : ''}`.trim() : `${mins} min`;
+    const when = on ? `<b class="g-live">On now</b> · ${span} left` : `Starts in ${span}`;
+    info.innerHTML = `<div class="small muted">${esc(fmtClock(e.start))} – ${esc(fmtClock(e.end))} · ${when}</div>
+      <h3>${esc(e.title)}</h3>${e.desc ? `<p class="small muted g-desc">${esc(e.desc)}</p>` : ''}<div class="small faint">${esc(it.name)}</div>`;
+  };
+
+  // a row's programmes (keeps the focus at the same time of day when they replace "…")
+  const fill = (row, list) => {
+    row._list = list;
+    const box = row.querySelector('.g-progs');
+    const a = document.activeElement, had = a && box.contains(a) ? a.getBoundingClientRect() : null;
+    box.innerHTML = '';
+    const now = Date.now();
+    for (const e of list) {
+      if (e.end <= t0 || e.start >= end) continue;
+      const l = x(e.start), w = Math.max(4, x(e.end) - l - 3);
+      // a programme of a few minutes: only a sliver (the info above says what it is)
+      const c = h(`<div class="g-p${e.start <= now && now < e.end ? ' now' : ''}${w < 44 ? ' tiny' : ''}" tabindex="0" style="left:${l}px;width:${w}px">${w < 44 ? '' : `<span class="t">${esc(e.title)}</span><span class="s">${esc(fmtClock(e.start))}</span>`}</div>`);
+      c._e = e;
+      box.appendChild(c);
+    }
+    if (!box.firstChild) box.appendChild(h(`<div class="g-p none" tabindex="0" style="left:0;width:${width - 3}px"><span class="t">${vpnOff ? '🛡️ The TV guide needs the VPN' : 'No guide for this channel'}</span></div>`));
+    if (had) {
+      const mid = had.left + Math.min(had.width, 200) / 2;
+      const cells = [...box.children];
+      const to = cells.find(c => { const r = c.getBoundingClientRect(); return r.left <= mid && mid < r.right; }) || cells[0];
+      to.focus({ preventScroll: true });
+      showInfo(row, to._e);
+    } else if (a && row.contains(a)) showInfo(row);   // on the channel's name: what's on now
+  };
+
+  // the rows near the screen ask for their programmes, a few channels at a time
+  const want = new Set();
+  let soon = null;
+  const ask = () => {
+    soon = null;
+    const batch = [...want].slice(0, 20);
+    batch.forEach(r => want.delete(r));
+    if (!batch.length || !page.isConnected) return;
+    call('epg:grid', batch.map(r => r._ch.id)).then(map => {
+      for (const r of batch) fill(r, (map && map[r._ch.id]) || []);
+    }).catch(e => {
+      if (e.code === 'VPN') vpnOff = true;
+      for (const r of batch) fill(r, []);
+    }).finally(() => { if (want.size && !soon) soon = setTimeout(ask, 50); });
+  };
+  const io = new IntersectionObserver(es => {
+    for (const e of es) if (e.isIntersecting && !e.target._asked) { e.target._asked = true; want.add(e.target); io.unobserve(e.target); }
+    if (want.size && !soon) soon = setTimeout(ask, 120);
+  }, { root: scroller, rootMargin: '300px 0px' });
+
+  const rowOf = (it, i) => {
+    const row = h(`<div class="g-row"><div class="g-ch" tabindex="0"><span class="num">${it.num || ''}</span><span class="logo">${pic(it.logo, it.name)}</span><span class="name">${esc(it.name)}</span></div>
+      <div class="g-progs" style="width:${width}px"><div class="g-p wait" tabindex="0" style="left:0;width:${width - 3}px"><span class="t faint">…</span></div></div></div>`);
+    row._ch = it; row._i = i;
+    row.firstChild.title = it.name;
+    io.observe(row);
+    return row;
+  };
+
+  // OK / Enter / a double-click on a channel or a programme: watch the channel; ☰ / right-click: its menu
+  rows.addEventListener('focusin', e => { const row = e.target.closest('.g-row'); if (row) showInfo(row, e.target._e); });
+  rows.addEventListener('click', e => { const row = e.target.closest('.g-row'); if (row && (TV || e.target.closest('.g-ch'))) play(row); });
+  rows.addEventListener('dblclick', e => { const row = e.target.closest('.g-row'); if (row && !e.target.closest('.g-ch')) play(row); });
+  rows.addEventListener('keydown', e => { const row = e.target.closest('.g-row'); if (row && e.key === 'Enter' && !TV) { e.preventDefault(); play(row); } });
+  rows.addEventListener('contextmenu', e => {
+    const row = e.target.closest('.g-row');
+    if (!row) return;
+    e.preventDefault();
+    const it = row._ch;
+    cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo, cat: it.cat });
+  });
+
+  const load = () => {
+    scroller.scrollTop = 0;
+    items = infinite(rows, scroller,
+      // the first rows in: the choice of channels can be used, and the remote starts on the first channel
+      offset => call('catalog:list', { section: 'live', cat: g.cat, offset, limit: 100 }).finally(() => setTimeout(() => {
+        sel.disabled = false;
+        if (!offset) tvStart(rows.querySelector('.g-ch') || sel);
+      }, 0)),
+      rowOf,
+      g.cat === '*fav' ? 'No favorite channels yet. Choose "All channels", or press ☆ next to a channel in Live TV.' : 'No channels here.');
+  };
+
+  // the channels: favorites first (when there are any), then all of them, then each category
+  const sel = $('#gCat');
+  (async () => {
+    const [cats, favs] = await Promise.all([call('catalog:cats', 'live'), call('catalog:list', { section: 'live', cat: '*fav', offset: 0, limit: 1 })]);
+    if (!page.isConnected) return;
+    if (g.cat == null) g.cat = favs.total ? '*fav' : '';
+    const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
+    sel.append(opt('*fav', '⭐ Favorites'), opt('', `All channels (${cats.total.toLocaleString()})`));
+    for (const c of cats.cats) { const o = opt(c.id, `${c.locked && !c.open ? '🔒 ' : ''}${c.name} (${c.count.toLocaleString()})`); o._c = c; sel.appendChild(o); }
+    sel.value = g.cat;
+    if (sel.value !== g.cat) { g.cat = ''; sel.value = ''; }
+    sel.onchange = async () => {
+      const c = sel.selectedOptions[0] && sel.selectedOptions[0]._c;
+      if (c && c.locked && !c.open && !(await askPin({ name: c.name }))) { sel.value = g.cat; return; }
+      g.cat = sel.value;
+      if (c && c.locked && !c.open) return render();
+      load();
+    };
+    info.innerHTML = '<p class="muted small">Choose a channel to see what\'s on.</p>';
+    load();
+  })().catch(fail);
+}
+
+/* =================================================================
  * 7. MOVIES + SERIES (poster grids)
  * ================================================================= */
 function renderBrowse(view) {
@@ -1034,7 +1207,7 @@ async function renderMovie(view) {
   const rating = i.rating || m.rating;
   page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(imgSrc(i.backdrop || poster))}')"></div>` : ''}
     <div class="inner">
-      <button class="btn ghost small back" id="mBack">← Back</button>
+      <button class="btn ghost small back tv-hide" id="mBack">← Back</button>
       <div class="head">
         <div class="poster">${pic(poster, name, 'pi', { kind: 'movie', name, year: i.year || m.year })}</div>
         <div style="min-width:0">
@@ -1050,7 +1223,7 @@ async function renderMovie(view) {
   $('#mBack').onclick = back;
   const req = { kind: 'movie', id: m.id, name, image: poster, ext: i.ext || m.ext };
   const actions = $('#mActions');
-  const draw = () => {
+  const draw = () => keepFocus(actions, () => {
     actions.innerHTML = '';
     const add = (html, fn, cls = 'btn') => { const b = h(`<button class="${cls}">${html}</button>`); b.onclick = fn; actions.appendChild(b); };
     if (m.pos) {
@@ -1067,8 +1240,9 @@ async function renderMovie(view) {
     });
     add(OTHER_PLAYER, () => openExternal({ ...req, title: name, start: m.pos || 0 }), 'btn ghost');
     if (i.trailer) add('Trailer', () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(i.trailer)}`), 'btn ghost');
-  };
+  });
   draw();
+  tvStart(actions.firstChild);
 }
 
 /* =================================================================
@@ -1109,7 +1283,7 @@ async function renderShow(view) {
   const meta = [i.year || d.year || '', `${i.seasons.length} season${i.seasons.length === 1 ? '' : 's'}`, `${queue.length} episodes`, i.genre || ''].filter(Boolean);
   page.innerHTML = `${i.backdrop || poster ? `<div class="backdrop" style="background-image:url('${esc(imgSrc(i.backdrop || poster))}')"></div>` : ''}
     <div class="inner">
-      <button class="btn ghost small back" id="sBack">← Back</button>
+      <button class="btn ghost small back tv-hide" id="sBack">← Back</button>
       <div class="head">
         <div class="poster">${pic(poster, name, 'pi', { kind: 'series', name, year: i.year || d.year })}</div>
         <div style="min-width:0">
@@ -1120,7 +1294,7 @@ async function renderShow(view) {
           ${i.cast ? `<div class="facts"><p><b>Cast</b> ${esc(i.cast)}</p></div>` : ''}
         </div>
       </div>
-      <div class="seasons" id="sSeasons"></div>
+      <div class="seasons" id="sSeasons" data-tv-group></div>
       <div id="sEpisodes"></div>
     </div>`;
   $('#sBack').onclick = back;
@@ -1130,7 +1304,7 @@ async function renderShow(view) {
   const nextUp = () => queue.find(q => q.pos && !q.watched) || queue.find(q => !q.watched) || null;
   let season = (nextUp() || queue[0] || { season: (i.seasons[0] || {}).num }).season;
 
-  const drawActions = () => {
+  const drawActions = () => keepFocus($('#sActions'), () => {
     const a = $('#sActions');
     a.innerHTML = '';
     const add = (html, fn, cls = 'btn') => { const b = h(`<button class="${cls}">${html}</button>`); b.onclick = fn; a.appendChild(b); };
@@ -1150,20 +1324,28 @@ async function renderShow(view) {
         } catch (e) { fail(e); }
       }, 'btn ghost');
     }
-  };
+  });
 
-  const drawSeasons = () => {
+  // a season's tab: its episodes underneath (on a TV, as soon as the remote moves onto it)
+  const pickSeason = n => {
+    season = n;
+    $$('#sSeasons .season').forEach(b => b.classList.toggle('active', b._s === n));
+    drawSeason(); drawActions();
+  };
+  const drawSeasons = () => keepFocus($('#sSeasons'), () => {
     const box = $('#sSeasons');
     box.innerHTML = '';
     for (const s of i.seasons) {
       const seen = s.episodes.length && queue.filter(q => q.season === s.num).every(q => q.watched);
       const b = h(`<button class="season${s.num === season ? ' active' : ''}">${esc(s.name || 'Season ' + s.num)}${seen ? ' ✓' : ''}</button>`);
-      b.onclick = () => { season = s.num; drawSeasons(); drawSeason(); drawActions(); };
+      b._s = s.num;
+      b.onclick = () => pickSeason(s.num);
+      if (TV) b.onfocus = () => { if (season !== s.num) pickSeason(s.num); };
       box.appendChild(b);
     }
-  };
+  });
 
-  const drawSeason = () => {
+  const drawSeason = () => keepFocus($('#sEpisodes'), () => {
     const box = $('#sEpisodes');
     box.innerHTML = '';
     for (const q of queue.filter(x => x.season === season)) {
@@ -1187,8 +1369,10 @@ async function renderShow(view) {
       };
       box.appendChild(el);
     }
-  };
+  });
   drawActions(); drawSeasons(); drawSeason();
+  if (i.seasons.length > 1) $('#sActions').dataset.tvDown = '#sSeasons .season.active';   // TV: ↓ from the buttons -> the season in use
+  tvStart($('#sActions').firstChild);
 }
 
 /* =================================================================
@@ -2063,6 +2247,10 @@ async function editProfile(p) {
         <label for="pfUrl">Playlist link</label><input type="url" id="pfUrl" value="${esc(p.m3uUrl || '')}" placeholder="https://… .m3u or .m3u8" spellcheck="false">
         <div class="row gap ${TV ? 'tv-hide' : ''}" style="margin-top:8px"><span class="muted small">or</span><button class="btn small" id="pfFile">Choose a file…</button><span class="small" id="pfFileName">${esc(file)}</span></div>
       </div>
+      <label for="pfGuideMode">TV guide</label>
+      <select id="pfGuideMode" style="max-width:420px"><option value="">Automatic</option><option value="url">From a guide address (XMLTV)</option><option value="off">Off</option></select>
+      <input type="url" id="pfGuide" value="${esc(p.guide && p.guide !== 'off' ? p.guide : '')}" placeholder="http://… a guide's .xml or xmltv.php address" spellcheck="false" style="margin-top:8px">
+      <p class="muted small" id="pfGuideHint"></p>
       <p id="pfErr" class="error"></p>`,
     onOpen: () => {
       const setType = t => {
@@ -2070,7 +2258,17 @@ async function editProfile(p) {
         $$('#pfType button').forEach(b => b.classList.toggle('active', b.dataset.t === t));
         show($('#pfX'), t === 'xtream'); show($('#pfM'), t === 'm3u');
         $('#pfHint').textContent = t === 'xtream' ? 'The server, username and password from your provider (often called "Xtream Codes API" or "Login with Xtream").' : 'A link to an .m3u / .m3u8 playlist, or a playlist file on this PC.';
+        guideHint();
       };
+      const guideHint = () => {
+        const m = $('#pfGuideMode').value;
+        show($('#pfGuide'), m === 'url');
+        $('#pfGuideHint').textContent = m === 'off' ? 'No guide: Live TV and the TV Guide show only the channels.'
+          : m === 'url' ? 'An XMLTV guide (.xml). Seal IPTV downloads it every few hours and matches it to the channels by their guide id (tvg-id).'
+          : type === 'xtream' ? 'Your provider\'s own guide, downloaded every few hours.' : 'This playlist has no guide of its own — choose "From a guide address" to add one.';
+      };
+      $('#pfGuideMode').value = p.guide === 'off' ? 'off' : p.guide ? 'url' : '';
+      $('#pfGuideMode').onchange = guideHint;
       $$('#pfType button').forEach(b => b.onclick = () => setType(b.dataset.t));
       setType(type);
       $('#pfFmt').value = p.liveFormat || 'auto';
@@ -2086,7 +2284,9 @@ async function editProfile(p) {
       };
     },
     onOk: async () => {
-      const form = { id: p.id, type, name: $('#pfName').value.trim(), liveFormat: $('#pfFmt').value };
+      const gm = $('#pfGuideMode').value;
+      if (gm === 'url' && !$('#pfGuide').value.trim()) { $('#pfErr').textContent = 'Enter the TV guide\'s address, or choose Automatic.'; return false; }
+      const form = { id: p.id, type, name: $('#pfName').value.trim(), liveFormat: $('#pfFmt').value, guide: gm === 'url' ? $('#pfGuide').value.trim() : gm };
       if (type === 'xtream') Object.assign(form, { server: $('#pfServer').value.trim(), username: $('#pfUser').value.trim(), password: $('#pfPass').value });
       else Object.assign(form, { m3uUrl: $('#pfUrl').value.trim(), m3uFile: $('#pfUrl').value.trim() ? '' : file });
       $('#pfErr').textContent = type === 'xtream' ? 'Signing in…' : 'Checking the playlist…';

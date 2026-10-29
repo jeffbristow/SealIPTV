@@ -6,8 +6,9 @@
  * (Electron safeStorage) when it's available.
  *
  * A profile is one IPTV source:
- *   { id, name, type: 'xtream', server, username, password, liveFormat }
- *   { id, name, type: 'm3u', m3uUrl | m3uFile, liveFormat }
+ *   { id, name, type: 'xtream', server, username, password, liveFormat, guide? }
+ *   { id, name, type: 'm3u', m3uUrl | m3uFile, liveFormat, guide? }
+ *   guide: the TV guide — none: automatic (Xtream: the provider's), 'off', or an XMLTV address
  *
  * Sections:
  *   1. Defaults
@@ -304,6 +305,14 @@ class Store {
       name: String(p.name || '').trim().slice(0, 80),
       liveFormat: LIVE_FORMATS.includes(p.liveFormat) ? p.liveFormat : 'auto'
     };
+    const guide = String(p.guide || '').trim();
+    if (guide === 'off') out.guide = 'off';
+    else if (guide) {
+      let u;
+      try { u = new URL(guide); } catch { throw new Error('The TV guide address isn\'t a web address.'); }
+      if (!/^https?:$/.test(u.protocol)) throw new Error('The TV guide address must start with http:// or https://');
+      out.guide = u.href;
+    }
     if (type === 'xtream') {
       out.server = Store.normalizeServer(p.server);
       out.username = String(p.username || '').trim();

@@ -16,7 +16,7 @@ AbortSignal.timeout = ms => {
 async function nativeFetch(url, opts = {}) {
   const headers = {};
   if (opts.headers) for (const [k, v] of Object.entries(opts.headers)) headers[k] = String(v);
-  const r = await request({ method: opts.method || 'GET', url: String(url), headers, body: opts.body == null ? null : String(opts.body), timeout: (opts.signal && opts.signal.__ms) || 30000, redirect: opts.redirect || 'follow' });
+  const r = await request({ method: opts.method || 'GET', url: String(url), headers, body: opts.body == null ? null : String(opts.body), timeout: (opts.signal && opts.signal.__ms) || 30000, redirect: opts.redirect || 'follow', stream: !!opts.stream });
   if (!r.ok) {
     const e = new Error(r.error || 'fetch failed');
     if (/timed? ?out/i.test(r.error || '')) e.name = 'TimeoutError';
@@ -24,7 +24,9 @@ async function nativeFetch(url, opts = {}) {
     throw e;
   }
   const h = new Map(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
-  return { ok: r.status >= 200 && r.status < 300, status: r.status, url: r.url || url, headers: { get: k => h.get(String(k).toLowerCase()) || null }, text: async () => r.body || '', json: async () => JSON.parse(r.body || 'null') };
+  return { ok: r.status >= 200 && r.status < 300, status: r.status, url: r.url || url, headers: { get: k => h.get(String(k).toLowerCase()) || null }, text: async () => r.body || '', json: async () => JSON.parse(r.body || 'null'),
+    // opts.stream (the TV guide): the answer a piece at a time
+    pieces: async fn => { if (r.pieces) return r.pieces(fn); fn(r.body || ''); } };
 }
 /* the WebView's own fetch, for the app's files (https://appassets.androidplatform.net/…, MainActivity) */
 const pageFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null;
