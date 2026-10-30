@@ -722,10 +722,10 @@ class Catalog {
    */
   watchlist(pid, { home = false } = {}) {
     const c = this.get(pid);
-    return this.library.watchlist(pid).filter(w => (home ? this.homeSafe(pid, w.key, w) : this.visibleKey(pid, w.key, w))).map(w => {
+    return this.library.watchlist(pid, this.favSort('watch')).filter(w => (home ? this.homeSafe(pid, w.key, w) : this.visibleKey(pid, w.key, w))).map(w => {
       const it = this._find(c, w.kind === 'movie' ? 'movies' : 'series', w.id);
       return {
-        kind: w.kind, id: w.id, name: (it && it.name) || w.name, poster: (it && it.poster) || w.image || '', cat: (it && it.cat) || w.cat,
+        key: w.key, kind: w.kind, id: w.id, name: (it && it.name) || w.name, poster: (it && it.poster) || w.image || '', cat: (it && it.cat) || w.cat,
         year: it && it.year, rating: it && it.rating, wl: true,
         newEps: w.kind === 'series' && !!(it && it.added && w.upd && it.added > w.upd)
       };

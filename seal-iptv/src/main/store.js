@@ -71,7 +71,7 @@ const DEFAULTS = {
   // the logo bouncing around after this long with nothing playing (per device: not synced)
   screensaver: { on: true, minutes: 5 },
   // how Favorites are listed, per kind: 'added' (newest first) | 'name' (A–Z) | 'custom'
-  favorites: { live: 'added', movie: 'added', series: 'added' },
+  favorites: { live: 'added', movie: 'added', series: 'added', watch: 'added' },   // watch: the watchlist
   // Collections (franchises.js): 'release' | 'story' order
   collections: { order: 'release' },
   // Home's rows of games and events on now (events.js)
@@ -92,7 +92,7 @@ const SYNC_GROUPS = {
   catalog: ['refreshHours'],
   content: ['hideNonEnglish'],
   artwork: ['lookup', 'tmdbKey', 'trending'],
-  favorites: ['live', 'movie', 'series'],
+  favorites: ['live', 'movie', 'series', 'watch'],
   collections: ['order'],
   events: ['homeSports', 'homePpv'],
   vpn: ['required', 'provider'],
@@ -286,7 +286,7 @@ class Store {
       if (n >= 1 && n <= 10) s.media.streams = n;
       if (typeof patch.media.folder === 'string') s.media.folder = patch.media.folder.trim().slice(0, 500);
     }
-    if (patch.favorites) for (const k of ['live', 'movie', 'series']) if (FAV_SORTS.includes(patch.favorites[k])) s.favorites[k] = patch.favorites[k];
+    if (patch.favorites) for (const k of ['live', 'movie', 'series', 'watch']) if (FAV_SORTS.includes(patch.favorites[k])) s.favorites[k] = patch.favorites[k];
     // patch.parental is ignored on purpose: that goes through parental.js (needs the PIN)
     if (patch.catalog && Number.isFinite(Number(patch.catalog.refreshHours))) {
       s.catalog.refreshHours = Math.min(168, Math.max(0, Math.round(Number(patch.catalog.refreshHours))));

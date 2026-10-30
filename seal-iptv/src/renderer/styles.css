@@ -158,6 +158,8 @@ html.tv .win-only { display: none !important; }
 /* TV Guide search: the programmes found */
 .g-p.hit, .g-p.now.hit { background: rgba(60, 207, 145, .24); box-shadow: inset 0 0 0 2px var(--accent); }
 .g-p.hit .t { color: var(--text); font-weight: 600; }
+.list-bar .list-sort { margin-left: 12px; }
+.list-bar .list-sort button { padding: 4px 11px; font-size: 12px; }
 .badge.new { top: auto; bottom: 8px; left: 6px; background: var(--amber); color: #0b0d10; font-weight: 600; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); }
 .bar i { display: block; height: 100%; background: var(--accent); }

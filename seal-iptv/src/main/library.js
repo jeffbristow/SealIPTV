@@ -37,6 +37,35 @@ const cleanMeta = m => {
   return out;
 };
 
+/**
+ * entries [[key, meta]] in a sort: 'added' (newest first) | 'name' (A–Z by nameOf) | 'custom' (the user's
+ * order: by order; ones without one after it, oldest first — none arranged yet = newest first)
+ */
+function sorted(entries, sort, nameOf = m => m.name) {
+  const custom = sort === 'custom' && entries.some(([, m]) => Number.isFinite(m.order));
+  const by = sort === 'name' ? (a, b) => String(nameOf(a[1]) || '').localeCompare(String(nameOf(b[1]) || ''), undefined, { numeric: true, sensitivity: 'base' }) || (b[1].at || 0) - (a[1].at || 0)
+    : custom ? (a, b) => (Number.isFinite(a[1].order) ? a[1].order : Infinity) - (Number.isFinite(b[1].order) ? b[1].order : Infinity) || (a[1].at || 0) - (b[1].at || 0)
+      : (a, b) => (b[1].at || 0) - (a[1].at || 0);
+  return entries.slice().sort(by);
+}
+
+/**
+ * The user's new order: all = every entry [[key, meta]] in the custom order now, keys = the ones shown,
+ * in their new order (the others keep their places). Each entry whose place changed gets order and
+ * goes to changed(key, meta).
+ */
+function arrange(all, keys, changed) {
+  const have = new Set(all.map(([k]) => k));
+  const moved = [...new Set((keys || []).map(String))].filter(k => have.has(k));
+  const slots = new Set(moved), byKey = new Map(all);
+  let n = 0;
+  all.forEach(([k], i) => {
+    const key = slots.has(k) ? moved[n++] : k;
+    const m = byKey.get(key);
+    if (m.order !== i) { m.order = i; changed(key, m); }
+  });
+}
+
 class Library {
   constructor(dir) {
     this.dir = dir;
@@ -296,7 +325,7 @@ class Library {
     const d = this._get(pid), n = {};
     for (const k of Object.keys(d.listed)) { const lid = k.slice(0, k.indexOf('/')); n[lid] = (n[lid] || 0) + 1; }
     return Object.entries(d.lists).sort((a, b) => (a[1].at || 0) - (b[1].at || 0))
-      .map(([id, l]) => ({ id, name: l.name, icon: l.icon || '', count: n[id] || 0 }));
+      .map(([id, l]) => ({ id, name: l.name, icon: l.icon || '', count: n[id] || 0, sort: l.sort || 'name' }));
   }
 
   /** a new category (id null) or a new name / icon for one; returns its id */
@@ -327,7 +356,12 @@ class Library {
     if (!d.lists[lid]) throw new Error('That category is gone (removed on another device?).');
     const k = lid + '/' + key;
     const old = d.listed[k];
-    if (on) d.listed[k] = { ...cleanMeta(meta), ...(old && old.title ? { title: old.title } : {}), at: this._now() };
+    if (on) {
+      d.listed[k] = { ...cleanMeta(meta), ...(old && old.title ? { title: old.title } : {}), at: this._now() };
+      // once the category is arranged, a new title goes at the end
+      const orders = Object.entries(d.listed).filter(([x]) => x !== k && x.startsWith(lid + '/')).map(([, m]) => m.order).filter(Number.isFinite);
+      if (orders.length) d.listed[k].order = old && Number.isFinite(old.order) ? old.order : Math.max(...orders) + 1;
+    }
     else if (old) delete d.listed[k];
     else return false;
     this._changed(pid);
@@ -348,13 +382,36 @@ class Library {
     return it.title || '';
   }
 
-  /** what's in a category: [{ key, kind, id, name, title?, image … }], A–Z by the name shown */
+  /**
+   * what's in a category: [{ key, kind, id, name, title?, image … }], in the category's sort
+   * (A–Z by the name shown unless another was chosen: newest first, or the user's own order)
+   */
   listItems(pid, lid) {
     const d = this._get(pid);
-    const shown = m => String(m.title || m.name || '');
-    return Object.entries(d.listed).filter(([k]) => k.startsWith(lid + '/'))
-      .map(([k, m]) => { const key = k.slice(lid.length + 1); return { key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }; })
-      .sort((a, b) => shown(a).localeCompare(shown(b), undefined, { numeric: true, sensitivity: 'base' }));
+    const sort = (d.lists[lid] && d.lists[lid].sort) || 'name';
+    const entries = Object.entries(d.listed).filter(([k]) => k.startsWith(lid + '/'));
+    return sorted(entries, sort, m => m.title || m.name)
+      .map(([k, m]) => { const key = k.slice(lid.length + 1); return { key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }; });
+  }
+
+  /** a category's sort: 'name' | 'added' | 'custom' (synced with the category) */
+  setListSort(pid, lid, sort) {
+    const d = this._get(pid), l = d.lists[lid];
+    if (!l) throw new Error('That category is gone (removed on another device?).');
+    if (!['name', 'added', 'custom'].includes(sort)) throw new Error('Unknown order');
+    l.sort = sort;
+    this._changed(pid);
+    this._emit('list', pid, lid, l);
+    return this.lists(pid);
+  }
+
+  /** the user's order in a category: keys (live:1, movie:9 …) = the ones shown, in their new order */
+  arrangeListed(pid, lid, keys) {
+    const d = this._get(pid);
+    const all = sorted(Object.entries(d.listed).filter(([k]) => k.startsWith(lid + '/')), 'custom');
+    arrange(all, (keys || []).map(k => lid + '/' + k), (k, m) => this._emit('listed', pid, k, m));
+    this._changed(pid);
+    return this.listItems(pid, lid);
   }
 
   /** the ids of the categories a key is in */
@@ -374,6 +431,9 @@ class Library {
     const d = this._get(pid), old = d.watch[key];
     if (on) {
       const w = { ...(old || {}), ...cleanMeta(meta), at: old ? old.at : this._now() };
+      // once the watchlist is arranged, a new title goes at the end
+      const orders = old ? [] : Object.values(d.watch).map(m => m.order).filter(Number.isFinite);
+      if (orders.length) w.order = Math.max(...orders) + 1;
       if (old && JSON.stringify(w) === JSON.stringify(old)) return true;   // nothing new: nothing to sync
       d.watch[key] = w;
     } else if (old) delete d.watch[key];
@@ -385,10 +445,18 @@ class Library {
 
   onWatchlist(pid, key) { return !!this._get(pid).watch[key]; }
 
-  /** [{ key, kind, id, name, image, upd … }], the newest added first */
-  watchlist(pid) {
-    return Object.entries(this._get(pid).watch).sort((a, b) => (b[1].at || 0) - (a[1].at || 0))
+  /** [{ key, kind, id, name, image, upd … }]: sort 'added' (newest first, as before) | 'name' | 'custom' */
+  watchlist(pid, sort = 'added') {
+    return sorted(Object.entries(this._get(pid).watch), sort)
       .map(([key, m]) => ({ key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...m }));
+  }
+
+  /** the user's order of the watchlist: keys = the ones shown, in their new order */
+  arrangeWatchlist(pid, keys) {
+    const d = this._get(pid);
+    arrange(sorted(Object.entries(d.watch), 'custom'), keys, (k, m) => this._emit('watch', pid, k, m));
+    this._changed(pid);
+    return this.watchlist(pid, 'custom');
   }
 
   /* =================================================================

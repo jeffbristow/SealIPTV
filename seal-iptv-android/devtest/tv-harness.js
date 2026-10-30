@@ -212,6 +212,31 @@ app.whenReady().then(async () => {
     log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
     log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
 
+    // my own order: the watchlist and a category arranged with the remote (◀ ▶ on a poster)
+    await js("Promise.all([call('lib:watchlist', 'movie:2005', true, { name: 'The Last Lighthouse (2011)' }), call('lib:watchlist', 'movie:2006', true, { name: 'Coastal Drift (2012)' })]).then(() => saveSettings({ favorites: { watch: 'custom' } })).then(() => { go('watchlist'); state.wlArrange = true; render(); })");
+    await sleep(1500);
+    const wlBefore = await js("[...document.querySelectorAll('#view .card .title')].map(t => t.textContent).join(' | ')");
+    await js("document.querySelector('#view .card .arrange button:last-child').focus()");
+    await js('window.__tvOk()');
+    await sleep(900);
+    await shot('t15b-watchlist-arrange');
+    log('watchlist arranged (▶ on the first)', { before: wlBefore, after: await js("[...document.querySelectorAll('#view .card .title')].map(t => t.textContent).join(' | ')"), saved: await js("call('lib:watchlistItems').then(l => l.map(w => w.name).join(' | '))") });
+    await js("call('lists:set', __kid, 'movie:2007', true, { name: 'Tidewater (2013)' }).then(() => call('lists:sort', __kid, 'custom')).then(l => { state.lists = l; go('list', __kid); state.listArrange = __kid + ':movie'; render(); })");
+    await sleep(1500);
+    const kBefore = await js("[...document.querySelectorAll('#view .card .title')].map(t => t.textContent).join(' | ')");
+    await js("document.querySelector('#view .card .arrange button:last-child').focus()");
+    await js('window.__tvOk()');
+    await sleep(900);
+    log('category arranged', { before: kBefore, after: await js("[...document.querySelectorAll('#view .card .title')].map(t => t.textContent).join(' | ')"), saved: await js("call('lists:items', __kid).then(l => l.map(w => w.name).join(' | '))"), sortButtons: await js("[...document.querySelectorAll('.list-sort button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(' ')") });
+
+    await js("Promise.all([call('lib:favorite', 'movie:2010', true, { name: 'Northern Echo (2010)' }), call('lib:favorite', 'movie:2011', true, { name: 'The Last Lighthouse (2011)' })]).then(() => saveSettings({ favorites: { movie: 'custom' } })).then(() => { go('favorites'); state.favArrange = 'movie'; render(); })");
+    await sleep(1500);
+    const fBefore = await js("[...document.querySelectorAll('[data-fk=movie] + .grid .card .title')].map(t => t.textContent).join(' | ')");
+    await js("document.querySelector('[data-fk=movie] + .grid .card .arrange button:last-child').focus()");
+    await js('window.__tvOk()');
+    await sleep(900);
+    log('favorites arranged', { before: fBefore, after: await js("[...document.querySelectorAll('[data-fk=movie] + .grid .card .title')].map(t => t.textContent).join(' | ')"), saved: await js("call('lib:favorites', 'movie').then(l => l.map(f => f.name).join(' | '))") });
+
     // Continue watching: opened from there, the resume question offers to take it off
     await js("saveSettings({ playback: { resume: 'ask' } }).then(() => call('lib:progress', 'movie:2004', 300, 596, { name: 'Northern Echo (2010)' })).then(() => go('home'))");
     await sleep(2500);

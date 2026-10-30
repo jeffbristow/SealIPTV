@@ -8,7 +8,7 @@ const CHANNELS = new Set([
   'details:movie', 'details:series', 'epg:short', 'epg:grid', 'epg:search',
   'lib:favorite', 'lib:watched', 'lib:watchedMany', 'lib:progress', 'lib:clearProgress', 'lib:continue', 'lib:next', 'lib:hideContinue', 'lib:favorites', 'lib:arrangeFavorites', 'collections:list', 'collections:get', 'lists:all', 'lists:save', 'lists:remove', 'lists:items', 'lists:of', 'lists:set', 'lists:title', 'lib:clearHistory',
   'media:list', 'media:of', 'media:download', 'media:downloadMany', 'media:pause', 'media:resume', 'media:remove', 'media:recordNow', 'media:schedule', 'media:stop', 'media:answer', 'media:show', 'media:openFolder', 'media:chooseFolder',
-  'lib:watchlist', 'lib:onWatchlist', 'lib:watchlistItems', 'events:list', 'events:home',
+  'lib:watchlist', 'lib:onWatchlist', 'lib:watchlistItems', 'lib:arrangeWatchlist', 'lists:sort', 'lists:arrange', 'events:list', 'events:home',
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
   'sync:status', 'sync:probe', 'sync:connect', 'tv:find', 'tv:send', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',

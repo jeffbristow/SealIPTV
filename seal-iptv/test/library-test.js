@@ -178,6 +178,32 @@ try {
   ok(!lib.continueWatching(H).some(p => p.seriesId === 'sx') && !lib.finishedWithoutNext(H).some(x => x.seriesId === 'sx'), 'its up next stays off too, and isn’t looked up again');
   lib.applyRecord('cwhide', H, 'movie:5', null);
   ok(lib.continueWatching(H).some(p => p.key === 'movie:5'), 'put back from another device (the record removed)');
+
+  /* ---- the user's own order: my categories and the watchlist ---- */
+  const O = 'o1';
+  const osent = [];
+  lib.onChange = (n, d) => osent.push([n, d]);
+  const cat = lib.saveList(O, null, { name: 'Date night' });
+  for (const [k, n] of [['movie:1', 'Up'], ['movie:2', 'Brave'], ['movie:3', 'Coco']]) lib.setListed(O, cat, k, true, { name: n });
+  ok(lib.listItems(O, cat).map(i => i.name).join() === 'Brave,Coco,Up', 'a category: A–Z at first');
+  lib.setListSort(O, cat, 'added');
+  ok(lib.listItems(O, cat).map(i => i.name).join() === 'Coco,Brave,Up' && lib.lists(O)[0].sort === 'added', 'newest first, the choice kept with the category');
+  lib.setListSort(O, cat, 'custom');
+  osent.length = 0;
+  lib.arrangeListed(O, cat, ['movie:3', 'movie:1', 'movie:2']);
+  ok(lib.listItems(O, cat).map(i => i.name).join() === 'Coco,Up,Brave', 'arranged: in that order');
+  ok(osent.some(([n]) => n === `listed:${O}:${cat}/movie:3`) && osent.some(([n]) => n === `list:${O}:${cat}`) === false, '… the moved titles sync (the category itself unchanged)');
+  lib.setListed(O, cat, 'movie:4', true, { name: 'Abyss' });
+  ok(lib.listItems(O, cat).map(i => i.name).join() === 'Coco,Up,Brave,Abyss', 'a new title in an arranged category goes at the end');
+  lib.arrangeListed(O, cat, ['movie:1', 'movie:3']);
+  ok(lib.listItems(O, cat).map(i => i.name).join() === 'Up,Coco,Brave,Abyss', 'only some shown (the movies of a mixed category): the others keep their places');
+  assert.throws(() => lib.setListSort(O, cat, 'random'), /Unknown/);
+  for (const [k, n] of [['movie:7', 'Heat'], ['series:8', 'Dark'], ['movie:9', 'Alien']]) lib.setWatchlist(O, k, true, { name: n });
+  ok(lib.watchlist(O).map(w => w.name).join() === 'Alien,Dark,Heat' && lib.watchlist(O, 'name').map(w => w.name).join() === 'Alien,Dark,Heat', 'the watchlist: newest first, or A–Z');
+  lib.arrangeWatchlist(O, ['series:8', 'movie:7', 'movie:9']);
+  ok(lib.watchlist(O, 'custom').map(w => w.name).join() === 'Dark,Heat,Alien', 'the watchlist arranged: movies and series in one order');
+  lib.setWatchlist(O, 'movie:10', true, { name: 'Jaws' });
+  ok(lib.watchlist(O, 'custom').map(w => w.name).pop() === 'Jaws' && lib.watchlist(O)[0].name === 'Jaws', 'a new one goes at the end of my order (first in newest first)');
   lib.onChange = null;
   lib.flush();
 } finally {

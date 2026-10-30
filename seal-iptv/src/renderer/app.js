@@ -304,7 +304,7 @@ function go(view, arg = null, { push = true } = {}) {
   }
   if (push && (state.view !== view || state.arg !== arg)) state.history.push({ view: state.view, arg: state.arg, focus: TV ? focusMark() : null });
   if (state.history.length > 50) state.history.shift();
-  if (view !== state.view) state.favArrange = '';
+  if (view !== state.view) { state.favArrange = ''; state.wlArrange = false; state.listArrange = ''; }
   if (view !== state.view || arg !== state.arg) state.listEdit = '';
   state.view = view;
   state.arg = arg;
@@ -1706,41 +1706,8 @@ async function renderFavorites(view, focus) {
     if (ab) ab.onclick = () => { state.favArrange = arranging ? '' : kind; redraw(`[data-fk="${kind}"] [data-arrange]`); };
     page.appendChild(head);
     const g = h('<div class="grid" style="padding-top:0"></div>');
-    let timer = 0, dragging = null;
-    const save = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => call('lib:arrangeFavorites', kind, [...g.children].map(c => c.dataset.key)).catch(fail), 400);
-    };
-    items.forEach(it => {
-      const c = make(it);
-      if (arranging) {
-        c.dataset.key = it.key;
-        c.onclick = null;
-        c.tabIndex = -1;
-        c.classList.add('arranging');
-        c.draggable = !TV;
-        const bar = h('<div class="arrange"><button title="Move earlier">◀</button><button title="Move later">▶</button></div>');
-        // the neighbor moves, not this card, so the button keeps the focus
-        const [l, r] = bar.querySelectorAll('button');
-        l.onclick = e => { e.stopPropagation(); const p = c.previousElementSibling; if (p) { c.after(p); save(); } l.scrollIntoView({ block: 'nearest' }); };
-        r.onclick = e => { e.stopPropagation(); const n = c.nextElementSibling; if (n) { c.before(n); save(); } r.scrollIntoView({ block: 'nearest' }); };
-        c.querySelector('.poster').appendChild(bar);
-        c.addEventListener('dragstart', e => { dragging = c; c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-        c.addEventListener('dragend', () => { c.classList.remove('dragging'); dragging = null; save(); });
-      }
-      g.appendChild(c);
-    });
-    if (arranging) {
-      g.addEventListener('dragover', e => {
-        if (!dragging) return;
-        e.preventDefault();
-        const t = e.target.closest('.card');
-        if (!t || t === dragging || t.parentNode !== g) return;
-        const box = t.getBoundingClientRect();
-        if (e.clientX > box.left + box.width / 2) t.after(dragging); else t.before(dragging);
-      });
-      g.addEventListener('drop', e => e.preventDefault());
-    }
+    items.forEach(it => { const c = make(it); c.dataset.key = it.key; g.appendChild(c); });
+    if (arranging) arrangeable(g, keys => call('lib:arrangeFavorites', kind, keys).catch(fail));
     page.appendChild(g);
   };
   grid('Channels', 'live', live, f => channelCard({ id: f.id, name: f.name, logo: f.image, fav: true }));
@@ -1750,8 +1717,52 @@ async function renderFavorites(view, focus) {
   if (f) f.focus();
 }
 
+/**
+ * Arrange mode on a grid of cards (each with data-key): drag them (Windows) or ◀ ▶ on each (the remote);
+ * save(keys) with the cards' new order, a moment after the last move. (Favorites, Watchlist, my categories)
+ */
+function arrangeable(g, save) {
+  let timer = 0, dragging = null;
+  const done = () => { clearTimeout(timer); timer = setTimeout(() => save([...g.children].map(c => c.dataset.key).filter(Boolean)), 400); };
+  for (const c of [...g.children]) {
+    c.onclick = null;
+    c.tabIndex = -1;
+    c.classList.add('arranging');
+    c.draggable = !TV;
+    const bar = h('<div class="arrange"><button title="Move earlier">◀</button><button title="Move later">▶</button></div>');
+    // the neighbor moves, not this card, so the button keeps the focus
+    const [l, r] = bar.querySelectorAll('button');
+    l.onclick = e => { e.stopPropagation(); const p = c.previousElementSibling; if (p) { c.after(p); done(); } l.scrollIntoView({ block: 'nearest' }); };
+    r.onclick = e => { e.stopPropagation(); const n = c.nextElementSibling; if (n) { c.before(n); done(); } r.scrollIntoView({ block: 'nearest' }); };
+    c.querySelector('.poster').appendChild(bar);
+    c.addEventListener('dragstart', e => { dragging = c; c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    c.addEventListener('dragend', () => { c.classList.remove('dragging'); dragging = null; done(); });
+  }
+  g.addEventListener('dragover', e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const t = e.target.closest('.card');
+    if (!t || t === dragging || t.parentNode !== g) return;
+    const box = t.getBoundingClientRect();
+    if (e.clientX > box.left + box.width / 2) t.after(dragging); else t.before(dragging);
+  });
+  g.addEventListener('drop', e => e.preventDefault());
+}
+
+/** a section's head with the order choice (Newest / A–Z / My order) and, in My order, Arrange */
+function sortHead(title, n, sort, arranging, sorts, { onSort, onArrange, hint = '' } = {}) {
+  const head = h(`<div class="shelf"><div class="shelf-head"><h2>${esc(title)}</h2><span class="muted small">${n}</span>
+    <div class="seg fav-sort">${sorts.map(([v, t]) => `<button data-v="${v}" class="${sort === v ? 'active' : ''}">${t}</button>`).join('')}</div>
+    ${sort === 'custom' && n > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
+    ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}${hint}</p>` : ''}</div>`);
+  head.querySelectorAll('.fav-sort button').forEach(b => b.onclick = () => { if (b.dataset.v !== sort) onSort(b.dataset.v); });
+  const ab = head.querySelector('[data-arrange]');
+  if (ab) ab.onclick = onArrange;
+  return head;
+}
+
 /* ---- Watchlist (library.js 6b): movies and series to watch later; a movie goes once it's watched ---- */
-async function renderWatchlist(view) {
+async function renderWatchlist(view, focus) {
   const page = h('<div class="home"></div>');
   view.appendChild(page);
   const items = await call('lib:watchlistItems').catch(() => []);
@@ -1760,14 +1771,24 @@ async function renderWatchlist(view) {
     page.appendChild(h('<div class="empty">Your watchlist is empty.<br><span class="small">Choose 📌 Watchlist on a movie or series to watch it later. A movie goes off the list once it has been watched; a series shows <b>New episodes</b> when there are more.</span></div>'));
     return;
   }
-  for (const [kind, title] of [['movie', 'Movies'], ['series', 'Series']]) {
-    const list = items.filter(w => w.kind === kind);
-    if (!list.length) continue;
-    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${list.length}</span></div></div>`));
-    const g = h('<div class="grid" style="padding-top:0"></div>');
-    list.forEach(w => g.appendChild(posterCard(w)));
-    page.appendChild(g);
+  // one list in one order (Home's row is in it too): newest first, A–Z or the user's own
+  const sort = (state.settings.favorites || {}).watch || 'added';
+  const arranging = !!state.wlArrange && sort === 'custom';
+  const redraw = sel => { view.innerHTML = ''; renderWatchlist(view, sel); };
+  page.appendChild(sortHead('Movies and series', items.length, sort, arranging, FAV_SORTS, {
+    onSort: async v => { state.wlArrange = false; await saveSettings({ favorites: { watch: v } }); redraw(`.fav-sort [data-v="${v}"]`); },
+    onArrange: () => { state.wlArrange = !arranging; redraw('[data-arrange]'); }
+  }));
+  const g = h('<div class="grid" style="padding-top:0"></div>');
+  for (const w of items) {
+    const c = posterCard({ ...w, sub: [w.year || '', w.kind === 'series' ? 'Series' : '', w.rating ? `★ ${w.rating}` : ''].filter(Boolean).join(' · ') });
+    c.dataset.key = w.key;
+    g.appendChild(c);
   }
+  if (arranging) arrangeable(g, keys => call('lib:arrangeWatchlist', keys).catch(fail));
+  page.appendChild(g);
+  const f = focus && page.querySelector(focus);
+  if (f) f.focus();
 }
 
 /* ---- Collections (main/franchises.js): Marvel, Star Wars … in release or story order ---- */
@@ -2045,11 +2066,21 @@ async function renderList(view) {
   try { items = await call('lists:items', l.id); } catch (e) { return fail(e); }
   if (!page.isConnected) return;
   const editing = state.listEdit === l.id && items.length > 0;
-  const bar = h(`<div class="list-bar"><span class="muted small">${items.length ? `${items.length} title${items.length === 1 ? '' : 's'}` : ''}</span><span class="spacer"></span>
+  const sort = l.sort || 'name';
+  const LIST_SORTS = [['name', 'A–Z'], ['added', 'Newest'], ['custom', 'My order']];
+  const bar = h(`<div class="list-bar"><span class="muted small">${items.length ? `${items.length} title${items.length === 1 ? '' : 's'}` : ''}</span>
+    ${items.length > 1 && !editing ? `<div class="seg fav-sort list-sort">${LIST_SORTS.map(([v, t]) => `<button data-v="${v}" class="${sort === v ? 'active' : ''}">${t}</button>`).join('')}</div>` : ''}<span class="spacer"></span>
     ${items.length ? `<button class="btn small${editing ? ' primary' : ''}" data-edit>${editing ? 'Done' : '✏️ Edit titles'}</button>` : ''}
     <button class="btn small ghost" data-rename>✏️ Rename</button><button class="btn small ghost danger apart" data-del>🗑️ Delete category</button></div>`);
   const eb = bar.querySelector('[data-edit]');
   if (eb) eb.onclick = () => { state.listEdit = editing ? '' : l.id; render(); setTimeout(() => { const b = $('.list-bar [data-edit]'); if (b) b.focus(); }, 30); };
+  bar.querySelectorAll('.list-sort button').forEach(b => b.onclick = async () => {
+    if (b.dataset.v === sort) return;
+    try { state.lists = await call('lists:sort', l.id, b.dataset.v); } catch (e) { return fail(e); }
+    state.listArrange = '';
+    render();
+    setTimeout(() => { const x = $(`.list-sort [data-v="${b.dataset.v}"]`); if (x) x.focus(); }, 30);
+  });
   bar.querySelector('[data-rename]').onclick = () => editList(l);
   bar.querySelector('[data-del]').onclick = () => removeList(l);
   page.appendChild(bar);
@@ -2060,7 +2091,14 @@ async function renderList(view) {
   for (const [kind, title] of [['live', 'Channels'], ['movie', 'Movies'], ['series', 'Series']]) {
     const its = items.filter(x => x.kind === kind);
     if (!its.length) continue;
-    page.appendChild(h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span></div>${editing ? `<p class="muted small fav-hint">✏️ gives a title another name in ${esc(l.name)} only; ✕ takes it out.</p>` : ''}</div>`));
+    const arranging = !editing && sort === 'custom' && state.listArrange === `${l.id}:${kind}`;
+    const head = h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span>
+      ${!editing && sort === 'custom' && its.length > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
+      ${editing ? `<p class="muted small fav-hint">✏️ gives a title another name in ${esc(l.name)} only; ✕ takes it out.</p>` : ''}
+      ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
+    const ab = head.querySelector('[data-arrange]');
+    if (ab) ab.onclick = () => { state.listArrange = arranging ? '' : `${l.id}:${kind}`; render(); setTimeout(() => { const x = $$('#view [data-arrange]').find(b => b.closest('.shelf') && b.closest('.shelf').querySelector('h2').textContent === title); if (x) x.focus(); }, 30); };
+    page.appendChild(head);
     const g = h('<div class="grid" style="padding-top:0"></div>');
     for (const it of its) {
       const c = listCard(it);
@@ -2084,6 +2122,7 @@ async function renderList(view) {
       }
       g.appendChild(c);
     }
+    if (arranging) arrangeable(g, keys => call('lists:arrange', l.id, keys).catch(fail));
     page.appendChild(g);
   }
   // after a rename: back on the same title (it may have moved: A–Z by the new name)
