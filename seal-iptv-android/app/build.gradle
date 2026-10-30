@@ -21,7 +21,7 @@ android {
         applicationId 'com.sealiptv.tv'
         minSdk 25          // Fire OS 6 (Fire TV Stick 2nd gen) and newer
         targetSdk 34
-        versionCode 23
+        versionCode 24
         versionName sealVersion
     }
 

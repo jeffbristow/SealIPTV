@@ -62,7 +62,8 @@ const Player = (() => {
           const r = await dialog({
             title: 'Pick up where you left off?',
             html: `<p>You stopped <b>${esc(req.kind === 'episode' ? `${req.seriesName} · ${epLabel(req.season, req.episode)}` : req.name)}</b> at ${fmtTime(prep.resume.pos)}${prep.resume.dur ? ` of ${fmtTime(prep.resume.dur)}` : ''}.</p>`,
-            okText: `Resume from ${fmtTime(prep.resume.pos)}`, extraText: 'Start over'
+            okText: `Resume from ${fmtTime(prep.resume.pos)}`, extraText: 'Start over',
+            onOpen: continueRemove(opts.cw)
           });
           if (r === null) return;
           start = r === 'extra' ? 0 : prep.resume.pos;

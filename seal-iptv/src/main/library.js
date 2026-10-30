@@ -17,6 +17,7 @@
  *   6. My categories (the user's own: Kids, Date night …)
  *   6b. Watchlist (movies and series to watch later)
  *   6c. Up next (a series' next episode, once one is finished)
+ *   6d. Taken off Continue watching (until it's watched again)
  *   7. Sync
  *   8. Titles that got a new id (a new playlist link: catalog.js moves them)
  * ===================================================================== */
@@ -60,7 +61,7 @@ class Library {
     let d = this.cache.get(pid);
     if (d) return d;
     try { d = JSON.parse(fs.readFileSync(this._file(pid), 'utf8')); } catch { d = {}; }
-    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {}, lists: d.lists || {}, listed: d.listed || {}, watch: d.watch || {}, next: d.next || {} };
+    d = { favorites: d.favorites || {}, watched: d.watched || {}, progress: d.progress || {}, cats: d.cats || {}, lists: d.lists || {}, listed: d.listed || {}, watch: d.watch || {}, next: d.next || {}, cwHide: d.cwHide || {} };
     this.cache.set(pid, d);
     return d;
   }
@@ -231,10 +232,10 @@ class Library {
     // a series' episode finished after this one was left half-way: that resume point is behind (S2E3 after S2E7)
     const done = new Map();
     for (const [k, v] of Object.entries(d.watched)) if (k.startsWith('episode:') && v.seriesId && (v.at || 0) > (done.get(String(v.seriesId)) || 0)) done.set(String(v.seriesId), v.at);
-    const list = Object.entries(d.progress).filter(([k, p]) => !d.watched[k] && !(k.startsWith('episode:') && p.seriesId && (done.get(String(p.seriesId)) || 0) > p.at))
+    const list = Object.entries(d.progress).filter(([k, p]) => !d.watched[k] && !(k.startsWith('episode:') && p.seriesId && (done.get(String(p.seriesId)) || 0) > p.at) && !this._cwHidden(d, k, p))
       .map(([key, p]) => ({ key, kind: key.slice(0, key.indexOf(':')), id: key.slice(key.indexOf(':') + 1), ...p }));
     for (const n of Object.values(d.next)) {
-      if (!n || !n.key || d.watched[n.key] || d.progress[n.key]) continue;
+      if (!n || !n.key || d.watched[n.key] || d.progress[n.key] || this._cwHidden(d, n.key, n)) continue;
       list.push({ ...n, kind: 'episode', id: n.key.slice(n.key.indexOf(':') + 1), pos: 0, dur: 0, upNext: true });
     }
     list.sort((a, b) => b.at - a.at);
@@ -277,9 +278,11 @@ class Library {
     for (const k of Object.keys(d.watched)) this._emit('seen', pid, k, null);
     for (const k of Object.keys(d.progress)) this._emit('pos', pid, k, null);
     for (const k of Object.keys(d.next)) this._emit('next', pid, k, null);
+    for (const k of Object.keys(d.cwHide)) this._emit('cwhide', pid, k, null);
     d.watched = {};
     d.progress = {};
     d.next = {};
+    d.cwHide = {};
     this._changed(pid);
   }
 
@@ -422,16 +425,32 @@ class Library {
     }
     // the newest of a series listed twice by the provider is enough
     const names = new Set();
-    return [...last.values()].filter(x => !d.next[x.seriesId]).sort((a, b) => b.at - a.at)
+    return [...last.values()].filter(x => !d.next[x.seriesId] && !this._cwHidden(d, 'episode:', x)).sort((a, b) => b.at - a.at)
       .filter(x => { const n = showName(x.meta.seriesName); if (n && names.has(n)) return false; if (n) names.add(n); return true; }).slice(0, limit);
+  }
+
+  /* =================================================================
+   * 6d. TAKEN OFF CONTINUE WATCHING — "cwhide:<movie:9 | series:4>" -> { at }
+   *     a series goes with all its episodes; watching it again (newer than at) brings it back.
+   *     The resume point itself stays (the movie's page can still resume).
+   * ================================================================= */
+  _cwKey(key, meta = {}) { return key.startsWith('episode:') && meta.seriesId ? 'series:' + meta.seriesId : key; }
+  _cwHidden(d, key, meta = {}) { const h = d.cwHide[this._cwKey(key, meta)]; return !!h && (meta.at || 0) <= h.at; }
+
+  hideFromContinue(pid, key, meta = {}) {
+    const d = this._get(pid), k = this._cwKey(String(key), meta);
+    d.cwHide[k] = { at: this._now() };
+    this._changed(pid);
+    this._emit('cwhide', pid, k, d.cwHide[k]);
+    return true;
   }
 
   /* =================================================================
    * 7. SYNC (sync.js)
    * ================================================================= */
-  /** A record from another PC: type fav | seen | pos | cat | list | listed | watch | next; d null = removed. */
+  /** A record from another PC: type fav | seen | pos | cat | list | listed | watch | next | cwhide; d null = removed. */
   applyRecord(type, pid, key, d) {
-    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats', list: 'lists', listed: 'listed', watch: 'watch', next: 'next' }[type];
+    const map = { fav: 'favorites', seen: 'watched', pos: 'progress', cat: 'cats', list: 'lists', listed: 'listed', watch: 'watch', next: 'next', cwhide: 'cwHide' }[type];
     if (!map || !pid || !key) return;
     const L = this._get(pid);
     if (d && typeof d === 'object') {
@@ -491,7 +510,7 @@ class Library {
   /** The same playlist under two ids (set up on two PCs before syncing): move one library into the other. */
   mergeInto(from, to) {
     const a = this._get(from), b = this._get(to);
-    for (const map of ['favorites', 'watched', 'progress', 'lists', 'listed', 'watch', 'next']) {
+    for (const map of ['favorites', 'watched', 'progress', 'lists', 'listed', 'watch', 'next', 'cwHide']) {
       for (const [k, v] of Object.entries(a[map])) if (!b[map][k] || (v.at || 0) > (b[map][k].at || 0)) b[map][k] = v;
     }
     for (const [k, v] of Object.entries(a.cats)) if (!b.cats[k]) b.cats[k] = v;

@@ -128,7 +128,7 @@ const PASS = 'correct horse battery staple';
     for (const k of Object.keys(B.sync.state.known)) if (/^list(ed)?:/.test(k)) delete B.sync.state.known[k];
     B.sync.state.pullVersion = 1;
     await B.sync.sync();
-    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 4, 'after updating from an older version: the categories are fetched again');
+    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 5, 'after updating from an older version: the categories are fetched again');
     A.library.removeList(pA.id, kids);
     await A.sync.sync(); await B.sync.sync();
     ok(!B.library.lists(pA.id).length && !Object.keys(B.library._get(pA.id).listed).length, 'a category deleted on A goes on B, with its titles');

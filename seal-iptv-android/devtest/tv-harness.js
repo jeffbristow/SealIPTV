@@ -212,6 +212,18 @@ app.whenReady().then(async () => {
     log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
     log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
 
+    // Continue watching: opened from there, the resume question offers to take it off
+    await js("saveSettings({ playback: { resume: 'ask' } }).then(() => call('lib:progress', 'movie:2004', 300, 596, { name: 'Northern Echo (2010)' })).then(() => go('home'))");
+    await sleep(2500);
+    log('Home spotlight', await js("JSON.stringify({ title: (document.querySelector('.spotlight h2') || {}).textContent, buttons: [...document.querySelectorAll('.spot-actions button')].map(b => b.textContent) })"));
+    await js("document.querySelector('.spotlight [data-a=play]').click()");
+    await sleep(2000);
+    await shot('t14b-resume-question');
+    log('resume question from Continue watching', await js("JSON.stringify({ title: document.getElementById('dlgTitle').textContent, buttons: [...document.querySelectorAll('#dlgModal button')].filter(b => b.offsetParent).map(b => b.textContent.trim()) })"));
+    await js("document.getElementById('cwRemove').click()");
+    await sleep(2500);
+    log('… removed', await js("JSON.stringify({ view: state.view, dialog: !document.getElementById('dlgModal').classList.contains('hidden'), spotlight: (document.querySelector('.spotlight h2') || {}).textContent || '', kicker: (document.querySelector('.spot-kicker') || {}).textContent || '' })"));
+
     // the TV Guide searched: the grid narrows to the channels with it (a programme's title, a channel's name), and stays the grid
     await js("state.q = ''; go('guide')");
     await sleep(2500);

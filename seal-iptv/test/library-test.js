@@ -156,6 +156,28 @@ try {
   ok(lib.continueWatching(N)[0].key === 'episode:900', 'up next from another device');
   lib.clearHistory(N);
   ok(!lib.continueWatching(N).length, 'clearing the history clears up next too');
+
+  /* ---- taken off Continue watching ---- */
+  const H = 'h1';
+  lib.setProgress(H, 'movie:5', 900, 6000, { name: 'Not For Me' });
+  lib.setProgress(H, 'episode:51', 600, 2400, { name: 'Ep 1', seriesId: 'sx', seriesName: 'Show X', season: 1, episode: 1 });
+  lib.setProgress(H, 'episode:52', 600, 2400, { name: 'Ep 2', seriesId: 'sx', seriesName: 'Show X', season: 1, episode: 2 });
+  const hsent = [];
+  lib.onChange = (n, d) => hsent.push([n, d]);
+  lib.hideFromContinue(H, 'movie:5');
+  ok(!lib.continueWatching(H).some(p => p.key === 'movie:5') && lib.getProgress(H, 'movie:5').pos === 900, 'a movie taken off Continue watching (its resume point stays for its page)');
+  lib.hideFromContinue(H, 'episode:52', { seriesId: 'sx' });
+  ok(!lib.continueWatching(H).some(p => p.seriesId === 'sx'), 'a series taken off: none of its episodes show (not the older one either)');
+  ok(hsent.some(([n]) => n === `cwhide:${H}:series:sx`), '… and the other devices are told');
+  lib.setWatched(H, 'episode:53', true, { seriesId: 'sx', season: 1, episode: 3 });
+  lib.setProgress(H, 'episode:54', 300, 2400, { name: 'Ep 4', seriesId: 'sx', seriesName: 'Show X', season: 1, episode: 4 });
+  ok(lib.continueWatching(H)[0].key === 'episode:54', 'watched again later: back in Continue watching');
+  lib.hideFromContinue(H, 'episode:54', { seriesId: 'sx' });
+  lib.setWatched(H, 'episode:54', true, { seriesId: 'sx', season: 1, episode: 4 });
+  lib.setNext(H, 'sx', { id: '55', season: 1, episode: 5, seriesName: 'Show X' }, Date.now() - 1000);
+  ok(!lib.continueWatching(H).some(p => p.seriesId === 'sx') && !lib.finishedWithoutNext(H).some(x => x.seriesId === 'sx'), 'its up next stays off too, and isn’t looked up again');
+  lib.applyRecord('cwhide', H, 'movie:5', null);
+  ok(lib.continueWatching(H).some(p => p.key === 'movie:5'), 'put back from another device (the record removed)');
   lib.onChange = null;
   lib.flush();
 } finally {

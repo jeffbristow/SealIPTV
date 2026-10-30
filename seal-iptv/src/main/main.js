@@ -293,6 +293,7 @@ function registerIpc() {
   handle('lib:clearProgress', key => library.clearProgress(pid(), key));
   handle('lib:continue', () => catalog.continueWatching(pid()));
   handle('lib:next', (seriesId, ep) => library.setNext(pid(), seriesId, ep));
+  handle('lib:hideContinue', (key, meta) => library.hideFromContinue(pid(), key, meta || {}));
   handle('lib:favorites', kind => catalog.withLogos(pid(), library.favorites(pid(), kind, catalog.favSort(kind)).filter(f => catalog.visibleKey(pid(), f.key, f))));
   handle('lib:arrangeFavorites', (kind, keys) => catalog.withLogos(pid(), library.arrangeFavorites(pid(), kind, keys).filter(f => catalog.visibleKey(pid(), f.key, f))));
   handle('lib:watchlist', (key, on, meta) => library.setWatchlist(pid(), key, on, catalog.watchMeta(pid(), key, meta)));

@@ -938,25 +938,49 @@ function spotlight(p, movie) {
       <h2>${esc(title)}</h2>
       <div class="spot-line">${p ? line : esc(line)}</div>
       ${pct ? `<div class="bar spot-bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}
-      <div class="spot-actions"><button class="btn primary big" data-a="play">▶ ${p ? (p.upNext ? `Play ${epLabel(p.season, p.episode)}` : 'Resume') : 'Play'}</button><button class="btn big" data-a="info">More info</button></div>
+      <div class="spot-actions"><button class="btn primary big" data-a="play">▶ ${p ? (p.upNext ? `Play ${epLabel(p.season, p.episode)}` : 'Resume') : 'Play'}</button><button class="btn big" data-a="info">More info</button>${p ? '<button class="btn big ghost" data-a="remove" title="Remove from Continue watching">✕ Remove</button>' : ''}</div>
     </div></section>`);
   el.querySelector('[data-a=play]').onclick = () => p ? resumeFromHome(p) : Player.play({ kind: 'movie', id: movie.id, name: movie.name, image: movie.poster, ext: movie.ext });
   el.querySelector('[data-a=info]').onclick = () => ep ? (it.seriesId ? go('show', it.seriesId) : resumeFromHome(p)) : go('movie', it.id);
+  if (p) el.querySelector('[data-a=remove]').onclick = () => removeFromContinue(p);
   return el;
 }
 
 /** a play request for the next episode -> what library.setNext keeps (null: none) */
 const upNextOf = q => (q ? { id: q.id, name: q.name, image: q.image, seriesName: q.seriesName, season: q.season, episode: q.episode, ext: q.ext } : null);
 
+/** take something off Continue watching (a series with all its episodes; watching it again brings it back) */
+async function removeFromContinue(p) {
+  try {
+    await call('lib:hideContinue', p.key, { seriesId: p.seriesId });
+    toast(`Took "${p.kind === 'episode' ? p.seriesName || p.name : p.name}" off Continue watching.`);
+    if (state.view === 'home') render();
+  } catch (e) { fail(e); }
+}
+
+/**
+ * The resume question's extra, when it was opened from Continue watching (opts.cw: that entry):
+ * a "Remove from Continue watching" button added to it -> the dialog's onOpen.
+ */
+function continueRemove(cw) {
+  if (!cw) return undefined;
+  return () => {
+    const b = h('<p class="cw-remove"><button type="button" class="btn ghost small" id="cwRemove">✕ Remove from Continue watching</button></p>');
+    $('#dlgBody').appendChild(b);
+    $('#cwRemove').onclick = () => { $('#dlgCancel').click(); removeFromContinue(cw); };
+  };
+}
+
 function continueCard(p) {
   const name = p.kind === 'episode' ? (p.seriesName || p.name) : p.name;
   const sub = p.upNext ? `Up next · ${epLabel(p.season, p.episode)}` : p.kind === 'episode' ? `${epLabel(p.season, p.episode)} · ${fmtLeft(p.pos, p.dur)}` : fmtLeft(p.pos, p.dur);
   const el = posterCard({ name, poster: p.image || p.poster, fb: p.poster, pos: p.pos, dur: p.dur, sub }, { wide: true, onClick: () => resumeFromHome(p) });
+  el.oncontextmenu = e => { e.preventDefault(); showMenu(e, [{ label: '✕ Remove from Continue watching', run: () => removeFromContinue(p) }]); };
   return el;
 }
 
 async function resumeFromHome(p) {
-  if (p.kind === 'movie') return Player.play({ kind: 'movie', id: p.id, name: p.name, image: p.image, ext: p.ext });
+  if (p.kind === 'movie') return Player.play({ kind: 'movie', id: p.id, name: p.name, image: p.image, ext: p.ext }, { cw: p });
   let queue = null;
   if (p.seriesId) {
     try {
@@ -965,7 +989,7 @@ async function resumeFromHome(p) {
     } catch { /* play just this one */ }
   }
   const req = { kind: 'episode', id: p.id, name: p.name, image: p.image, ext: p.ext, seriesId: p.seriesId, seriesName: p.seriesName, season: p.season, episode: p.episode };
-  Player.play(queue ? queue.find(q => q.id === p.id) || req : req, { queue });
+  Player.play(queue ? queue.find(q => q.id === p.id) || req : req, { queue, cw: p });
 }
 
 /* =================================================================
