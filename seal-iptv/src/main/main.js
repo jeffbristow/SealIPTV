@@ -486,6 +486,7 @@ async function runShots(file) {
   await sleep(1200);
   for (const s of steps) {
     try {
+      if (s.size) win.setContentSize(s.size[0], s.size[1]);   // (devtest: a window size to look at)
       if (s.js) await win.webContents.executeJavaScript(s.js, true);
     } catch (e) { console.log('step failed:', e.message); }
     await sleep(s.wait || 800);

@@ -68,6 +68,8 @@ nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; min-heigh
 #topbar h1 { margin: 0; white-space: nowrap; }
 #topbar .search { flex: 1; max-width: 420px; margin-left: 12px; position: relative; display: flex; align-items: center; gap: 6px; }
 #topbar .search input { flex: 1; min-width: 0; }
+/* a narrow window: the search box keeps its room (when the playlist was loaded is in Settings → About too) */
+@media (max-width: 1180px) { html:not(.tv) #refreshInfo { display: none; } }
 .voice-btn { flex: none; font-size: 18px; }
 /* recent searches, under the empty search box */
 .search-recent { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 70; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
@@ -160,6 +162,14 @@ html.tv .win-only { display: none !important; }
 .g-p.hit .t { color: var(--text); font-weight: 600; }
 .list-bar .list-sort { margin-left: 12px; }
 .list-bar .list-sort button { padding: 4px 11px; font-size: 12px; }
+/* a choice inside a sentence ("… after [5 minutes] with nothing playing") */
+label.check .check-text { flex: 1; line-height: 2; }
+label.check .check-text select { display: inline-block; width: auto; margin: 0 4px; vertical-align: middle; }
+/* Settings → Categories: the tabs and the filter on one row, or two */
+#cTabs { flex: none; }
+#cTabs button { white-space: nowrap; }
+#catPanel .row.gap { flex-wrap: wrap; }
+#catPanel #cFilter { flex: 1 1 180px; }
 .badge.new { top: auto; bottom: 8px; left: 6px; background: var(--amber); color: #0b0d10; font-weight: 600; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); }
 .bar i { display: block; height: 100%; background: var(--accent); }
@@ -375,7 +385,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 .cat .lock { font-size: 12px; }
 .pin-input { font-size: 24px; letter-spacing: 8px; text-align: center; max-width: 220px; margin: 6px auto; display: block; }
 .cat-table { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; }
-.cat-row { display: grid; grid-template-columns: 1fr 70px 84px 84px 110px; gap: 8px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.cat-table { overflow-x: auto; }
+.cat-row { display: grid; grid-template-columns: minmax(150px, 1fr) 52px 76px 84px 104px; min-width: 520px; gap: 8px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 13px; }
 .cat-row:first-child { border-top: 0; }
 .cat-row.head { position: sticky; top: 0; background: var(--bg-3); font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; z-index: 1; }
 .cat-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

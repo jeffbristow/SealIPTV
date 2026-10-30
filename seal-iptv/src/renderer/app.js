@@ -73,6 +73,7 @@ function busy(text) {
  * onOk may return false to keep the dialog open.
  */
 let dialogKey = null;   // the open dialog's Enter / Escape keys
+let dialogBefore = null;   // what had the focus before the dialog (given back when it closes)
 function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel = false, onOk, extraText = null, wide = false, onOpen, danger = false }) {
   return new Promise(resolve => {
     $('#dlgTitle').textContent = title;
@@ -85,8 +86,21 @@ function dialog({ title, html, okText = 'OK', cancelText = 'Cancel', hideCancel 
     show(cancel, !hideCancel);
     extra.textContent = extraText || '';
     show(extra, !!extraText);
+    // (another dialog taking this one's place keeps the first one's "before")
+    const before = $('#dlgModal').classList.contains('hidden') ? document.activeElement : dialogBefore;
+    dialogBefore = before;
     show($('#dlgModal'), true);
-    const done = v => { show($('#dlgModal'), false); ok.onclick = cancel.onclick = extra.onclick = $('#dlgX').onclick = null; document.removeEventListener('keydown', key, true); resolve(v); };
+    const done = v => {
+      show($('#dlgModal'), false);
+      ok.onclick = cancel.onclick = extra.onclick = $('#dlgX').onclick = null;
+      document.removeEventListener('keydown', key, true);
+      // the focus goes back where it was (the remote would otherwise be nowhere)
+      setTimeout(() => {
+        const a = document.activeElement;
+        if ($('#dlgModal').classList.contains('hidden') && (!a || a === document.body || !a.isConnected || $('#dlgModal').contains(a)) && before && before.isConnected && before.offsetParent) before.focus({ preventScroll: true });
+      }, 0);
+      resolve(v);
+    };
     const key = e => {
       // the dialog went away some other way (another dialog, a redraw): Enter is the page's again
       if (dialogKey !== key || $('#dlgModal').classList.contains('hidden')) { document.removeEventListener('keydown', key, true); return; }
@@ -1040,6 +1054,7 @@ function channelRow(it, i) {
   </div>`);
   el.onclick = () => selectChannel(it, el);
   el.ondblclick = () => playChannel(i);
+  if (TV) el.addEventListener('focus', () => setTimeout(() => { if (document.activeElement === el && state.live.sel !== it) selectChannel(it, el); }, 150));
   // the remote's OK (tvnav.js): watch it — moving onto a channel already shows what's on
   el.tvOk = () => { if (state.live.sel !== it) selectChannel(it, el); playChannel(i); };
   el.onkeydown = e => {
@@ -1237,7 +1252,16 @@ function renderGuide(view) {
   };
 
   // OK / Enter / a double-click on a channel or a programme: watch the channel; ☰ / right-click: its menu
-  rows.addEventListener('focusin', e => { const row = e.target.closest('.g-row'); if (row) showInfo(row, e.target._e); });
+  rows.addEventListener('focusin', e => {
+    const row = e.target.closest('.g-row');
+    if (!row) return;
+    showInfo(row, e.target._e);
+    const p = e.target.closest('.g-p');
+    if (p) setTimeout(() => {
+      const chW = row.querySelector('.g-ch').offsetWidth, left = p.offsetLeft, view = scroller.clientWidth - chW;
+      if (p.offsetWidth >= view || left < scroller.scrollLeft) scroller.scrollLeft = Math.max(0, Math.min(left - 20, x(Date.now()) - 60));
+    }, 0);
+  });
   rows.addEventListener('click', e => { const row = e.target.closest('.g-row'); if (row && (TV || e.target.closest('.g-ch'))) play(row); });
   rows.addEventListener('dblclick', e => { const row = e.target.closest('.g-row'); if (row && !e.target.closest('.g-ch')) play(row); });
   rows.addEventListener('keydown', e => { const row = e.target.closest('.g-row'); if (row && e.key === 'Enter' && !TV) { e.preventDefault(); play(row); } });
@@ -1399,8 +1423,8 @@ function homeEvents(slot) {
     const ppv = ev.homePpv !== false ? r.ppv : [];
     const seen = new Set(ppv.map(e => e.id));
     const sports = ev.homeSports !== false ? r.sports.filter(e => !seen.has(e.id)) : [];
-    if (sports.length) slot.appendChild(shelf('🔴 Live sports now', sports, eventCard, { more: () => go('sports') }));
-    if (ppv.length) slot.appendChild(shelf('🔴 Pay-Per-View now', ppv, eventCard, { more: () => go('ppv') }));
+    if (sports.length) slot.appendChild(shelf('🔴 Live sports now', sports, eventCard, { wide: true, more: () => go('sports') }));
+    if (ppv.length) slot.appendChild(shelf('🔴 Pay-Per-View now', ppv, eventCard, { wide: true, more: () => go('ppv') }));
   }).catch(() => { /* none now */ });
 }
 
@@ -2537,8 +2561,8 @@ function renderSettings(view) {
     <label class="check"><input type="checkbox" id="pAuto" ${pb.autoWatched ? 'checked' : ''}> Mark movies and episodes as watched when I reach
       <select id="pPct" style="width:auto;margin-left:4px">${[80, 85, 90, 95].map(n => `<option value="${n}" ${pb.watchedPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="pNext" ${pb.autoNext ? 'checked' : ''}> Play the next episode automatically</label>
-    <label class="check"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}> Screensaver: the Seal IPTV logo moves around the screen after
-      <select id="pSaverMin" style="width:auto;margin:0 4px">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing</label>
+    <label class="check"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}><span class="check-text">Screensaver: the Seal IPTV logo moves around the screen after
+      <select id="pSaverMin">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing</span></label>
     <div class="two-col">
       <div><label for="pResume">When I open something I've started</label><select id="pResume">
         <option value="ask" ${pb.resume === 'ask' ? 'selected' : ''}>Ask whether to resume</option>

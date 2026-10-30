@@ -232,9 +232,22 @@
     const a = cur.getBoundingClientRect();
     const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
     let best = null, bestScore = Infinity;
+    const inSide = !!cur.closest('#sidebar'), inTop = !!cur.closest('#topbar');
+    // → out of the sidebar (open, it covers the page's left edge): back where the remote was on the page,
+    // else the page's first thing
+    if (inSide && dir === 'right') {
+      const view = document.querySelector('#view');
+      const back = lastInPage && lastInPage.isConnected && view.contains(lastInPage) && visible(lastInPage) && !hiddenUp(lastInPage) ? lastInPage : null;
+      const first = back || candidates(view)[0];
+      if (first) { focusEl(first); return true; }
+    }
     for (const el of list) {
       if (el === cur || el.contains(cur) || cur.contains(el)) continue;
+      // ↑ ↓ stay where they are: on the page (the sidebar runs the whole height), or in the sidebar
+      // (it covers the page's left edge when open: what's under it isn't "below")
+      if ((dir === 'up' || dir === 'down') && inSide !== !!el.closest('#sidebar')) continue;
       const b = el.getBoundingClientRect();
+      if ((dir === 'left' || dir === 'right') && !inTop && el.closest('#topbar') && !(b.top < a.bottom && b.bottom > a.top)) continue;
       const bx = b.left + b.width / 2, by = b.top + b.height / 2;
       let main, side;
       if (dir === 'right') { if (b.left < a.right - 4) continue; main = b.left - a.right; side = Math.abs(by - ay); }
@@ -254,6 +267,10 @@
     }
     return false;
   }
+
+  // where the remote was on the page last (→ from the sidebar goes back there)
+  let lastInPage = null;
+  document.addEventListener('focusin', e => { const v = document.querySelector('#view'); if (v && v.contains(e.target)) lastInPage = e.target; }, true);
 
   function focusEl(el) {
     el.focus({ preventScroll: true });
@@ -275,7 +292,11 @@
       return;
     }
     if (dir) {
-      if (typing && (dir === 'left' || dir === 'right')) return;
+      if (typing && (dir === 'left' || dir === 'right')) {
+        let at = null, len = 0;
+        try { at = dir === 'left' ? a.selectionStart : a.selectionEnd; len = (a.value || '').length; } catch { at = null; }
+        if (at === null || (dir === 'left' ? at > 0 : at < len)) return;   // the cursor moves in the text
+      }
       if (a && a.type === 'range' && (dir === 'left' || dir === 'right')) return;
       if (move(dir)) e.preventDefault();
       return;
