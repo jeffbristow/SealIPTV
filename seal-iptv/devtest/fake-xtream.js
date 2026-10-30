@@ -174,6 +174,14 @@ http.createServer((req, res) => {
       default: return json(res, []);
     }
   }
+  // the full guide (XMLTV): the same programmes as get_short_epg, for every channel
+  if (u.pathname === '/xmltv.php') {
+    const t = sec => new Date(sec * 1000).toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
+    const x = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const progs = live.flatMap(c => shortEpg(c.stream_id, 20).epg_listings.map(e => `<programme start="${t(Number(e.start_timestamp))}" stop="${t(Number(e.stop_timestamp))}" channel="${c.epg_channel_id}"><title>${x(Buffer.from(e.title, 'base64').toString())}</title><desc>${x(Buffer.from(e.description, 'base64').toString())}</desc></programme>`));
+    res.writeHead(200, { 'Content-Type': 'application/xml' });
+    return res.end(`<?xml version="1.0"?><tv>${live.map(c => `<channel id="${c.epg_channel_id}"/>`).join('')}${progs.join('')}</tv>`);
+  }
   if (u.pathname === '/get.php' || u.pathname === '/playlist.m3u') {
     if (u.pathname === '/get.php' && (q.username !== USER || q.password !== PASS)) { res.writeHead(401); return res.end(); }
     res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' });

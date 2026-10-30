@@ -91,6 +91,14 @@ const fakeFetch = async (url, opts) => {
     await cat.epgMany(p.id, ['11', '12']);
     const one = await cat.epg(p.id, '11');
     ok(!calls.length && one[0].title === 'News & Weather', 'then from the saved copy (and the provider\'s answers for 15 minutes); Live TV uses it too');
+    // the TV Guide searched: by a programme's title (the full guide) or a channel's name, the grid narrowed to them
+    const now0 = Date.now();
+    const byShow = cat.guideSearch(p.id, { q: 'café talk', from: now0 - 3600000, to: now0 + 12 * 3600000 });
+    ok(byShow.total === 1 && byShow.items[0].id === '11' && byShow.items[0].hits === 1, 'searching a programme: the channel it is on');
+    const byName = cat.guideSearch(p.id, { q: 'local', from: now0, to: now0 + 12 * 3600000 });
+    ok(byName.total === 1 && byName.items[0].id === '12' && !byName.items[0].hits, 'searching a channel by name: that channel');
+    ok(cat.guideSearch(p.id, { q: 'café talk', from: now0 + 20 * 3600000, to: now0 + 24 * 3600000 }).total === 0, 'only programmes in the hours the grid shows');
+    ok(cat.guideSearch(p.id, { q: '' }).total === 2, 'nothing typed: every channel');
     const cat2 = new Catalog({ dir, store, vpn, library: new Library(dir), fetch: fakeFetch });
     calls.length = 0;
     ok((await cat2.epg(p.id, '11'))[0].title === 'News & Weather' && !calls.includes('/xmltv.php'), 'the saved copy is read after a restart');

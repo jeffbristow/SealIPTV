@@ -283,6 +283,7 @@ function registerIpc() {
   handle('details:series', id => catalog.seriesInfo(pid(), id));
   handle('epg:short', id => catalog.epg(pid(), id));
   handle('epg:grid', ids => catalog.epgMany(pid(), ids));
+  handle('epg:search', opts => catalog.guideSearch(pid(), opts || {}));
 
   /* ---- library ---- */
   handle('lib:favorite', (key, on, meta) => library.setFavorite(pid(), key, on, meta));

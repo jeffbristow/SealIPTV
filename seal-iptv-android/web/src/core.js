@@ -125,6 +125,7 @@ const NEEDS = {
   'catalog:search': () => ['live', 'movies', 'series'],
   'collections:list': () => ['movies', 'series'],
   'collections:get': () => ['movies', 'series'],
+  'epg:search': () => ['live'],
   'events:list': () => ['live'],
   'events:home': () => ['live']
 };
@@ -220,6 +221,7 @@ handle('details:movie', id => catalog.movieInfo(pid(), id));
 handle('details:series', id => catalog.seriesInfo(pid(), id));
 handle('epg:short', id => catalog.epg(pid(), id));
 handle('epg:grid', ids => catalog.epgMany(pid(), ids));
+handle('epg:search', opts => catalog.guideSearch(pid(), opts || {}));
 
 /* ---- library ---- */
 handle('lib:favorite', (key, on, meta) => library.setFavorite(pid(), key, on, meta));

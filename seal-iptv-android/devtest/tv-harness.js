@@ -212,6 +212,20 @@ app.whenReady().then(async () => {
     log('Kids on the TV', await js("JSON.stringify({ nav: [...document.querySelectorAll('#myNav .nav')].map(b => b.textContent), cards: [...document.querySelectorAll('#view .card .title')].map(t => t.textContent) })"));
     log('synced', await js("call('sync:now').then(s => JSON.stringify({ waiting: s && s.waiting }), e => e.message)"));
 
+    // the TV Guide searched: the grid narrows to the channels with it (a programme's title, a channel's name), and stays the grid
+    await js("state.q = ''; go('guide')");
+    await sleep(2500);
+    await js("{ const b = document.getElementById('search'); b.value = 'harbour'; b.oninput(); }");
+    await sleep(2500);
+    await shot('t15a-guide-search');
+    log('guide searched for a programme', await js("JSON.stringify({ view: state.view, rows: document.querySelectorAll('#gRows .g-row').length, hits: document.querySelectorAll('#gRows .g-p.hit').length, info: document.getElementById('gInfo').innerText.trim() })"));
+    await js("{ const b = document.getElementById('search'); b.value = 'sport'; b.oninput(); }");
+    await sleep(2000);
+    log('guide searched for a channel', await js("JSON.stringify({ view: state.view, channels: [...document.querySelectorAll('#gRows .g-ch .name')].map(n => n.textContent) })"));
+    await js("{ const b = document.getElementById('search'); b.value = ''; b.oninput(); }");
+    await sleep(1500);
+    log('search cleared', await js("JSON.stringify({ view: state.view, rows: document.querySelectorAll('#gRows .g-row').length })"));
+
     // the watchlist: ☰ Menu on a poster -> on it; on Home and its own page
     await js("go('movies')");
     await sleep(1500);

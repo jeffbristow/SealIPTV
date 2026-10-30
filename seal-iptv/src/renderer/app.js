@@ -382,10 +382,11 @@ function render() {
   if (browse) $('#sortSel').value = state.sec[v].sort || '';
   $('#sortSel').options[0].textContent = sortDefaultLabel();
   show($('#search').parentElement, v !== 'settings');
-  $('#search').placeholder = browse ? `Search ${TITLES[v]}` : 'Search channels, movies and series';
+  $('#search').placeholder = browse ? `Search ${TITLES[v]}` : v === 'guide' ? 'Search the guide: a channel or a programme' : 'Search channels, movies and series';
   updateHiddenSearchBtn();
-  if (v !== 'search' && !browse && $('#search').value && document.activeElement !== $('#search')) $('#search').value = '';
-  if (browse || v === 'search') $('#search').value = state.q;
+  if (v !== 'search' && v !== 'guide' && !browse && $('#search').value && document.activeElement !== $('#search')) $('#search').value = '';
+  if (browse || v === 'search' || v === 'guide') $('#search').value = state.q;
+  state.guideSearch = null;   // (the TV Guide sets it again)
   const view = $('#view');
   view.innerHTML = '';
   view.scrollTop = 0;
@@ -413,6 +414,8 @@ function wireChrome() {
       state.q = $('#search').value.trim();
       rememberSearch(state.q);
       if (['live', 'movies', 'series'].includes(state.view)) { $('#sortSel').options[0].textContent = sortDefaultLabel(); updateHiddenSearchBtn(); return renderKeepSearch(); }
+      // the TV Guide: the grid narrowed to the channels with it (in the name, or a programme's title)
+      if (state.view === 'guide') { if (state.guideSearch) state.guideSearch(); return; }
       if (state.q) { if (state.view === 'search') render(); else go('search'); }
       else if (state.view === 'search') back();
     }, 250);
@@ -1148,6 +1151,10 @@ function renderGuide(view) {
       <h3>${esc(e.title)}</h3>${e.desc ? `<p class="small muted g-desc">${esc(e.desc)}</p>` : ''}<div class="small faint">${esc(it.name)}</div>`;
   };
 
+  // searching: the programmes with every word of it stand out
+  const words = () => state.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = t => { const w = words(); if (!w.length) return false; t = String(t || '').toLowerCase(); return w.every(x => t.includes(x)); };
+
   // a row's programmes (keeps the focus at the same time of day when they replace "…")
   const fill = (row, list) => {
     row._list = list;
@@ -1159,7 +1166,7 @@ function renderGuide(view) {
       if (e.end <= t0 || e.start >= end) continue;
       const l = x(e.start), w = Math.max(4, x(e.end) - l - 3);
       // a programme of a few minutes: only a sliver (the info above says what it is)
-      const c = h(`<div class="g-p${e.start <= now && now < e.end ? ' now' : ''}${w < 44 ? ' tiny' : ''}" tabindex="0" style="left:${l}px;width:${w}px">${w < 44 ? '' : `<span class="t">${esc(e.title)}</span><span class="s">${esc(fmtClock(e.start))}</span>`}</div>`);
+      const c = h(`<div class="g-p${e.start <= now && now < e.end ? ' now' : ''}${w < 44 ? ' tiny' : ''}${hit(e.title) ? ' hit' : ''}" tabindex="0" style="left:${l}px;width:${w}px">${w < 44 ? '' : `<span class="t">${esc(e.title)}</span><span class="s">${esc(fmtClock(e.start))}</span>`}</div>`);
       c._e = e;
       box.appendChild(c);
     }
@@ -1183,6 +1190,9 @@ function renderGuide(view) {
     if (!batch.length || !page.isConnected) return;
     call('epg:grid', batch.map(r => r._ch.id)).then(map => {
       for (const r of batch) fill(r, (map && map[r._ch.id]) || []);
+      // searching for a programme: the grid goes to the earliest one found (once)
+      const hits = state.q && !scrolledTo ? [...rows.querySelectorAll('.g-p.hit')] : [];
+      if (hits.length) { scrolledTo = true; scroller.scrollLeft = Math.max(0, Math.min(...hits.map(c => c.offsetLeft)) - 60); }
     }).catch(e => {
       if (e.code === 'VPN') vpnOff = true;
       for (const r of batch) fill(r, []);
@@ -1216,17 +1226,27 @@ function renderGuide(view) {
     cardMenu(e, 'live', { id: it.id, name: it.name, image: it.logo, cat: it.cat, prog: p && p._e && p._e.title ? { title: p._e.title, start: p._e.start, end: p._e.end } : null });
   });
 
+  let scrolledTo = false;
   const load = () => {
     scroller.scrollTop = 0;
+    scroller.scrollLeft = 0;
+    scrolledTo = false;
+    const q = state.q;
     items = infinite(rows, scroller,
       // the first rows in: the choice of channels can be used, and the remote starts on the first channel
-      offset => call('catalog:list', { section: 'live', cat: g.cat, offset, limit: 100 }).finally(() => setTimeout(() => {
+      offset => (q ? call('epg:search', { cat: g.cat, q, from: t0, to: end, offset, limit: 100 }) : call('catalog:list', { section: 'live', cat: g.cat, offset, limit: 100 })).then(r => {
+        if (!offset && q) info.innerHTML = r.total ? `<p class="small muted">${r.total.toLocaleString()} channel${r.total === 1 ? '' : 's'} with “${esc(q)}” in the name or on in the next ${GUIDE_HOURS} hours${g.cat ? ' (in these channels)' : ''}.</p>` : '';
+        return r;
+      }).finally(() => setTimeout(() => {
         sel.disabled = false;
-        if (!offset) tvStart(rows.querySelector('.g-ch') || sel);
+        if (!offset && !q) tvStart(rows.querySelector('.g-ch') || sel);
       }, 0)),
       rowOf,
-      g.cat === '*fav' ? 'No favorite channels yet. Choose "All channels", or press ☆ next to a channel in Live TV.' : 'No channels here.');
+      q ? `Nothing with “${esc(q)}” here: no channel by that name, and no programme with it in the next ${GUIDE_HOURS} hours${g.cat ? '. Try "All channels"' : ''}.`
+        : g.cat === '*fav' ? 'No favorite channels yet. Choose "All channels", or press ☆ next to a channel in Live TV.' : 'No channels here.');
   };
+  // the search box (wireChrome): the grid again with what's typed
+  state.guideSearch = () => { if (page.isConnected && sel.options.length) load(); };
 
   // the channels: favorites first (when there are any), then all of them, then each category
   const sel = $('#gCat');

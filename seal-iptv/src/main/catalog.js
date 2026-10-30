@@ -995,6 +995,36 @@ class Catalog {
   }
 
   /**
+   * The TV Guide page searched: the channels (of cat) whose name has every word of q, or with a
+   * programme between from and to whose title has them (from the full guide) — in the channels'
+   * order, a page at a time like list(). Each item: hits = how many of its programmes match.
+   * The matches are kept for the next pages of the same search.
+   */
+  guideSearch(pid, { cat = '', q = '', from = Date.now(), to = Date.now() + 12 * 3600000, offset = 0, limit = 100 } = {}) {
+    const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return this.list(pid, { section: 'live', cat, offset, limit });
+    const key = [pid, cat, words.join(' '), Math.floor(from / 60000), Math.floor(to / 60000)].join('|');
+    if (!this._gs || this._gs.key !== key) {
+      const p = this.store.getProfile(pid);
+      if (p && Guide.address(p) && this.guide.due(pid)) this._fromGuide(pid, p, [], false);   // (fetched if it's due)
+      const gd = this.guide.get(pid);
+      const s0 = Math.floor(from / 1000), s1 = Math.ceil(to / 1000);
+      const has = t => { t = String(t || '').toLowerCase(); return words.every(w => t.includes(w)); };
+      const all = this.list(pid, { section: 'live', cat, offset: 0, limit: 1e9 }).items;
+      const found = [];
+      for (const it of all) {
+        let hits = 0;
+        const progs = gd && it.epg ? gd.ch[it.epg] : null;
+        if (progs) for (const [s, e, title] of progs) if (e > s0 && s < s1 && has(title)) hits++;
+        if (hits || has(it.name)) found.push({ ...it, hits });
+      }
+      this._gs = { key, found };
+    }
+    const f = this._gs.found;
+    return { total: f.length, items: f.slice(offset, offset + limit) };
+  }
+
+  /**
    * The guide for several channels (the TV Guide page): { id: [{ title, desc, start, end }] },
    * from now on. The full guide first; the rest asked of the provider four channels at a time,
    * kept 15 minutes, so scrolling back costs nothing.

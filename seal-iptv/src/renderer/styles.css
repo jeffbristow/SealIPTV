@@ -155,6 +155,9 @@ html.tv .win-only { display: none !important; }
 .dl-btn { flex: none; min-width: 34px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text-2); cursor: pointer; font-size: 12px; margin-right: 6px; }
 .dl-btn.on { color: var(--accent); border-color: var(--accent); }
 #pRec { color: #ff6b6b; }
+/* TV Guide search: the programmes found */
+.g-p.hit, .g-p.now.hit { background: rgba(60, 207, 145, .24); box-shadow: inset 0 0 0 2px var(--accent); }
+.g-p.hit .t { color: var(--text); font-weight: 600; }
 .badge.new { top: auto; bottom: 8px; left: 6px; background: var(--amber); color: #0b0d10; font-weight: 600; }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); }
 .bar i { display: block; height: 100%; background: var(--accent); }
