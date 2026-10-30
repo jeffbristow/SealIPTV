@@ -101,6 +101,8 @@ const DATA = built => ({ built, studios: [
     ok(!col.items.some(x => x.item.id === 'bb'), 'a show from years before the one listed started isn\'t it');
     const shows = cat.collection(p.id, 'studio-netflix', 'oldest', 'series');
     ok(shows.items.length === 2 && shows.items.every(x => x.kind === 'series') && shows.counts.movie === 1 && shows.counts.series === 2 && shows.order === 'oldest', 'shows only, oldest first; the counts of each');
+    const dis = cat.collection(p.id, 'studio-disney', 'newest', 'series');
+    ok(!dis.counts.series && dis.kind === '' && dis.items.length === dis.have && dis.have > 0, '"Shows" chosen on Netflix, then Disney (movies only): all of Disney, not none');
     ok(franchises.matchesQuery(franchises.byId('studio-netflix'), 'netflix'), 'searching "netflix" finds the collection');
     // a newer list: matched again
     franchises.setStudios({ built: '2026-12-01', studios: [{ id: 'netflix', name: 'Netflix', words: ['netflix'], items: [{ t: 'Moana', y: 2016, k: 'movie' }, ...many(50)] }] });

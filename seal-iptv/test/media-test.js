@@ -21,6 +21,8 @@ const FILM = crypto.randomBytes(3 * 1024 * 1024 + 123);
 const KEY = crypto.randomBytes(16);
 const SEGS = [0, 1, 2, 3, 4].map(i => crypto.randomBytes(20000 + i));
 const enc = (buf, seq) => { const iv = Buffer.alloc(16); iv.writeUInt32BE(seq, 12); const c = crypto.createCipheriv('aes-128-cbc', KEY, iv); return Buffer.concat([c.update(buf), c.final()]); };
+let refuse = false, cut = false;
+const ranges = [];
 let dropFilm = true, rangeOk = true, liveSeq = 100, tsDrop = true, filmCalls = 0, slowFilm = false;
 const t0 = Date.now();
 const server = http.createServer((req, res) => {
@@ -29,8 +31,11 @@ const server = http.createServer((req, res) => {
     filmCalls++;
     const m = /^bytes=(\d+)-$/.exec(req.headers.range || '');
     const from = rangeOk && m ? Number(m[1]) : 0;
+    ranges.push(from);
+    // the provider's stream limit: refused for a while
+    if (refuse) { res.writeHead(403); return res.end(); }
     res.writeHead(from ? 206 : 200, { 'Content-Type': 'video/x-matroska', 'Content-Length': FILM.length - from, ...(from ? { 'Content-Range': `bytes ${from}-${FILM.length - 1}/${FILM.length}` } : {}) });
-    if (slowFilm) { let at = from; const t = setInterval(() => { if (at >= FILM.length || res.destroyed) { clearInterval(t); return res.end(); } res.write(FILM.subarray(at, at + 65536)); at += 65536; }, 30); return; }
+    if (slowFilm) { let at = from; const t = setInterval(() => { if (cut) { cut = false; clearInterval(t); return res.destroy(); } if (at >= FILM.length || res.destroyed) { clearInterval(t); return res.end(); } res.write(FILM.subarray(at, at + 65536)); at += 65536; }, 30); return; }
     // the first time: the connection drops after 1 MB
     if (dropFilm) { dropFilm = false; res.write(FILM.subarray(from, from + 1024 * 1024)); return setTimeout(() => res.destroy(), 50); }
     return res.end(FILM.subarray(from));
@@ -130,6 +135,29 @@ const server = http.createServer((req, res) => {
     ok(saved.file === path.join(dir, 'Saved', 'Movies', 'Harbor Lights (2021).mkv') && fs.readFileSync(saved.file).equals(FILM), 'saved in Movies, named after the movie');
     const info = M.playInfo(d1);
     ok(info.url.startsWith(`sealfile://media/${d1}/`) && info.key === 'movie:9' && info.resume.pos === 60, 'played from the file, with the movie\'s own resume point');
+
+    // interrupted half way (the connection drops, then the provider refuses: its stream limit) -> goes on from there
+    slowFilm = true;
+    const d2 = M.addDownload('p1', { kind: 'movie', id: '10', ext: 'mkv' }, { title: 'Rubber', year: 2010 });
+    await until(() => ((M.get(d2).state || {}).bytes || 0) > 1024 * 1024);
+    refuse = true; cut = true;
+    ok(await until(() => M.get(d2).status === 'interrupted', 10000), 'the connection drops and the provider refuses: interrupted, not failed');
+    const got = M.get(d2).state.bytes;
+    ok(got > 1024 * 1024 && fs.statSync(M.get(d2).state.part).size >= got && M.get(d2).retryAt > Date.now(), `… what it has (${Math.round(got / 1048576)} MB) kept, tried again by itself later`);
+    ok(M.downloadOf('movie:10').status === 'interrupted', '… and the movie page knows (Resume the download)');
+    ranges.length = 0;
+    refuse = false;
+    ok(M.addDownload('p1', { kind: 'movie', id: '10' }, { title: 'Rubber' }) === d2 && M.get(d2).status !== 'interrupted', 'Download again: the same download goes on (no second copy)');
+    ok(await until(() => M.get(d2).status === 'done', 20000), '… and finishes');
+    ok(ranges[0] >= got && fs.readFileSync(M.get(d2).file).equals(FILM) && path.basename(M.get(d2).file) === 'Rubber (2010).mkv', 'continued from where it stopped (Range), not from the start; whole, under its own name');
+    // a .part left without its entry (from an earlier try): continued too
+    fs.mkdirSync(path.join(dir, 'Saved', 'Movies'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'Saved', 'Movies', 'Left Behind (2014).mkv.part'), FILM.subarray(0, 1500000));
+    ranges.length = 0;
+    const d3 = M.addDownload('p1', { kind: 'movie', id: '11', ext: 'mkv' }, { title: 'Left Behind', year: 2014 });
+    ok(await until(() => M.get(d3).status === 'done', 20000) && ranges[0] === 1500000, 'a .part file left from an earlier try: continued from its size');
+    ok(path.basename(M.get(d3).file) === 'Left Behind (2014).mkv' && fs.readFileSync(M.get(d3).file).equals(FILM), '… whole, no "(2)" copy');
+    slowFilm = false;
 
     // recording: playing takes the one stream -> asked; recording takes it -> playing asks
     M.beforePlay();

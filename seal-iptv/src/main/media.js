@@ -18,6 +18,11 @@
  *     - scheduling: refused when more recordings than that would overlap
  *   Only while Seal IPTV is open; Windows is kept awake meanwhile.
  *
+ * INTERRUPTED DOWNLOADS go on from where they stopped: a dropped connection or the
+ * provider refusing (its stream limit) is "interrupted" and tried again by itself
+ * (1, 2, 4 … 15 minutes); downloading the same title again continues it, also from a
+ * .part file left without its entry. Only what can't work (DRM, gone) fails.
+ *
  * Sections:
  *   1. Saved list + files
  *   2. Streams at once
@@ -37,6 +42,8 @@ const LATE_MS = 5 * 60000;            // … and end five minutes late (programm
 const MAX_REC_MS = 12 * 3600000;
 const MIN_FREE = 500 * 1024 * 1024;   // stops when the disk gets this full
 const STREAMS_MAX = 10;
+const RETRY_MAX = 20;                 // an interrupted download is tried this often without getting further
+const PERMANENT = /protected \(DRM\)|HTTP 404|HTTP 410|isn't in the playlist|Only movies/;
 
 const clean = s => String(s || '').replace(/[<>:"/\\|?*\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 110) || 'Video';
 const two = n => String(n).padStart(2, '0');
@@ -117,6 +124,18 @@ class Media {
     return b;
   }
 
+  /** "<folder>\<sub>\<name>.<ext>.part" that no entry has -> { base, file } */
+  _orphanPart(sub, name) {
+    const dir = path.join(this.folder(), ...sub.map(clean)), base = path.join(dir, clean(name));
+    let files = [];
+    try { files = fs.readdirSync(dir); } catch { return null; }
+    const f = files.find(x => x.startsWith(path.basename(base) + '.') && x.endsWith('.part') && /^\.\w{2,4}\.part$/.test(x.slice(path.basename(base).length)));
+    if (!f) return null;
+    const file = path.join(dir, f);
+    if (this.items.some(i => i.state && i.state.part === file)) return null;
+    return { base, file };
+  }
+
   /** for the window: newest first, without the internals */
   list() {
     return this.items.map(({ state, base, _ask, ...i }) => ({ ...i, bytes: (state && state.bytes) || i.bytes || 0, total: (state && state.total) || i.total || 0, done: state && state.done, note: (state && state.note) || '' }))
@@ -128,7 +147,7 @@ class Media {
 
   /** what's saved of a title (key: movie:9, episode:4) -> { id, status } or null */
   downloadOf(key) {
-    const it = this.items.find(i => i.type === 'download' && i.key === key && i.status !== 'failed');
+    const it = this.items.find(i => i.type === 'download' && i.key === key);
     return it ? { id: it.id, status: it.status, bytes: (it.state && it.state.bytes) || it.bytes || 0, total: (it.state && it.state.total) || it.total || 0 } : null;
   }
 
@@ -204,9 +223,9 @@ class Media {
   addDownload(pid, req, meta = {}) {
     if (!['movie', 'episode'].includes(req.kind)) throw new Error('Only movies and episodes can be downloaded.');
     const key = `${req.kind}:${req.id}`;
-    const had = this.items.find(i => i.type === 'download' && i.key === key && i.pid === pid && i.status !== 'failed');
-    if (had) return had.id;
-    this.items = this.items.filter(i => !(i.type === 'download' && i.key === key && i.pid === pid && i.status === 'failed'));
+    // already there: a stopped one goes on from where it is
+    const had = this.items.find(i => i.type === 'download' && i.key === key && i.pid === pid);
+    if (had) { if (['failed', 'interrupted', 'paused'].includes(had.status)) this.resume(had.id); return had.id; }
     const ep = req.kind === 'episode';
     const title = String(meta.title || 'Movie');
     const name = ep ? `${meta.seriesName || 'Series'} - S${two(meta.season || 1)}E${two(meta.episode || 0)}${meta.name && !/^episode \d+$/i.test(meta.name) ? ' - ' + meta.name : ''}`
@@ -215,8 +234,12 @@ class Media {
       id: this._id(), type: 'download', pid, key, req: { kind: req.kind, id: String(req.id), ext: req.ext || '', seriesId: req.seriesId ? String(req.seriesId) : '' },
       title: ep ? meta.seriesName || meta.title || 'Series' : meta.title || 'Movie', sub: ep ? `S${meta.season || 1} · E${meta.episode || '?'}${meta.name ? ' · ' + meta.name : ''}` : meta.year ? String(meta.year) : '',
       image: meta.image || '', meta: { name: meta.name || meta.title || '', seriesId: req.seriesId || '', seriesName: meta.seriesName || '', season: meta.season, episode: meta.episode, image: meta.image || '' },
-      status: 'queued', added: Date.now(), base: this._base(ep ? ['Series', meta.seriesName || 'Series'] : ['Movies'], name)
+      status: 'queued', added: Date.now()
     };
+    // a .part of it left without its entry (an earlier try): continued, not started again
+    const sub = ep ? ['Series', meta.seriesName || 'Series'] : ['Movies'];
+    const part = this._orphanPart(sub, name);
+    if (part) { it.base = part.base; it.state = { part: part.file }; } else it.base = this._base(sub, name);
     this.items.push(it);
     this.changed();
     this.kick();
@@ -225,7 +248,7 @@ class Media {
 
   pause(id) {
     const it = this.get(id);
-    if (!it || it.type !== 'download' || !['queued', 'downloading', 'waiting'].includes(it.status)) return false;
+    if (!it || it.type !== 'download' || !['queued', 'downloading', 'waiting', 'interrupted'].includes(it.status)) return false;
     this._abort(id, 'paused');
     it.status = 'paused';
     this.changed();
@@ -235,9 +258,11 @@ class Media {
 
   resume(id) {
     const it = this.get(id);
-    if (!it || it.type !== 'download' || !['paused', 'failed', 'waiting'].includes(it.status)) return false;
+    if (!it || it.type !== 'download' || !['paused', 'failed', 'waiting', 'interrupted'].includes(it.status)) return false;
     it.status = 'queued';
     delete it.error;
+    delete it.retryAt;
+    it.retries = 0;
     this.changed();
     this.kick();
     return true;
@@ -247,7 +272,8 @@ class Media {
   kick() {
     this.tick();
     if (this._running('download') || this.used() >= this.limit()) return;
-    const next = this.items.filter(i => i.type === 'download' && ['waiting', 'queued'].includes(i.status)).sort((a, b) => (a.status === 'waiting' ? -1 : 0) - (b.status === 'waiting' ? -1 : 0) || a.added - b.added)[0];
+    const now = Date.now();
+    const next = this.items.filter(i => i.type === 'download' && (['waiting', 'queued'].includes(i.status) || (i.status === 'interrupted' && (i.retryAt || 0) <= now))).sort((a, b) => (a.status === 'waiting' ? -1 : 0) - (b.status === 'waiting' ? -1 : 0) || a.added - b.added)[0];
     if (next) this._run(next);
   }
 
@@ -385,7 +411,7 @@ class Media {
     const now = Date.now();
     return {
       recording: this.items.filter(i => i.type === 'recording' && this.jobs.has(i.id)).map(i => i.title),
-      downloading: this.items.filter(i => i.type === 'download' && ['downloading', 'queued', 'waiting'].includes(i.status)).length,
+      downloading: this.items.filter(i => i.type === 'download' && ['downloading', 'queued', 'waiting', 'interrupted'].includes(i.status)).length,
       scheduled: this.items.filter(i => i.type === 'recording' && i.status === 'scheduled' && i.start < now + 24 * 3600000).length
     };
   }
@@ -451,14 +477,31 @@ class Media {
     const why = job.why;
     if (done) {
       Object.assign(it, { status: 'done', file: done.file, bytes: done.bytes, total: done.total, finished: Date.now() });
-      delete it.state;
+      for (const k of ['state', 'retries', 'retryAt', 'retryBytes', 'error']) delete it[k];
       if (it.type === 'recording' && !done.bytes) { it.status = 'failed'; it.error = 'Nothing came from the channel.'; }
       this.notify('media:note', { text: it.status === 'done' ? `${it.type === 'download' ? 'Downloaded' : 'Recorded'} "${it.title}${it.type === 'download' && it.sub ? ' · ' + it.sub : ''}".` : `Couldn't record "${it.title}": ${it.error}` });
     } else if (it.type === 'download') {
       if (why === 'paused' || why === 'waiting') it.status = why;
       else if (why === 'quit') it.status = 'queued';
       else if (why === 'disk') { it.status = 'paused'; it.error = 'Paused: the disk is nearly full.'; }
-      else { it.status = 'failed'; it.error = error ? error.message : 'Stopped.'; this.notify('media:note', { text: `Couldn't download "${it.title}": ${it.error}`, error: true }); }
+      else {
+        // interrupted (a drop, the provider's stream limit …): tried again by itself from where it stopped,
+        // unless it can't work, or it doesn't get any further
+        const msg = error ? error.message : 'Stopped.';
+        const got = (it.state && it.state.bytes) || 0;
+        if (got > (it.retryBytes || 0)) { it.retries = 0; it.retryBytes = got; }
+        it.retries = (it.retries || 0) + 1;
+        if (PERMANENT.test(msg) || it.retries > RETRY_MAX) {
+          it.status = 'failed';
+          it.error = msg;
+          this.notify('media:note', { text: `Couldn't download "${it.title}": ${msg}`, error: true });
+        } else {
+          it.status = 'interrupted';
+          it.error = msg;
+          it.retryAt = Date.now() + Math.min(15, 2 ** (it.retries - 1)) * 60000;
+          if (it.retries === 1) this.notify('media:note', { text: `The download of "${it.title}" was interrupted (${msg}). It goes on from there by itself.` });
+        }
+      }
     } else {
       // a recording stopped early keeps what it has
       const msg = why === 'stopped' ? (it.stopAsked ? 'Stopped early.' : 'Stopped to play something else.') : why === 'quit' ? 'Seal IPTV was closed during the recording.' : why === 'disk' ? 'Stopped: the disk is nearly full.' : error ? error.message : 'Stopped.';

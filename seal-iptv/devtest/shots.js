@@ -20,7 +20,7 @@ const PORT = 8790;
 const S = process.env.SHOT_SERVER || `http://127.0.0.1:${PORT}`;   // e.g. http://<this PC's LAN IP>:8790 (not loopback)
 
 fs.writeFileSync(path.join(data, 'seal-iptv.json'), JSON.stringify({
-  settings: { activeProfile: 'demo', playback: { resume: 'always', autoWatched: true, watchedPercent: 90, autoNext: true, externalPlayer: '' } },
+  settings: { activeProfile: 'demo', media: { streams: 1, folder: path.join(data, 'Saved') }, playback: { resume: 'always', autoWatched: true, watchedPercent: 90, autoNext: true, externalPlayer: '' } },
   profiles: [
     { id: 'demo', type: 'xtream', name: 'Demo provider', server: S, username: 'demo', password: 'plain:demo', liveFormat: 'auto' },
     { id: 'demots', type: 'xtream', name: 'Demo (MPEG-TS)', server: S, username: 'demo', password: 'plain:demo', liveFormat: 'ts' }

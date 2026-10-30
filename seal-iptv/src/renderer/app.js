@@ -1790,6 +1790,7 @@ async function renderStudio(view, focus) {
   const col = await call('collections:get', state.arg, st.order, st.kind).catch(e => { fail(e); return null; });
   if (!page.isConnected) return;
   if (!col) { page.appendChild(h('<div class="empty">This collection isn\'t there any more.</div>')); return; }
+  st.kind = col.kind;   // (a kind this collection hasn't got isn't kept: Disney after "Shows" on Netflix)
   const both = col.counts.movie && col.counts.series;
   const seg = (k, opts) => `<div class="seg" data-k="${k}">${opts.map(([v, t]) => `<button data-v="${v}" class="${st[k] === v ? 'active' : ''}">${t}</button>`).join('')}</div>`;
   const head = h(`<div class="shelf"><div class="shelf-head"><h2>${esc(col.name)}</h2><span class="muted small">${col.have.toLocaleString()} in your playlist</span>
@@ -2109,14 +2110,21 @@ function playSaved(it) {
 /** ⬇ on a movie page / an episode: start it, or (already there) play it, or see it in Downloads */
 async function downloadTitle(req, meta, have) {
   if (have && have.status === 'done') { const list = (await call('media:list')).items; const it = list.find(x => x.id === have.id); return it ? playSaved(it) : null; }
+  // stopped part way: on from there
+  if (have && ['failed', 'interrupted', 'paused'].includes(have.status)) {
+    try { await call('media:resume', have.id); toast('The download goes on from where it stopped. It\'s in Downloads.'); } catch (e) { fail(e); }
+    return;
+  }
   if (have) return go('downloads');
   try {
     await call('media:download', req, meta);
     toast(`Downloading "${req.kind === 'episode' ? `${meta.seriesName} ${epLabel(meta.season, meta.episode)}` : meta.title}". It's in Downloads.`);
   } catch (e) { fail(e); }
 }
-const dlLabel = d => !d ? '⬇ Download' : d.status === 'done' ? '▶ Play the download' : d.status === 'downloading' ? `⬇ ${d.total ? Math.floor((d.bytes / d.total) * 100) + ' %' : fmtSize(d.bytes) || 'Starting…'}` : d.status === 'paused' ? '⏸ Download paused' : '⬇ Waiting to download';
-const dlMark = d => !d ? '⬇' : d.status === 'done' ? '✓' : d.status === 'downloading' && d.total ? Math.floor((d.bytes / d.total) * 100) + '%' : '…';
+const dlPct = d => (d.total ? Math.floor((d.bytes / d.total) * 100) + ' %' : fmtSize(d.bytes));
+const dlLabel = d => !d ? '⬇ Download' : d.status === 'done' ? '▶ Play the download' : d.status === 'downloading' ? `⬇ ${dlPct(d) || 'Starting…'}`
+  : ['failed', 'interrupted', 'paused'].includes(d.status) ? `⬇ Resume the download${d.bytes ? ` (${dlPct(d)})` : ''}` : '⬇ Waiting to download';
+const dlMark = d => !d ? '⬇' : d.status === 'done' ? '✓' : ['failed', 'interrupted', 'paused'].includes(d.status) ? '⟳' : d.status === 'downloading' && d.total ? Math.floor((d.bytes / d.total) * 100) + '%' : '…';
 
 /**
  * Record a channel: now (until the programme ends, or for a while) or at a time — or a programme from
@@ -2204,11 +2212,14 @@ async function recordDialog(ch, prog = null) {
 
 /** a row in Downloads / Recordings */
 function mediaRow(it, actions) {
-  const pct = it.total && it.status === 'downloading' ? Math.min(100, (it.bytes / it.total) * 100) : 0;
+  const pct = it.total && ['downloading', 'paused', 'interrupted', 'failed'].includes(it.status) ? Math.min(100, (it.bytes / it.total) * 100) : 0;
   const img = it.type === 'download' ? it.image : it.channel.logo;
   const live = it.status === 'recording';
   const line = it.type === 'download'
-    ? { queued: 'Waiting to start', waiting: 'Waiting: the stream is in use (it goes on after)', downloading: `${fmtSize(it.bytes)}${it.total ? ' of ' + fmtSize(it.total) : ''}${it.note ? ' · trying again: ' + it.note : ''}`, paused: it.error || 'Paused', failed: it.error || 'Failed', done: `${fmtSize(it.bytes)} · ${new Date(it.finished || it.added).toLocaleDateString()}` }[it.status]
+    ? { queued: 'Waiting to start', waiting: 'Waiting: the stream is in use (it goes on after)', downloading: `${fmtSize(it.bytes)}${it.total ? ' of ' + fmtSize(it.total) : ''}${it.note ? ' · trying again: ' + it.note : ''}`,
+      paused: `${it.bytes ? fmtSize(it.bytes) + (it.total ? ' of ' + fmtSize(it.total) : '') + ' saved · ' : ''}${it.error || 'Paused'}`,
+      interrupted: `${it.bytes ? fmtSize(it.bytes) + (it.total ? ' of ' + fmtSize(it.total) : '') + ' saved · ' : ''}Interrupted (${it.error || 'the connection dropped'}) · goes on by itself${it.retryAt ? ' at ' + fmtClock(it.retryAt) : ''}`,
+      failed: `${it.bytes ? fmtSize(it.bytes) + ' saved · ' : ''}${it.error || 'Failed'}`, done: `${fmtSize(it.bytes)} · ${new Date(it.finished || it.added).toLocaleDateString()}` }[it.status]
     : { scheduled: `${fmtWhen(it.start)} – ${fmtClock(it.end)}`, recording: `Until ${fmtClock(it.end)} · ${fmtSize(it.bytes) || 'starting…'}${it.note ? ' · ' + it.note : ''}`, done: `${fmtWhen(it.start)} · ${fmtSize(it.bytes)}`, stopped: `${fmtWhen(it.start)} · ${fmtSize(it.bytes)} · ${it.error || 'Stopped early'}`, failed: it.error || 'Failed', missed: it.error || 'Missed', skipped: it.error || 'Skipped' }[it.status];
   const el = h(`<div class="media-row${live ? ' is-live' : ''}" tabindex="0">
     <div class="m-thumb${it.type === 'recording' ? ' logo' : ''}">${img ? pic(img, it.title, 'pi') : `<span>${it.type === 'download' ? '🎬' : '📺'}</span>`}</div>
@@ -2256,7 +2267,7 @@ async function renderDownloads(view) {
         page.appendChild(h(`<div class="shelf-head"><h2>Downloading</h2><span class="muted small">${going.length}</span></div>`));
         for (const it of going) {
           page.appendChild(mediaRow(it, [
-            ...(['downloading', 'queued', 'waiting'].includes(it.status) ? [['⏸ Pause', mediaDo(() => call('media:pause', it.id))]] : [['▶ Go on', mediaDo(() => call('media:resume', it.id))]]),
+            ...(['downloading', 'queued', 'waiting'].includes(it.status) ? [['⏸ Pause', mediaDo(() => call('media:pause', it.id))]] : [[it.status === 'interrupted' ? '▶ Go on now' : '▶ Go on', mediaDo(() => call('media:resume', it.id))]]),
             ['✕ Cancel', () => removeSaved(it), 'ghost']
           ]));
         }

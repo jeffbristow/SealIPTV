@@ -862,11 +862,17 @@ class Catalog {
     const started = this.library.seriesStarted(pid);
     const counts = { movie: 0, series: 0 };
     const items = [];
+    const have = [];
     for (const n of order === 'oldest' ? f.release : [...f.release].reverse()) {
       const e = f.items[n];
       const its = get(f, e);
       if (!its.length) continue;
       counts[e.kind]++;
+      have.push([e, its]);
+    }
+    // "Shows" chosen on another studio's page, and this one has none (Disney: movies only): all of them
+    if (kind && !counts[kind]) kind = '';
+    for (const [e, its] of have) {
       if (kind && e.kind !== kind) continue;
       const versions = this._decorate(pid, e.kind, its, c[e.kind === 'series' ? 'series' : 'movies']);
       for (const v of versions) v.started = e.kind === 'series' ? started.has(String(v.id)) : !!(v.watched || v.pos);
