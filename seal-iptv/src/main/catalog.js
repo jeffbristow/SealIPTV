@@ -672,16 +672,31 @@ class Catalog {
     return events.build(chans, { ppv: kind === 'ppv', zone: (c.account && c.account.timezone) || undefined });
   }
 
+  /**
+   * events(), kept for a minute (Home asks each time it's shown; working them out takes seconds on a TV):
+   * the same answer while nothing it depends on changed (names fetched again, the guide, the PIN, a reload)
+   */
+  _eventsCached(pid, kind, home) {
+    const c = this.get(pid), g = this.guide.get(pid), f = this.evFresh.get(pid);
+    const key = [pid, kind, home, c.fetchedAt, (f && f.at) || 0, (g && g.fetchedAt) || 0, this.parental.isUnlocked(), JSON.stringify(this.library.catFlags(pid))].join('|');
+    const hit = this._evCache && this._evCache.get(key);
+    if (hit && Date.now() - hit.at < 60000) return hit.res;
+    const res = this.events(pid, kind, { home });
+    if (!this._evCache || this._evCache.size > 8) this._evCache = new Map();
+    this._evCache.set(key, { at: Date.now(), res });
+    return res;
+  }
+
   /** The Sports / Pay-Per-View page: with the event channels' names fetched again first (waited for up to 6 s). */
   async eventsPage(pid, kind) {
     await Promise.race([this.refreshEvents(pid), new Promise(ok => later(ok, 6000))]);
-    return this.events(pid, kind);
+    return this._eventsCached(pid, kind, false);
   }
 
   /** Home's rows: what's on now (the names fetched again in the background, for next time). */
   eventsHome(pid, limit = 20) {
     this.refreshEvents(pid).catch(() => {});
-    return { sports: this.events(pid, 'sports', { home: true }).live.slice(0, limit), ppv: this.events(pid, 'ppv', { home: true }).live.slice(0, limit) };
+    return { sports: this._eventsCached(pid, 'sports', true).live.slice(0, limit), ppv: this._eventsCached(pid, 'ppv', true).live.slice(0, limit) };
   }
 
   /* ---- Continue watching, with up next (library.js 6c) ---- */

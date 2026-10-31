@@ -252,15 +252,20 @@ function regionOf(cat, name) {
  * 5. THE EVENTS
  * ================================================================= */
 /** how alike two events' names are, 0–1 (letter pairs in common; years and numbers left out) */
+/** an event's letter pairs, worked out once (they're compared with many others) */
+function pairsOf(ev) {
+  if (ev._pairs) return ev._pairs;
+  const s = norm(`${ev.league} ${ev.title}`).replace(/\b\d+\b/g, '').replace(/\s+/g, '');
+  const m = new Map();
+  for (let i = 0; i < s.length - 1; i++) m.set(s.slice(i, i + 2), (m.get(s.slice(i, i + 2)) || 0) + 1);
+  return (ev._pairs = [m, Math.max(0, s.length - 1)]);
+}
+
 function similar(a, b) {
-  const pairs = ev => {
-    const s = norm(`${ev.league} ${ev.title}`).replace(/\b\d+\b/g, '').replace(/\s+/g, '');
-    const m = new Map();
-    for (let i = 0; i < s.length - 1; i++) m.set(s.slice(i, i + 2), (m.get(s.slice(i, i + 2)) || 0) + 1);
-    return [m, Math.max(0, s.length - 1)];
-  };
-  const [x, nx] = pairs(a), [y, ny] = pairs(b);
+  const [x, nx] = pairsOf(a), [y, ny] = pairsOf(b);
   if (!nx || !ny) return 0;
+  // at most 2·min / (nx + ny) alike: names of very different lengths aren't counted at all
+  if ((2 * Math.min(nx, ny)) / (nx + ny) < 0.72) return 0;
   let both = 0;
   for (const [k, v] of x) both += Math.min(v, y.get(k) || 0);
   return (2 * both) / (nx + ny);
@@ -312,13 +317,15 @@ function build(channels, { now = Date.now(), zone = DEFAULT_ZONE, ppv = false } 
   }
   // one event listed twice by the provider, a little differently ("IWR Monsers Ball" / "IWR: Monsters Ball 2026",
   // 5:00 PM ET / 6:00 PM EDT): the same sport (or one not known), within 3 hours, nearly the same name
-  const list = [...byKey.values()];
+  // (in start order, each compared only with the ones up to 3 hours later: hundreds of events on a TV)
+  const list = [...byKey.values()].sort((a, b) => a.start - b.start);
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
     if (!a) continue;
     for (let j = i + 1; j < list.length; j++) {
       const b = list[j];
-      if (!b || (b.sport.id !== a.sport.id && a.sport.id !== 'other' && b.sport.id !== 'other') || Math.abs(a.start - b.start) > 3 * HOUR || similar(a, b) < 0.72) continue;
+      if (b && b.start - a.start > 3 * HOUR) break;
+      if (!b || (b.sport.id !== a.sport.id && a.sport.id !== 'other' && b.sport.id !== 'other') || similar(a, b) < 0.72) continue;
       for (const ch of b.channels) if (!a.channels.some(c => c.id === ch.id)) a.channels.push(ch);
       if (b.title.length > a.title.length && !a.league) a.title = b.title;
       a.league = a.league || b.league;
@@ -331,7 +338,7 @@ function build(channels, { now = Date.now(), zone = DEFAULT_ZONE, ppv = false } 
     }
   }
   byKey.clear();
-  list.filter(Boolean).forEach((ev, n) => byKey.set(n, ev));
+  list.filter(Boolean).forEach((ev, n) => { delete ev._pairs; byKey.set(n, ev); });
   const midnight = d => { const x = new Date(now); x.setHours(24 * d, 0, 0, 0); return x.getTime(); };
   const [today, tomorrow] = [midnight(1), midnight(2)];
   const out = { live: [], later: [], tomorrow: [], soon: [], sports: [], regions: [] };
