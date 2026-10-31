@@ -58,7 +58,7 @@ function userAgent() {
   if (n.userAgent === 'custom' && n.customUserAgent) return n.customUserAgent;
   return UA[n.userAgent] || UA.seal;
 }
-const catalog = new Catalog({ dir: DATA, store, vpn, library, userAgent, parental });
+const catalog = new Catalog({ dir: DATA, store, vpn, library, userAgent, parental, slow: true });   // (whole-section indexes a little at a time)
 const artwork = new Artwork({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 const trending = new Trending({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 // the Disney / Netflix / Prime collections: the newest list we have now, a newer one looked for a little later

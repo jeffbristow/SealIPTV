@@ -108,6 +108,17 @@ const fakeFetch = async (url, opts) => {
     c._read = { live: true, movies: false, series: false };
     const r2 = cat.trending(p.id, { ...list, at: 200, movie: [] }, { read: false });
     ok(r2.movies.map(i => i.id).join() === 'dl,ia', 'a TV with the sections not read: the kept matches (nothing read for Home)');
+    // a TV with the sections read (Movies opened): the title index is built a little at a time, never at once
+    c._read = { live: true, movies: true, series: true };
+    delete c.movies._trIdx; delete c.series._trIdx;
+    cat.slow = true;
+    const list3 = { ...list, at: 300 };
+    const r3 = cat.trending(p.id, list3, { read: false });
+    ok(r3.movies.map(i => i.id).join() === 'dl,ia' && !c.movies._trIdx && JSON.parse(fs.readFileSync(cat._trendFile(p.id), 'utf8')).at === 100, 'a TV: the index isn’t built at once; the kept matches meanwhile (not written as fresh)');
+    await new Promise(ok => setTimeout(ok, 300));
+    ok(c.movies._trIdx && c.series._trIdx, '… it is built in the background');
+    const r4 = cat.trending(p.id, list3, { read: false });
+    ok(r4.series.map(i => i.id).join() === 'dm24,dip' && JSON.parse(fs.readFileSync(cat._trendFile(p.id), 'utf8')).at === 300, '… then matched (and kept)');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

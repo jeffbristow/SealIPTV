@@ -95,9 +95,11 @@ class Catalog {
    * @param o.userAgent  () -> User-Agent string
    * @param o.fetch      fetch implementation
    * @param o.parental   Parental (is the PIN entered?) — optional in tests
+   * @param o.slow       a TV: indexes over whole sections are built a little at a time, never at once
    */
-  constructor({ dir, store, vpn, library, userAgent, fetch: fetchImpl, parental }) {
+  constructor({ dir, store, vpn, library, userAgent, fetch: fetchImpl, parental, slow = false }) {
     this.parental = parental || { isUnlocked: () => false };
+    this.slow = slow;
     this.dir = path.join(dir, 'catalog');
     this.store = store;
     this.vpn = vpn;
@@ -799,10 +801,15 @@ class Catalog {
     let changed = false;
     for (const [section, kind] of [['movies', 'movie'], ['series', 'series']]) {
       if (fresh || !list || (!read && !this._isRead(c, section))) { out[section] = (kept && kept[section]) || []; continue; }
-      out[section] = this._matchTrending(pid, c, section, list[kind] || []);
+      const m = this._matchTrending(pid, c, section, list[kind] || []);
+      // (a TV still building the index: the last matches meanwhile, matched again next time)
+      if (!m) { out[section] = (kept && kept[section]) || []; continue; }
+      out[section] = m;
       changed = true;
     }
-    if (changed) try { writeJson(this._trendFile(pid), { v: 2, at: list.at, fetchedAt: c.fetchedAt, movies: out.movies, series: out.series }); } catch { /* next time */ }
+    // (only when both sections were matched now: a half-matched pair would look fresh next time)
+    const both = ['movies', 'series'].every(s => this._isRead(c, s) && c[s]._trIdx);
+    if (changed && (both || !this.slow)) try { writeJson(this._trendFile(pid), { v: 2, at: list.at, fetchedAt: c.fetchedAt, movies: out.movies, series: out.series }); } catch { /* next time */ }
     // what Home may show now (a category may have been hidden or locked since), with today's flags
     const res = {};
     for (const [section, kind] of [['movies', 'movie'], ['series', 'series']]) {
@@ -812,13 +819,34 @@ class Catalog {
     return res;
   }
 
-  /** The playlist's copy of each title: the same name (tags, years and "The" aside) and, when the list knows it, the year. */
+  /**
+   * The titles of a section by titleKey (trending's matches). On a TV it's built a little at a time
+   * (139 000 movies at once froze Home for seconds): null until it's ready.
+   */
+  _trIndex(c, section) {
+    const sec = c[section];
+    if (sec._trIdx) return sec._trIdx;
+    const add = (idx, i) => { const k = titleKey(i.name); if (!k) return; if (!idx.has(k)) idx.set(k, []); idx.get(k).push(i); };
+    if (!this.slow) { sec._trIdx = new Map(); for (const i of sec.items) add(sec._trIdx, i); return sec._trIdx; }
+    if (!sec._trBuild) {
+      const items = sec.items, idx = new Map();
+      let at = 0;
+      sec._trBuild = true;
+      const step = () => {
+        if (c[section] !== sec || sec.items !== items) { sec._trBuild = false; return; }   // replaced by a reload
+        const end = Date.now() + 20;
+        while (at < items.length && Date.now() < end) for (const stop = Math.min(items.length, at + 300); at < stop; at++) add(idx, items[at]);
+        if (at < items.length) setTimeout(step, 20); else sec._trIdx = idx;
+      };
+      setTimeout(step, 0);
+    }
+    return null;
+  }
+
+  /** The playlist's copy of each title: the same name (tags, years and "The" aside) and, when the list knows it, the year. -> null: not ready yet (a TV) */
   _matchTrending(pid, c, section, titles) {
     const sec = c[section];
-    if (!sec._trIdx) {
-      sec._trIdx = new Map();
-      for (const i of sec.items) { const k = titleKey(i.name); if (!k) continue; if (!sec._trIdx.has(k)) sec._trIdx.set(k, []); sec._trIdx.get(k).push(i); }
-    }
+    if (!this._trIndex(c, section)) return null;
     const rules = this.rules(pid, section), open = this.parental.isUnlocked();
     const out = [], seen = new Set();
     for (const x of titles) {
