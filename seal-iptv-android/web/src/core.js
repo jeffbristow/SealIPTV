@@ -45,8 +45,9 @@ const T0 = Date.now();
 const trace = (...a) => console.log(`[seal] ${a.join(' ')} (${Date.now() - T0} ms)`);
 trace('core', VERSION, 'starts');
 const PHONE = typeof window !== 'undefined' && !!window.SEAL_PHONE;   // the phone app (mobile.html)
+const UT = typeof window !== 'undefined' && !!window.SEAL_UT;   // Ubuntu Touch (seal-iptv-ubuntu)
 const HERE = PHONE ? 'this phone' : 'this Fire TV';
-const UA = { seal: `SealIPTV/${VERSION} (${PHONE ? 'Android' : 'Fire TV'})`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
+const UA = { seal: `SealIPTV/${VERSION} (${UT ? 'Ubuntu Touch' : PHONE ? 'Android' : 'Fire TV'})`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 const listeners = new Map();
 const send = (ch, data) => { for (const fn of listeners.get(ch) || []) { try { fn(data); } catch (e) { console.error(e); } } };
 

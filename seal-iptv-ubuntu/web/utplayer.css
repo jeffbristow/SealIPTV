@@ -1,0 +1,25 @@
+/* Seal IPTV for Ubuntu Touch — utplayer.css: the backup player (utplayer.js), over the page */
+#utPlayer { position: fixed; inset: 0; z-index: 500; background: #000; color: #fff; overflow: hidden; }
+#utPlayer.hidden { display: none; }
+#utPlayer video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+#utPlayer .up-ctl { position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0; transition: opacity .18s; pointer-events: none; }
+#utPlayer.show .up-ctl { opacity: 1; }
+#utPlayer.show .up-ctl .up-btn, #utPlayer.show .up-ctl input { pointer-events: auto; }
+#utPlayer .up-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 6px; padding: 8px 8px 26px; background: linear-gradient(rgba(0,0,0,.8), transparent); }
+#utPlayer .up-words { flex: 1; min-width: 0; }
+#utPlayer .up-title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#utPlayer .up-sub { font-size: 12.5px; color: #c9ced6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#utPlayer .up-btn { flex: none; min-width: 46px; height: 46px; padding: 0 12px; border: 0; border-radius: 23px; background: rgba(0,0,0,.35); color: #fff; font-size: 18px; font-weight: 700; }
+#utPlayer .up-btn:active { background: rgba(60,207,145,.45); }
+#utPlayer .up-btn.big { min-width: 58px; height: 58px; border-radius: 29px; font-size: 22px; }
+#utPlayer .up-btn.hidden { display: none; }
+#utPlayer .up-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; padding: 30px 12px 12px; background: linear-gradient(transparent, rgba(0,0,0,.8)); }
+#utPlayer .up-bar { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+#utPlayer .up-seek { flex: 1; accent-color: #3ccf91; height: 28px; }
+#utPlayer .up-live { display: none; position: absolute; left: 14px; bottom: 26px; background: #ff6464; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+#utPlayer.live .vod { display: none; }
+#utPlayer.live .up-live { display: block; }
+#utPlayer .up-osd { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); background: rgba(18,20,24,.9); border-radius: 10px; padding: 8px 16px; font-size: 15px; white-space: nowrap; }
+#utPlayer .up-osd.hidden, #utPlayer .up-msg.hidden { display: none; }
+#utPlayer .up-msg { position: absolute; left: 16px; right: 16px; top: 50%; transform: translateY(-50%); background: rgba(24,27,33,.96); border-radius: 14px; padding: 16px; text-align: center; }
+#utPlayer .up-msg p { margin: 0 0 12px; }

@@ -135,9 +135,10 @@ const artAttrs = art => (art && (art.kind === 'movie' || art.kind === 'series') 
 const KEEPS_IMAGES = location.protocol === 'file:';
 // TVs: the pages are https://appassets…, and newer WebViews block a provider's http:// pictures there (mixed
 // content), so they go through the app's own address too (MainActivity -> ImageCache)
-const TV_IMAGES = location.host === 'appassets.androidplatform.net' && !!(window.SealNative && window.SealNative.imageRoute);   // an older TV app: as before
+const TV_IMAGES = (location.host === 'appassets.androidplatform.net' || !!window.SEAL_UT) && !!(window.SealNative && window.SealNative.imageRoute);   // an older TV app: as before; Ubuntu Touch: its backend
+const IMG_ORIGIN = window.SEAL_UT ? (window.SEAL_UT_SIDE || location.origin) : 'https://appassets.androidplatform.net';
 const imgSrc = u => (KEEPS_IMAGES && /^https?:\/\//i.test(u || '') ? 'sealimg://img/?u=' + encodeURIComponent(u)
-  : TV_IMAGES && /^https?:\/\//i.test(u || '') ? 'https://appassets.androidplatform.net/img/?u=' + encodeURIComponent(u) : u);
+  : TV_IMAGES && /^https?:\/\//i.test(u || '') ? IMG_ORIGIN + '/img/?u=' + encodeURIComponent(u) : u);
 /* Windows: pictures looked up by title (Art below) remembered for this run, so a page drawn again
    shows them at once instead of initials -> asking -> swapping in. Also used instead of the
    provider's own picture: there's only one when that one was missing or broken. */

@@ -13,7 +13,9 @@ const enoent = p => Object.assign(new Error(`ENOENT: no such file '${p}'`), { co
 
 /* The playlist files are served at the app's own address too (MainActivity.catalogFile): read from
    there they take a second where the bridge took 15. null: not one of them, or an APK before 1.1.14. */
-const catalogUrl = p => (String(p).startsWith('/data/catalog/') ? 'https://appassets.androidplatform.net/catalog/' + encodeURIComponent(String(p).split('/').pop()) : null);
+// (Ubuntu Touch: the pages and these files come from the app's own backend, at the page's address)
+const APP_ORIGIN = typeof window !== 'undefined' && window.SEAL_UT ? location.origin : 'https://appassets.androidplatform.net';
+const catalogUrl = p => (String(p).startsWith('/data/catalog/') ? APP_ORIGIN + '/catalog/' + encodeURIComponent(String(p).split('/').pop()) : null);
 function readFromPage(p) {
   const url = catalogUrl(p);
   if (!url || !globalThis.__pageFetch || typeof XMLHttpRequest === 'undefined') return null;

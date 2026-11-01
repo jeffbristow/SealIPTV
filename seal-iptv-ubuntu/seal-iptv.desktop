@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Seal IPTV
+Comment=IPTV player: Xtream Codes and M3U playlists, sync and a VPN guard
+Exec=qmlscene %u qml/Main.qml
+Icon=assets/icon.png
+Terminal=false
+Type=Application
+X-Lomiri-Touch=true
+X-Lomiri-Default-Department-ID=media

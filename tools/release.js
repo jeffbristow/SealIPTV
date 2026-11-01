@@ -11,6 +11,7 @@
  *   SealIPTV-<v>.sealiptv           Windows update package (app.asar)
  *   SealIPTV-FireTV-<v>.apk         Fire TV app (new TVs; Android changes)
  *   SealIPTV-Android-<v>.apk        phone app (the same code, its own app id + page)
+ *   seal-iptv.jeffbristow_<v>_all.click   Ubuntu Touch app (install by hand; no self-update yet)
  *   SealIPTV-TV-<v>.zip             Fire TV update package (assets/www)
  *   SealIPTV-Sync-Server-<sv>.zip   the sync server (never with config.php)
  *   update.json + update.json.sig   what's in the release, signed
@@ -90,6 +91,11 @@ execFileSync(TAR, ['-a', '-c', '-f', tvZip, '-C', www, ...fs.readdirSync(www)]);
 const badEntries = execFileSync(TAR, ['-t', '-f', tvZip]).toString().split(/\r?\n/).filter(l => l && (/^(\.\/|\/|\.$)/.test(l) || l.split('/').includes('..')));
 if (badEntries.length) { console.error('The Fire TV package has entries the TV refuses: ' + badEntries.join(', ')); process.exit(1); }
 const versionCode = Number((fs.readFileSync(path.join(TV, 'app', 'build.gradle'), 'utf8').match(/versionCode\s+(\d+)/) || [])[1]);
+
+step('Ubuntu Touch app');
+run('node build.js --click --arch=all', path.join(ROOT, 'seal-iptv-ubuntu'));
+const utClick = path.join(OUT, `seal-iptv.jeffbristow_${V}_all.click`);
+fs.copyFileSync(path.join(ROOT, 'dist', `seal-iptv.jeffbristow_${V}_all.click`), utClick);
 
 step('Sync server');
 const srvVersion = (fs.readFileSync(path.join(SRV, 'lib.php'), 'utf8').match(/SEALIPTV_SERVER_VERSION = '([\d.]+)'/) || [])[1];

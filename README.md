@@ -16,6 +16,7 @@ Everything is on the [Releases page](https://github.com/jeffbristow/SealIPTV/rel
 - **Windows:** `SealIPTV-Setup-<version>.exe`.
 - **Fire TV:** `SealIPTV-FireTV-<version>.apk` — install steps in the [Fire TV README](seal-iptv-android/README.md).
 - **Android phones:** `SealIPTV-Android-<version>.apk` — a touch layout for phones (tabs at the bottom, the player sideways); install steps in the [Android README](seal-iptv-android/README.md#android-phones).
+- **Ubuntu Touch (preview):** `seal-iptv.jeffbristow_<version>_all.click` — see the [Ubuntu Touch README](seal-iptv-ubuntu/README.md).
 - **Sync server:** `SealIPTV-Sync-Server-<version>.zip` — upload it to your website (steps in its README.txt).
 
 ## Updates

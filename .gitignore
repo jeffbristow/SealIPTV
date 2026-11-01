@@ -15,5 +15,7 @@ seal-iptv-android/build/
 seal-iptv-android/app/build/
 seal-iptv-android/local.properties
 seal-iptv-android/app/src/main/assets/www/
+seal-iptv-ubuntu/www/
+__pycache__/
 *.log
 .claude/

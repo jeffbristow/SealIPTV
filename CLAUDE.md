@@ -170,6 +170,12 @@ kind: 'phone' (tvfind -> { phone: true }); the served page says phone/TV from <h
 seal-iptv.json aside (.unreadable-<time>) instead of overwriting it (a phone once lost its
 playlist across a reinstall, not reproduced). Test: a pretend PC in sync (test vault on
 php -d extension=pdo_sqlite -S 127.0.0.1:8798 + adb reverse tcp:8798) -> tvfind.send.
+Ubuntu Touch app (1.8.1): ../seal-iptv-ubuntu/ (see its README.md): QML + Python backend
+(pyotherside) on 127.0.0.1 with two ports + the shared phone pages (ut.html = mobile.html +
+utnative.js / utplayer.js). core.js replaces window.fetch: utnative.js keeps the browser's own
+(using core's made every request call itself). Chromium 87 there: no aspect-ratio / :has().
+Test on PC: devtest/ut-harness.js (Electron + the real backend). On the phone: build.js --click
+--debug, DevTools via adb forward tcp:9222. Releases carry the click (no self-update yet).
 The user's Pixel 6a (GrapheneOS, Android 17): adb over USB; Proton is always-on VPN with
 lockdown — with Proton off NOTHING reaches the internet (UnknownHostException), only
 adb reverse tcp:8790 to the fake provider on this PC.
