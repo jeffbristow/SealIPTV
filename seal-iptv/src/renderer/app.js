@@ -22,6 +22,9 @@
 
 /** Fire TV (seal-iptv-android): same pages, a remote instead of a mouse, Android's player. */
 const TV = !!window.SEAL_TV;
+/** the phone app (seal-iptv-android, mobile flavour): Android like TV, but touch and a narrow screen (phone.js, phone.css) */
+const PHONE = !!window.SEAL_PHONE;
+const DEVICE = PHONE ? 'phone' : TV ? 'TV' : 'PC';   // "this phone", "this TV", "this PC"
 const OTHER_PLAYER = TV ? 'Open in another app' : 'Open in VLC';
 
 /* =================================================================
@@ -791,8 +794,8 @@ function renderWelcome(view) {
     <img src="logo.svg" alt="">
     <h1>Welcome to Seal IPTV</h1>
     <p class="muted">Add the playlist from your IPTV provider: an <b>Xtream Codes</b> login (server, username and password) or an <b>M3U</b> playlist link or file. Seal IPTV doesn't come with any channels of its own.</p>
-    <div class="row gap" style="justify-content:center"><button class="btn primary big" id="wAdd">Add a playlist</button>${TV ? '<button class="btn big" id="wPhone">📱 Set up from your phone</button>' : ''}</div>
-    ${TV ? '<p class="small muted">From your phone: your playlist login or your sync server, without typing on the TV.</p>' : ''}
+    <div class="row gap" style="justify-content:center"><button class="btn primary big" id="wAdd">Add a playlist</button>${TV ? `<button class="btn big" id="wPhone">${PHONE ? '📲 Get it from another device' : '📱 Set up from your phone'}</button>` : ''}</div>
+    ${PHONE ? '<p class="small muted">Seal IPTV on your PC or TV already set up and in sync? Get your playlists, favorites and settings from it with a short code — nothing to type here.</p>' : TV ? '<p class="small muted">From your phone: your playlist login or your sync server, without typing on the TV.</p>' : ''}
     <p class="small faint">Want it to play only through ProtonVPN or another VPN? Turn that on in Settings → VPN.</p>
   </div>`));
   $('#wAdd').onclick = () => editProfile(null);
@@ -805,34 +808,34 @@ function renderWelcome(view) {
  * device of its own (sync.invite -> tvfind.send -> the TV's sync.joinWith). No passphrase on the TV.
  */
 async function connectTv() {
-  const r = await dialog({ title: 'Connect a TV', okText: 'Connect the TV', wide: true,
-    html: `<p class="muted small">On the TV, open Seal IPTV, then <b>Settings → Sync → 📱 Set up from your phone</b> (or the button on its welcome screen). It shows a code; type it here and the TV joins your sync, with your playlists, favorites and settings.</p>
-      <label>TVs on your network</label><div id="ctList" class="ct-list"><p class="small muted">Looking for TVs with the setup window open…</p></div>
-      <div class="two-col"><div><label for="ctAddr">The TV's address</label><input id="ctAddr" placeholder="192.168.1.20:8765" spellcheck="false" autocomplete="off"></div>
-      <div><label for="ctCode">The code on the TV</label><input id="ctCode" placeholder="K7Q2-M9XA-4F" spellcheck="false" autocomplete="off"></div></div>
-      <div id="ctPassBox" class="hidden"><label for="ctPass">Vault passphrase — just this once: this ${TV ? 'TV' : 'PC'} keeps what's needed for next time</label><input id="ctPass" type="password" autocomplete="off"></div>
+  const r = await dialog({ title: 'Connect a TV or phone', okText: 'Connect it', wide: true,
+    html: `<p class="muted small">On the TV, open Seal IPTV, then <b>Settings → Sync → 📱 Set up from your phone</b> (or the button on its welcome screen). On an Android phone: <b>📲 Get it from another device</b> (welcome screen, or Settings → Sync). It shows a code; type it here and it joins your sync, with your playlists, favorites and settings.</p>
+      <label>TVs and phones on your network</label><div id="ctList" class="ct-list"><p class="small muted">Looking for TVs and phones with the setup window open…</p></div>
+      <div class="two-col"><div><label for="ctAddr">Its address</label><input id="ctAddr" placeholder="192.168.1.20:8765" spellcheck="false" autocomplete="off"></div>
+      <div><label for="ctCode">The code it shows</label><input id="ctCode" placeholder="K7Q2-M9XA-4F" spellcheck="false" autocomplete="off"></div></div>
+      <div id="ctPassBox" class="hidden"><label for="ctPass">Vault passphrase — just this once: this ${DEVICE} keeps what's needed for next time</label><input id="ctPass" type="password" autocomplete="off"></div>
       <p id="ctErr" class="error"></p>`,
     onOpen: () => {
       call('tv:find').then(list => {
         const box = $('#ctList');
         if (!box) return;
-        box.innerHTML = list.length ? '' : '<p class="small muted">None found. Is "Set up from your phone" open on the TV? You can also type the address it shows.</p>';
+        box.innerHTML = list.length ? '' : '<p class="small muted">None found. Is the setup window (with the code) open on the TV or phone? Both need the same Wi-Fi as this ${DEVICE}. You can also type the address it shows.</p>';
         const pick = (b, t) => { $$('#ctList .ct-tv').forEach(x => x.classList.remove('active')); b.classList.add('active'); $('#ctAddr').value = t.address; };
         list.forEach(t => {
-          const b = h(`<button class="btn ct-tv">📺 ${esc(t.name)} <span class="faint small">${esc(t.address)}</span></button>`);
+          const b = h(`<button class="btn ct-tv">${t.phone ? '📱' : '📺'} ${esc(t.name)} <span class="faint small">${esc(t.address)}</span></button>`);
           b.onclick = () => { pick(b, t); $('#ctCode').focus(); };
           box.appendChild(b);
         });
         if (list.length === 1) pick(box.firstChild, list[0]);
-      }).catch(() => { const box = $('#ctList'); if (box) box.innerHTML = '<p class="small muted">Couldn\'t look on the network. Type the address the TV shows.</p>'; });
+      }).catch(() => { const box = $('#ctList'); if (box) box.innerHTML = '<p class="small muted">Couldn\'t look on the network. Type the address it shows.</p>'; });
     },
     onOk: async () => {
       const err = $('#ctErr');
-      if (!$('#ctAddr').value.trim()) { err.textContent = 'Choose the TV, or type the address it shows.'; return false; }
-      err.textContent = 'Connecting the TV…';
+      if (!$('#ctAddr').value.trim()) { err.textContent = 'Choose the TV or phone, or type the address it shows.'; return false; }
+      err.textContent = 'Connecting…';
       try {
         const res = await call('tv:send', { address: $('#ctAddr').value.trim(), code: $('#ctCode').value, passphrase: $('#ctPass').value });
-        if (!res.ok) { err.textContent = res.error || 'The TV couldn\'t join.'; return false; }
+        if (!res.ok) { err.textContent = res.error || 'It couldn\'t join.'; return false; }
         return res;
       } catch (e) {
         if (e.code === 'PASSPHRASE') { show($('#ctPassBox'), true); err.textContent = e.message; $('#ctPass').focus(); return false; }
@@ -849,7 +852,15 @@ let phoneDone = null;
 async function phoneSetup() {
   let s;
   try { s = await call('phone:start'); } catch (e) { return fail(e); }
-  const closed = dialog({ title: 'Set up from your phone', okText: 'Close', hideCancel: true, wide: true,
+  const closed = dialog(PHONE ? { title: 'Get it from another device', okText: 'Close', hideCancel: true, wide: true,
+    html: `<div class="phone-setup phone-get">
+      <p class="muted small">The code:</p><p class="phone-code big-code">${esc(s.code)}</p>
+      <ol class="phone-steps"><li>Keep this open, on the same Wi-Fi as your PC or TV.</li><li>There, in Seal IPTV (already in sync): <b>Settings → Sync → 📺 Connect a TV or phone</b>.</li><li>Pick this phone (or type <b>${esc(s.address)}</b>) and type the code. This phone joins your sync: playlists, favorites, watched marks and settings.</li></ol>
+      <details class="phone-more"><summary>Not in sync anywhere yet? Type it in on another device</summary>
+      <p class="muted small">On another phone or a computer on this Wi-Fi, scan this or go to <b>http://${esc(s.address)}</b>, then fill in your sync server or your playlist login.</p>
+      <div class="phone-qr">${s.svg}</div></details>
+      <p class="faint small">What's sent is encrypted with this code, and only while this window is open. If nothing finds this phone: in Proton VPN, allow LAN connections.</p></div>` }
+  : { title: 'Set up from your phone', okText: 'Close', hideCancel: true, wide: true,
     html: `<div class="phone-setup"><div class="phone-qr">${s.svg}</div><div>
       <ol class="phone-steps"><li>Connect your phone to the same Wi-Fi as this TV.</li><li>Point the phone's camera at the QR code and open the link.</li><li>Fill in your sync server or your playlist login, then press <b>Send to the TV</b>.</li></ol>
       <p class="muted small">No camera? On a phone or computer, go to <b>http://${esc(s.address)}</b> and type the code <b class="phone-code">${esc(s.code)}</b></p>
@@ -1052,9 +1063,9 @@ function channelRow(it, i) {
     <span class="name" title="${esc(it.name)}">${esc(it.name)}</span>${it.fromHidden ? '<span class="tag" title="From a category you\'ve hidden">hidden category</span>' : ''}
     <button class="star${it.fav ? ' on' : ''}" title="Favorite">${it.fav ? '★' : '☆'}</button>
   </div>`);
-  el.onclick = () => selectChannel(it, el);
+  el.onclick = () => PHONE ? playChannel(i) : selectChannel(it, el);
   el.ondblclick = () => playChannel(i);
-  if (TV) el.addEventListener('focus', () => setTimeout(() => { if (document.activeElement === el && state.live.sel !== it) selectChannel(it, el); }, 150));
+  if (TV && !PHONE) el.addEventListener('focus', () => setTimeout(() => { if (document.activeElement === el && state.live.sel !== it) selectChannel(it, el); }, 150));
   // the remote's OK (tvnav.js): watch it — moving onto a channel already shows what's on
   el.tvOk = () => { if (state.live.sel !== it) selectChannel(it, el); playChannel(i); };
   el.onkeydown = e => {
@@ -1719,7 +1730,7 @@ async function renderFavorites(view, focus) {
     const head = h(`<div class="shelf" data-fk="${kind}"><div class="shelf-head"><h2>${esc(title)}</h2><span class="muted small">${items.length}</span>
       <div class="seg fav-sort">${FAV_SORTS.map(([v, t]) => `<button data-v="${v}" class="${sort === v ? 'active' : ''}">${t}</button>`).join('')}</div>
       ${sort === 'custom' && items.length > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
-      ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
+      ${arranging ? `<p class="muted small fav-hint">${PHONE ? 'Tap ◀ or ▶ to move a poster.' : TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
     head.querySelectorAll('.fav-sort button').forEach(b => b.onclick = async () => {
       if (b.dataset.v === sort) return;
       state.favArrange = '';
@@ -1778,7 +1789,7 @@ function sortHead(title, n, sort, arranging, sorts, { onSort, onArrange, hint = 
   const head = h(`<div class="shelf"><div class="shelf-head"><h2>${esc(title)}</h2><span class="muted small">${n}</span>
     <div class="seg fav-sort">${sorts.map(([v, t]) => `<button data-v="${v}" class="${sort === v ? 'active' : ''}">${t}</button>`).join('')}</div>
     ${sort === 'custom' && n > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
-    ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}${hint}</p>` : ''}</div>`);
+    ${arranging ? `<p class="muted small fav-hint">${PHONE ? 'Tap ◀ or ▶ to move a poster.' : TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}${hint}</p>` : ''}</div>`);
   head.querySelectorAll('.fav-sort button').forEach(b => b.onclick = () => { if (b.dataset.v !== sort) onSort(b.dataset.v); });
   const ab = head.querySelector('[data-arrange]');
   if (ab) ab.onclick = onArrange;
@@ -2109,7 +2120,7 @@ async function renderList(view) {
   bar.querySelector('[data-del]').onclick = () => removeList(l);
   page.appendChild(bar);
   if (!items.length) {
-    page.appendChild(h(`<div class="empty">Nothing in ${esc(l.name)} yet.<br><span class="small">Open a channel, movie or series and choose <b>＋ Category</b>, or ${TV ? 'select one and press ☰ Menu' : 'right-click one'} → Add to a category.</span></div>`));
+    page.appendChild(h(`<div class="empty">Nothing in ${esc(l.name)} yet.<br><span class="small">Open a channel, movie or series and choose <b>＋ Category</b>, or ${PHONE ? 'press and hold one' : TV ? 'select one and press ☰ Menu' : 'right-click one'} → Add to a category.</span></div>`));
     return;
   }
   for (const [kind, title] of [['live', 'Channels'], ['movie', 'Movies'], ['series', 'Series']]) {
@@ -2119,7 +2130,7 @@ async function renderList(view) {
     const head = h(`<div class="shelf"><div class="shelf-head"><h2>${title}</h2><span class="muted small">${its.length}</span>
       ${!editing && sort === 'custom' && its.length > 1 ? `<button class="btn small${arranging ? ' primary' : ''}" data-arrange>${arranging ? 'Done' : 'Arrange'}</button>` : ''}</div>
       ${editing ? `<p class="muted small fav-hint">✏️ gives a title another name in ${esc(l.name)} only; ✕ takes it out.</p>` : ''}
-      ${arranging ? `<p class="muted small fav-hint">${TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
+      ${arranging ? `<p class="muted small fav-hint">${PHONE ? 'Tap ◀ or ▶ to move a poster.' : TV ? 'Press OK on ◀ or ▶ to move a poster.' : 'Drag the posters into the order you want, or use ◀ ▶.'}</p>` : ''}</div>`);
     const ab = head.querySelector('[data-arrange]');
     if (ab) ab.onclick = () => { state.listArrange = arranging ? '' : `${l.id}:${kind}`; render(); setTimeout(() => { const x = $$('#view [data-arrange]').find(b => b.closest('.shelf') && b.closest('.shelf').querySelector('h2').textContent === title); if (x) x.focus(); }, 30); };
     page.appendChild(head);
@@ -2461,7 +2472,7 @@ function renderSettings(view) {
   const add = (sec, el) => { el.dataset.sec = sec; page.appendChild(el); return el; };
 
   /* ---- playlists ---- */
-  const pl = h(`<div class="panel"><div class="row"><h2 style="margin:0">Playlists</h2><span class="spacer"></span>${TV ? '<button class="btn" id="stPhone">📱 From your phone</button>' : ''}<button class="btn primary" id="stAdd">＋ Add playlist</button></div>
+  const pl = h(`<div class="panel"><div class="row"><h2 style="margin:0">Playlists</h2><span class="spacer"></span>${TV ? `<button class="btn" id="stPhone">${PHONE ? '📲 From another device' : '📱 From your phone'}</button>` : ''}<button class="btn primary" id="stAdd">＋ Add playlist</button></div>
     <p class="muted small">Your IPTV provider's Xtream Codes login or M3U playlist. Favorites, watched marks and resume points are kept per playlist.</p><div id="stProfiles"></div></div>`);
   add('playlists', pl);
   const list = pl.querySelector('#stProfiles');
@@ -2561,7 +2572,7 @@ function renderSettings(view) {
     <label class="check"><input type="checkbox" id="pAuto" ${pb.autoWatched ? 'checked' : ''}> Mark movies and episodes as watched when I reach
       <select id="pPct" style="width:auto;margin-left:4px">${[80, 85, 90, 95].map(n => `<option value="${n}" ${pb.watchedPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="pNext" ${pb.autoNext ? 'checked' : ''}> Play the next episode automatically</label>
-    <label class="check"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}><span class="check-text">Screensaver: the Seal IPTV logo moves around the screen after
+    <label class="check${PHONE ? ' hidden' : ''}"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}><span class="check-text">Screensaver: the Seal IPTV logo moves around the screen after
       <select id="pSaverMin">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing</span></label>
     <div class="two-col">
       <div><label for="pResume">When I open something I've started</label><select id="pResume">
@@ -2577,9 +2588,9 @@ function renderSettings(view) {
     <div class="${TV ? 'tv-hide' : ''}"><label for="pExt">Other player for "Open in VLC"</label>
     <div class="row gap"><input type="text" id="pExt" value="${esc(pb.externalPlayer)}" placeholder="Finds VLC by itself" spellcheck="false"><button class="btn small" id="pExtPick">Choose…</button></div>
     <p class="faint small" id="pExtNote"></p></div>
-    <p class="faint small">${TV ? 'Fire TV plays HEVC, AC-3 / E-AC-3 sound, MKV and TS itself. For anything else, use "Open in another app" (for example VLC for Fire TV); the VPN rule applies there too.' : 'Some movies use sound (AC-3, DTS) or formats the built-in player can\'t play. Use "Open in VLC" for those; the VPN rule applies there too.'}</p>
+    <p class="faint small">${PHONE ? 'This phone plays HEVC, AC-3 / E-AC-3 sound (as the phone allows), MKV and TS itself. For anything else, use "Open in another app" (for example VLC); the VPN rule applies there too.' : TV ? 'Fire TV plays HEVC, AC-3 / E-AC-3 sound, MKV and TS itself. For anything else, use "Open in another app" (for example VLC for Fire TV); the VPN rule applies there too.' : 'Some movies use sound (AC-3, DTS) or formats the built-in player can\'t play. Use "Open in VLC" for those; the VPN rule applies there too.'}</p>
     <h3 style="margin-top:16px">Audio sync</h3>
-    <p class="muted small">Bluetooth headphones and speakers often play the sound a little late. Seal IPTV can hold the picture back by the same amount. Each audio device keeps its own value; ${TV ? 'in the player press ☰ Menu → Audio sync.' : 'in the player use ⏱ Sync or the [ and ] keys.'}</p>
+    <p class="muted small">Bluetooth headphones and speakers often play the sound a little late. Seal IPTV can hold the picture back by the same amount. Each audio device keeps its own value; ${PHONE ? 'in the player tap ⚙ → Audio sync.' : TV ? 'in the player press ☰ Menu → Audio sync.' : 'in the player use ⏱ Sync or the [ and ] keys.'}</p>
     <div class="vpn-box" id="avNow">Checking the sound output…</div>
     <div class="row gap"><button class="btn" id="avTest">Sync test…</button></div>
     <div id="avSaved" style="margin-top:8px"></div>
@@ -2601,7 +2612,7 @@ function renderSettings(view) {
     const box = pp.querySelector('#avNow');
     if (!box) return;
     box.className = 'vpn-box' + (ms ? ' ok' : '');
-    box.innerHTML = `<b>${esc(dev || 'This PC\'s sound output')}</b>: ${ms ? `${ms > 0 ? '+' : ''}${ms} ms` : 'no delay'}<div class="muted small">${esc(AvSync.describe(ms))}</div>`;
+    box.innerHTML = `<b>${esc(dev || `This ${DEVICE}'s sound output`)}</b>: ${ms ? `${ms > 0 ? '+' : ''}${ms} ms` : 'no delay'}<div class="muted small">${esc(AvSync.describe(ms))}</div>`;
     const saved = Object.entries((state.settings.playback.avSync || {}).devices || {}).filter(([n, v]) => v && n !== dev);
     const list = pp.querySelector('#avSaved');
     list.innerHTML = saved.length ? '<div class="small muted">Also saved:</div>' + saved.map(([n, v]) => `<div class="row gap small" style="margin-top:4px"><span>${esc(n)}: ${v > 0 ? '+' : ''}${v} ms</span><button class="btn small ghost" data-n="${esc(n)}">Forget</button></div>`).join('') : '';
@@ -2705,7 +2716,7 @@ function renderSettings(view) {
     <p class="muted small">Only the title and year are sent to look a poster up, never your provider or login. Nothing is looked up while the VPN check is blocking.</p>
     <label for="aKey">TMDB API key (needed for movies)</label>
     <div class="row gap"><input type="password" id="aKey" value="${esc(art.tmdbKey || '')}" placeholder="Paste your free TMDB key" spellcheck="false" autocomplete="off" style="max-width:420px"><button class="btn" id="aTest">Test key</button><button class="btn ghost" id="aAgain">Look up again</button></div>
-    <p class="faint small">Free: sign up at themoviedb.org, then Settings → API. The "API Key" or the "API Read Access Token" works. ${TV ? 'Easiest to paste on a PC: it syncs to this TV.' : 'It syncs to your other devices, so you only paste it once.'}</p>
+    <p class="faint small">Free: sign up at themoviedb.org, then Settings → API. The "API Key" or the "API Read Access Token" works. ${PHONE ? 'Paste it here, or on a PC: it syncs to this phone.' : TV ? 'Easiest to paste on a PC: it syncs to this TV.' : 'It syncs to your other devices, so you only paste it once.'}</p>
     <label class="check" style="margin-top:14px"><input type="checkbox" id="aTrend" ${art.trending !== false ? 'checked' : ''}> Trending movies and series on Home</label>
     <p class="muted small">What's popular on Netflix, Disney+, Apple TV, Hulu, Peacock, Paramount+, Prime Video and HBO Max, when your playlist has it: from Netflix's own Top 10 and TVmaze, and from TMDB when a key is set (it adds movies from the other services). These are the same lists for everyone: nothing about you or your provider is sent.</p>
     <p class="faint small">This product uses the TMDB API but is not endorsed or certified by TMDB. Series posters and streaming schedules from TVmaze (tvmaze.com). Netflix Top 10 from top10.netflix.com.</p>
@@ -2760,7 +2771,7 @@ function renderSettings(view) {
 
   /* ---- about ---- */
   add('about', h(`<div class="panel"><h2>About</h2>
-    <div class="row gap"><img src="logo.svg" alt="" style="width:48px;height:48px"><div><b>Seal IPTV${TV ? ' for Fire TV' : ''} ${esc(state.version)}</b><div class="muted small">A player for the IPTV service you subscribe to. Seal IPTV doesn't provide any channels or content.</div></div></div>
+    <div class="row gap"><img src="logo.svg" alt="" style="width:48px;height:48px"><div><b>Seal IPTV${PHONE ? ' for Android' : TV ? ' for Fire TV' : ''} ${esc(state.version)}</b><div class="muted small">A player for the IPTV service you subscribe to. Seal IPTV doesn't provide any channels or content.</div></div></div>
     ${aboutPlaylist()}
     <div class="row gap" style="margin-top:14px"><button class="btn" id="uCheck">Check for updates</button><span class="small muted" id="uBox"></span></div>
     <label class="check"><input type="checkbox" id="uAuto" ${s.updates && s.updates.check ? 'checked' : ''}> Look for a new version when Seal IPTV starts</label>
@@ -2802,9 +2813,10 @@ function settingsSections(wrap, page) {
     const b = h(`<button class="set-item" data-sec="${k}"><span class="ico">${ico}</span><span class="txt"><b>${esc(name)}</b><span class="faint small">${esc(note)}</span></span></button>`);
     b.onclick = () => {
       showSec(k);
-      if (TV) { const first = [...page.querySelector(`[data-sec="${k}"]`).querySelectorAll(FOCUSABLE_IN_VIEW)].find(x => x.offsetParent); if (first) first.focus(); }
+      if (TV && !PHONE) { const first = [...page.querySelector(`[data-sec="${k}"]`).querySelectorAll(FOCUSABLE_IN_VIEW)].find(x => x.offsetParent); if (first) first.focus(); }
     };
-    if (TV) b.onfocus = () => showSec(k);
+    if (TV && !PHONE) b.onfocus = () => showSec(k);
+    if (PHONE) b.addEventListener('click', () => wrap.classList.add('ph-open'));   // phone.css: the section over the list
     nav.appendChild(b);
   }
   showSec(state.setSec);
@@ -2847,16 +2859,16 @@ function drawSyncPanel() {
     box.innerHTML = `<h2>Sync</h2>
       <p class="muted small">Playlists, favorites, watched marks, resume points, hidden and locked categories, the parental PIN and settings stay the same on every Seal IPTV connected to your sync server.</p>
       <div class="vpn-box ${s.lastError ? 'bad' : 'ok'}"><b class="${s.lastError ? '' : 'sync-ok'}">${s.lastError ? '⚠️ ' + esc(s.lastError) : '✓ In sync'}</b>
-        <div class="muted small">${esc(s.server)} · ${esc(s.username)} · this PC: ${esc(s.deviceName)}</div>
+        <div class="muted small">${esc(s.server)} · ${esc(s.username)} · this ${DEVICE}: ${esc(s.deviceName)}</div>
         <div class="faint small">${s.lastSync ? 'Last synced ' + esc(fmtDate(s.lastSync)) + ' ' + esc(fmtClock(s.lastSync)) : 'Not synced yet'} · ${(s.items || 0).toLocaleString()} records${s.waiting ? ` · ${s.waiting} waiting to send` : ''}</div>
         ${s.needs === 'passphrase' ? '<div class="small" style="margin-top:6px">The vault passphrase was changed on another PC. Disconnect, then connect again with the new passphrase.</div>' : ''}</div>
-      <div class="row gap"><button class="btn primary" id="syNow">⟳ Sync now</button><button class="btn" id="syTv">📺 Connect a TV</button><button class="btn" id="syDevs">Devices…</button><span class="spacer"></span><button class="btn ghost" id="syOff">Disconnect</button><button class="btn danger apart" id="syDel">Delete vault…</button></div>`;
+      <div class="row gap"><button class="btn primary" id="syNow">⟳ Sync now</button><button class="btn" id="syTv">📺 Connect a TV or phone</button><button class="btn" id="syDevs">Devices…</button><span class="spacer"></span><button class="btn ghost" id="syOff">Disconnect</button><button class="btn danger apart" id="syDel">Delete vault…</button></div>`;
     box.querySelector('#syNow').onclick = async () => { try { state.sync = await call('sync:now'); drawSyncPanel(); toast('Synced.'); } catch (e) { state.sync = await call('sync:status'); drawSyncPanel(); fail(e); } };
     box.querySelector('#syDevs').onclick = syncDevices;
     box.querySelector('#syTv').onclick = connectTv;
     box.querySelector('#syOff').onclick = async () => {
-      if (!(await confirmBox('Disconnect', 'Stop syncing this PC? Everything stays on this PC and in the vault; you can connect again later.', 'Disconnect', true))) return;
-      await call('sync:disconnect'); state.sync = await call('sync:status'); drawSyncPanel(); toast('This PC no longer syncs.');
+      if (!(await confirmBox('Disconnect', `Stop syncing this ${DEVICE}? Everything stays on this ${DEVICE} and in the vault; you can connect again later.`, 'Disconnect', true))) return;
+      await call('sync:disconnect'); state.sync = await call('sync:status'); drawSyncPanel(); toast(`This ${DEVICE} no longer syncs.`);
     };
     box.querySelector('#syDel').onclick = async () => {
       const r = await dialog({ title: 'Delete the vault', okText: 'Delete vault', danger: true,
@@ -2870,13 +2882,13 @@ function drawSyncPanel() {
   if (s.connected && s.needs === 'signin') { f.server = f.server || s.server; f.username = f.username || s.username; f.mode = 'connect'; }
   const create = f.mode === 'create';
   box.innerHTML = `<h2>Sync</h2>
-    <p class="muted small">Keep every Seal IPTV the same — playlists, favorites, watched marks, resume points, category choices, the parental PIN and settings. It needs the <b>Seal IPTV Sync Server</b> on your website (the seal-iptv-server folder; see its README). Everything is encrypted on this PC first: the server can't read any of it.</p>
-    ${s.needs === 'signin' ? '<div class="vpn-box bad"><b>This PC was signed out.</b><div class="muted small">Sign in again with the vault passphrase.</div></div>' : ''}
-    ${TV ? '<div class="row gap" style="margin:4px 0 12px"><button class="btn" id="syPhone">📱 Set up from your phone</button><span class="small muted">Type the server and passphrase on your phone instead.</span></div>' : ''}
+    <p class="muted small">Keep every Seal IPTV the same — playlists, favorites, watched marks, resume points, category choices, the parental PIN and settings. It needs the <b>Seal IPTV Sync Server</b> on your website (the seal-iptv-server folder; see its README). Everything is encrypted on this ${DEVICE} first: the server can't read any of it.</p>
+    ${s.needs === 'signin' ? `<div class="vpn-box bad"><b>This ${DEVICE} was signed out.</b><div class="muted small">Sign in again with the vault passphrase.</div></div>` : ''}
+    ${PHONE ? '<div class="row gap" style="margin:4px 0 12px"><button class="btn primary" id="syPhone">📲 Get it from another device</button><span class="small muted">Your PC or TV is in sync? Join with a short code, nothing to type.</span></div>' : ''}${TV && !PHONE ? '<div class="row gap" style="margin:4px 0 12px"><button class="btn" id="syPhone">📱 Set up from your phone</button><span class="small muted">Type the server and passphrase on your phone instead.</span></div>' : ''}
     <div class="seg" id="syMode"><button data-m="connect" class="${create ? '' : 'active'}">Connect to my vault</button><button data-m="create" class="${create ? 'active' : ''}">Create a new vault</button></div>
     <div class="two-col">
       <div><label for="syServer">Sync server address</label><input type="url" id="syServer" value="${esc(f.server)}" placeholder="https://example.com/iptv-sync/" spellcheck="false"></div>
-      <div><label for="syDevice">This ${TV ? 'TV' : 'PC'}'s name</label><input type="text" id="syDevice" value="${esc(f.deviceName || state.hostname)}"></div>
+      <div><label for="syDevice">This ${DEVICE}'s name</label><input type="text" id="syDevice" value="${esc(f.deviceName || state.hostname)}"></div>
       <div><label for="syUser">Username</label><input type="text" id="syUser" value="${esc(f.username)}" spellcheck="false" autocomplete="off"></div>
       <div><label for="syPass">Vault passphrase</label><input type="password" id="syPass" autocomplete="new-password" placeholder="at least 10 characters"></div>
       ${create ? `<div><label for="syPass2">Vault passphrase again</label><input type="password" id="syPass2" autocomplete="new-password"></div>
@@ -2905,7 +2917,7 @@ function drawSyncPanel() {
       const r = await call('sync:connect', { server: f.server, username: f.username, passphrase: pass, create, setupCode: create ? $('#syCode').value.trim() : '', deviceName: f.deviceName || state.hostname });
       state.sync = r;
       busy(false);
-      toast(`${create ? 'Vault created' : 'Connected'}: ${r.items.toLocaleString()} records in sync.${r.joined && r.joined.length ? ` "${r.joined.join('", "')}" was already on this PC and is now one playlist.` : ''}`);
+      toast(`${create ? 'Vault created' : 'Connected'}: ${r.items.toLocaleString()} records in sync.${r.joined && r.joined.length ? ` "${r.joined.join('", "')}" was already on this ${DEVICE} and is now one playlist.` : ''}`);
       await refreshAll(['profile']);
     } catch (e) { busy(false); $('#syErr').textContent = e.message; }
   };
@@ -2916,7 +2928,7 @@ async function syncDevices() {
   try { list = await call('sync:devices'); } catch (e) { return fail(e); }
   await dialog({
     title: 'Devices', okText: 'Close', hideCancel: true,
-    html: `<p class="muted small">Every Seal IPTV signed in to this vault. Sign out one you no longer use (it can sign in again with the passphrase).</p><div id="devList">${list.map(d => `<div class="dev-row"><div style="flex:1"><b>${esc(d.name)}</b>${d.current ? ' <span class="tag on">this PC</span>' : ''}<div class="faint small">Last seen ${esc(fmtDate(d.lastSeen * 1000))} ${esc(fmtClock(d.lastSeen * 1000))}</div></div>${d.current ? '' : `<button class="btn small danger" data-id="${esc(d.id)}">Sign out</button>`}</div>`).join('')}</div>`,
+    html: `<p class="muted small">Every Seal IPTV signed in to this vault. Sign out one you no longer use (it can sign in again with the passphrase).</p><div id="devList">${list.map(d => `<div class="dev-row"><div style="flex:1"><b>${esc(d.name)}</b>${d.current ? ` <span class="tag on">this ${DEVICE}</span>` : ''}<div class="faint small">Last seen ${esc(fmtDate(d.lastSeen * 1000))} ${esc(fmtClock(d.lastSeen * 1000))}</div></div>${d.current ? '' : `<button class="btn small danger" data-id="${esc(d.id)}">Sign out</button>`}</div>`).join('')}</div>`,
     onOpen: () => $$('#devList button').forEach(b => b.onclick = async () => { try { await call('sync:revoke', b.dataset.id); b.closest('.dev-row').remove(); toast('Signed out.'); } catch (e) { fail(e); } })
   });
 }
@@ -3132,7 +3144,7 @@ const Upd = {
 const Saver = (() => {
   const SPEED = 70;   // px per second
   let last = Date.now(), el = null, raf = 0, mx = -1, my = -1;
-  const minutes = () => { const s = state.settings && state.settings.screensaver; return !s || s.on === false ? 0 : Number(s.minutes) || 5; };
+  const minutes = () => { if (PHONE) return 0; const s = state.settings && state.settings.screensaver; return !s || s.on === false ? 0 : Number(s.minutes) || 5; };
   // a video that's playing (paused counts as nothing playing; Fire TV: the player is Android's, open = playing)
   const playing = () => typeof Player !== 'undefined' && Player.isOpen() && (TV || !$('#video').paused);
 

@@ -10,6 +10,7 @@
  *   SealIPTV-Setup-<v>.exe          Windows installer (new PCs)
  *   SealIPTV-<v>.sealiptv           Windows update package (app.asar)
  *   SealIPTV-FireTV-<v>.apk         Fire TV app (new TVs; Android changes)
+ *   SealIPTV-Android-<v>.apk        phone app (the same code, its own app id + page)
  *   SealIPTV-TV-<v>.zip             Fire TV update package (assets/www)
  *   SealIPTV-Sync-Server-<sv>.zip   the sync server (never with config.php)
  *   update.json + update.json.sig   what's in the release, signed
@@ -74,10 +75,12 @@ fs.copyFileSync(path.join(WIN, 'dist', 'win-unpacked', 'resources', 'app.asar'),
 const inPkg = require(path.join(WIN, 'src', 'main', 'asarinfo.js')).readPackageJson(winPkg);
 if (inPkg.version !== V || !inPkg.__hasMain) { console.error('The Windows package doesn\'t look right:', inPkg.version); process.exit(1); }
 
-step('Fire TV app + update package');
+step('Fire TV + phone apps, update package');
 run('powershell -NoProfile -ExecutionPolicy Bypass -File build-apk.ps1', TV);
 const apk = path.join(OUT, `SealIPTV-FireTV-${V}.apk`);
 fs.copyFileSync(path.join(ROOT, 'dist', `SealIPTV-FireTV-${V}.apk`), apk);
+const phoneApk = path.join(OUT, `SealIPTV-Android-${V}.apk`);
+fs.copyFileSync(path.join(ROOT, 'dist', `SealIPTV-Android-${V}.apk`), phoneApk);
 const www = path.join(TV, 'app', 'src', 'main', 'assets', 'www');
 const webInfo = JSON.parse(fs.readFileSync(path.join(www, 'version.json'), 'utf8'));
 if (webInfo.version !== V) { console.error('The Fire TV pages are version ' + webInfo.version); process.exit(1); }
@@ -110,6 +113,10 @@ const manifest = {
   tv: {
     web: { file: path.basename(tvZip), sha256: sha(tvZip), size: size(tvZip), minNative: webInfo.minNative },
     apk: { file: path.basename(apk), sha256: sha(apk), size: size(apk), versionCode }
+  },
+  // the phone app: its own APK; its pages come from tv.web (the same zip has mobile.html)
+  mobile: {
+    apk: { file: path.basename(phoneApk), sha256: sha(phoneApk), size: size(phoneApk), versionCode }
   },
   server: { file: path.basename(srvZip), sha256: sha(srvZip), version: srvVersion }
 };

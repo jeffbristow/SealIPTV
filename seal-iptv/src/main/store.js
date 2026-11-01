@@ -120,7 +120,16 @@ class Store {
    * ================================================================= */
   _load() {
     let d = {};
-    try { d = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch { /* first start */ }
+    try { d = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch (e) {
+      // first start: no file. A file that's there but can't be read must never be overwritten by the next
+      // save (playlists and settings gone): kept aside as seal-iptv.json.unreadable-<time>
+      let there = false;
+      try { there = fs.existsSync(this.file); } catch { /* can't tell */ }
+      if (there) {
+        console.error('[seal] seal-iptv.json could not be read, kept aside:', e && e.message);
+        try { fs.renameSync(this.file, `${this.file}.unreadable-${Date.now()}`); } catch { /* still there: overwritten later */ }
+      }
+    }
     const settings = clone(DEFAULTS);
     for (const k of Object.keys(DEFAULTS)) {
       if (d.settings && d.settings[k] !== undefined) {

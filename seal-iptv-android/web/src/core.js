@@ -44,7 +44,9 @@ const VERSION = typeof __SEAL_VERSION__ !== 'undefined' ? __SEAL_VERSION__ : (N 
 const T0 = Date.now();
 const trace = (...a) => console.log(`[seal] ${a.join(' ')} (${Date.now() - T0} ms)`);
 trace('core', VERSION, 'starts');
-const UA = { seal: `SealIPTV/${VERSION} (Fire TV)`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
+const PHONE = typeof window !== 'undefined' && !!window.SEAL_PHONE;   // the phone app (mobile.html)
+const HERE = PHONE ? 'this phone' : 'this Fire TV';
+const UA = { seal: `SealIPTV/${VERSION} (${PHONE ? 'Android' : 'Fire TV'})`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 const listeners = new Map();
 const send = (ch, data) => { for (const fn of listeners.get(ch) || []) { try { fn(data); } catch (e) { console.error(e); } } };
 
@@ -157,12 +159,12 @@ handle('app:init', async () => {
     vpn: vpn.status(),
     catalog: store.getSettings().activeProfile ? catalog.summary(store.getSettings().activeProfile) : null,
     stale: store.getSettings().activeProfile ? catalog.stale(store.getSettings().activeProfile) : false,
-    dataDir: 'this Fire TV (app storage)',
+    dataDir: HERE + ' (app storage)',
     parental: parental.status(),
     sync: sync.status(),
     lists: store.getSettings().activeProfile ? library.lists(store.getSettings().activeProfile) : [],
-    hostname: N.deviceName ? N.deviceName() : 'Fire TV',
-    platform: 'tv'
+    hostname: N.deviceName ? N.deviceName() : (PHONE ? 'Phone' : 'Fire TV'),
+    platform: PHONE ? 'phone' : 'tv'
   };
 });
 
@@ -296,11 +298,12 @@ function lanAddress() {
 handle('phone:start', async () => {
   if (typeof N.phoneStart !== 'function') throw new Error('Install the newest Seal IPTV for Fire TV (Settings → About → Check for updates) to set it up from a phone.');
   const ip = lanAddress();
-  if (!ip) throw new Error('The TV isn\'t on a home network (Wi-Fi or Ethernet), so a phone can\'t reach it.');
-  const html = await (await globalThis.__pageFetch('phone.html')).text();
-  // /hello: how another Seal IPTV on the network finds this TV ("Connect a TV")
-  const port = N.phoneStart(8765, html, JSON.stringify({ app: 'seal-iptv-setup', v: 1, name: N.deviceName ? N.deviceName() : 'Fire TV' }));
-  if (port < 0) throw new Error('The TV couldn\'t open its setup page on the home network.');
+  if (!ip) throw new Error(PHONE ? 'This phone isn\'t on Wi-Fi, so your other devices can\'t reach it.' : 'The TV isn\'t on a home network (Wi-Fi or Ethernet), so a phone can\'t reach it.');
+  // the setup page says "phone" or "TV" (phone/page.js reads data-dev)
+  const html = (await (await globalThis.__pageFetch('phone.html')).text()).replace('<html', `<html data-dev="${PHONE ? 'phone' : 'TV'}"`);
+  // /hello: how another Seal IPTV on the network finds this TV / phone ("Connect a TV or phone")
+  const port = N.phoneStart(8765, html, JSON.stringify({ app: 'seal-iptv-setup', v: 1, kind: PHONE ? 'phone' : 'tv', name: N.deviceName ? N.deviceName() : (PHONE ? 'Phone' : 'Fire TV') }));
+  if (port < 0) throw new Error(PHONE ? 'This phone couldn\'t open its setup page on Wi-Fi.' : 'The TV couldn\'t open its setup page on the home network.');
   const code = phoneLink.newCode();
   phone = { key: phoneLink.keyFrom(code), bad: 0 };
   const url = `http://${ip}:${port}/#${code}`;
@@ -372,7 +375,7 @@ handle('vpn:check', async () => { const s = await vpn.check({ force: true }); gu
 handle('vpn:adapters', () => vpn.adapters());
 handle('vpn:publicIp', () => vpn.publicIp());
 handle('vpn:openProton', () => {
-  if (!N.launchApp('ch.protonvpn.android')) throw new Error('ProtonVPN isn\'t installed on this Fire TV.');
+  if (!N.launchApp('ch.protonvpn.android')) throw new Error('ProtonVPN isn\'t installed on ' + HERE + '.');
   return true;
 });
 
@@ -388,12 +391,12 @@ handle('play:prepare', async req => {
 });
 handle('play:stopped', () => { playUa = null; guard(); return true; });
 handle('play:netlog', () => []);
-handle('play:findVlc', () => 'another app on this Fire TV (Android asks which)');
+handle('play:findVlc', () => 'another app on ' + HERE + ' (Android asks which)');
 handle('play:external', async req => {
   const id = pid();
   await vpn.ensure();
   const s = await catalog.streamUrl(id, req);
-  if (!N.openExternal(s.url, req.title || '', s.ua || userAgent())) throw new Error('No other video app on this Fire TV can open it. Install VLC for Fire TV from the Amazon Appstore.');
+  if (!N.openExternal(s.url, req.title || '', s.ua || userAgent())) throw new Error(PHONE ? 'No other video app on this phone can open it. Install VLC, for example from F-Droid or the Play Store.' : 'No other video app on this Fire TV can open it. Install VLC for Fire TV from the Amazon Appstore.');
   return true;
 });
 

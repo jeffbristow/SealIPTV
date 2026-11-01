@@ -97,7 +97,7 @@ final class UpdateManager {
         String ver = p.getString("web", null);
         if (ver == null) return null;
         File dir = new File(webDir(c), ver);
-        boolean ok = new File(dir, "index.html").isFile() && cmp(ver, builtInWebVersion(c)) > 0 && !p.getBoolean("bad-" + ver, false);
+        boolean ok = new File(dir, BuildConfig.PHONE ? "mobile.html" : "index.html").isFile() && cmp(ver, builtInWebVersion(c)) > 0 && !p.getBoolean("bad-" + ver, false);
         if (ok) {
             try (InputStream in = new FileInputStream(new File(dir, "version.json"))) {
                 JSONObject v = new JSONObject(new String(readAll(in, 4096, null, 0), StandardCharsets.UTF_8));
@@ -160,7 +160,9 @@ final class UpdateManager {
             if (!version.equals(ver(tag))) throw new Exception("The update information for " + tag + " is for another version, so it was ignored.");
             JSONObject tv = m.optJSONObject("tv");
             JSONObject web = tv == null ? null : tv.optJSONObject("web");
-            JSONObject apk = tv == null ? null : tv.optJSONObject("apk");
+            // each app has its own APK in the release (tv / mobile); the pages zip (tv.web) is shared
+            JSONObject apkPart = "tv".equals(BuildConfig.APK_PART) ? tv : m.optJSONObject(BuildConfig.APK_PART);
+            JSONObject apk = apkPart == null ? null : apkPart.optJSONObject("apk");
             String kind = null;
             JSONObject part = null;
             boolean apkNewer = apk != null && apk.optInt("versionCode", 0) > BuildConfig.VERSION_CODE;
@@ -198,7 +200,7 @@ final class UpdateManager {
         String version = found.getString("version"), tag = found.getString("tag"), kind = found.getString("kind");
         JSONObject part = found.getJSONObject("part");
         String file = part.optString("file"), sha = part.optString("sha256");
-        if (file.isEmpty() || !sha.matches("[0-9a-f]{64}")) throw new Exception("This release has nothing to install on a Fire TV.");
+        if (file.isEmpty() || !sha.matches("[0-9a-f]{64}")) throw new Exception(BuildConfig.PHONE ? "This release has nothing to install on a phone." : "This release has nothing to install on a Fire TV.");
         JSONObject out = new JSONObject().put("version", version);
 
         if ("apk".equals(kind)) {
@@ -276,7 +278,7 @@ final class UpdateManager {
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(15000);
             c.setReadTimeout(60000);
-            c.setRequestProperty("User-Agent", "SealIPTV/" + BuildConfig.VERSION_NAME + " (Fire TV)");
+            c.setRequestProperty("User-Agent", "SealIPTV/" + BuildConfig.VERSION_NAME + (BuildConfig.PHONE ? " (Android)" : " (Fire TV)"));
             if (url.startsWith("https://api.github.com/")) c.setRequestProperty("Accept", "application/vnd.github+json");
             int status;
             try { status = c.getResponseCode(); }

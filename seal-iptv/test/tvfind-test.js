@@ -51,7 +51,7 @@ const rejects = async (p, re, msg) => { try { await p; } catch (e) { assert.ok(r
     ok(!bad.ok && /code/.test(bad.error), 'another code: the TV says so');
     await rejects(send({ address: '127.0.0.7:8765', code: 'ABC', data }), /10 letters/, 'a code that\'s too short is caught before sending');
     await rejects(send({ address: 'http://127.0.0.8:8765/', code, data }), /can't be reached/, 'nothing there: says so');
-    await rejects(send({ address: 'not an address!', code, data }), /isn't a TV's address/, 'an address that isn\'t one is caught');
+    await rejects(send({ address: 'not an address!', code, data }), /isn't an address/, 'an address that isn\'t one is caught');
   } finally {
     tv.close(); other.close();
   }

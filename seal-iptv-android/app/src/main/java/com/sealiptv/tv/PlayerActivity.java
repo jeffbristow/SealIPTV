@@ -20,6 +20,12 @@
  *                 audio sync, channel guide / next episode, another app
  *   Back          close the guide / panel / controls, else close
  *
+ * Touch (the phone app, BuildConfig.PHONE): tap = controls; the top bar has
+ * <- Back, Channels (live), previous / next channel (live), the options panel;
+ * double-tap the left / right of the picture = back / forward 10 s, the middle =
+ * pause; drag up / down on the right = volume, on the left = brightness.
+ * Leaving the app while it plays: a picture-in-picture window.
+ *
  * AUDIO SYNC: the video is drawn by the clock of the sound. A sink that
  * reports its position <offset> later makes every frame wait <offset> —
  * the picture waits for late (Bluetooth) sound; a negative offset makes
@@ -119,6 +125,10 @@ public class PlayerActivity extends Activity {
     private ProgressBar seekBar;
     private long seekTo = -1;
 
+    // touch (phones)
+    private View guideBtn, prevBtn, nextBtn;
+    private boolean inPip = false;
+
     /* ---------------- layout ---------------- */
     @Override
     protected void onCreate(Bundle saved) {
@@ -137,10 +147,35 @@ public class PlayerActivity extends Activity {
         top.setOrientation(LinearLayout.VERTICAL);
         top.setPadding(dp(28), dp(18), dp(28), dp(30));
         top.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xCC000000, 0x00000000}));
-        titleView = text(22, Color.WHITE, true);
-        subView = text(14, 0xFFC9CED6, false);
-        top.addView(titleView);
-        top.addView(subView);
+        titleView = text(BuildConfig.PHONE ? 17 : 22, Color.WHITE, true);
+        subView = text(BuildConfig.PHONE ? 13 : 14, 0xFFC9CED6, false);
+        if (BuildConfig.PHONE) {
+            // one row: back | title, subtitle | Channels, previous, next, options - big enough for a thumb
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            top.setPadding(dp(8), dp(10), dp(8), dp(26));
+            top.setClickable(true);   // taps on the bar don't reach the picture
+            top.addView(touchBtn("←", "Back", () -> finishPlayer(true)));
+            LinearLayout words = new LinearLayout(this);
+            words.setOrientation(LinearLayout.VERTICAL);
+            words.setPadding(dp(6), 0, dp(6), 0);
+            titleView.setSingleLine(true);
+            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            subView.setSingleLine(true);
+            subView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            words.addView(titleView);
+            words.addView(subView);
+            top.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+            guideBtn = touchBtn("☰  Channels", "Channel list", this::showGuide);
+            prevBtn = touchBtn("▲", "Previous channel", () -> zap(-1));
+            nextBtn = touchBtn("▼", "Next channel", () -> zap(1));
+            top.addView(guideBtn);
+            top.addView(prevBtn);
+            top.addView(nextBtn);
+        } else {
+            top.addView(titleView);
+            top.addView(subView);
+        }
         root.addView(top, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         liveBadge = text(12, Color.WHITE, true);
@@ -149,6 +184,7 @@ public class PlayerActivity extends Activity {
         liveBadge.setBackground(round(0xFFFF6464, 4));
         FrameLayout.LayoutParams lb = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         lb.setMargins(0, dp(22), dp(28), 0);
+        if (BuildConfig.PHONE) { lb.gravity = Gravity.TOP | Gravity.START; lb.setMargins(dp(16), dp(16), 0, 0); }   // the top bar has the buttons on the right
         root.addView(liveBadge, lb);
 
         osd = text(16, Color.WHITE, false);
@@ -190,7 +226,7 @@ public class PlayerActivity extends Activity {
         gt.setText("Channels");
         gt.setPadding(dp(10), 0, 0, dp(4));
         TextView gh = text(12, 0xFF8B93A1, false);
-        gh.setText("OK watch · 0 the channel before · Back close");
+        gh.setText(BuildConfig.PHONE ? "Tap a channel to watch it · tap the picture to close" : "OK watch · 0 the channel before · Back close");
         gh.setPadding(dp(10), 0, 0, dp(10));
         guideBox.addView(gt);
         guideBox.addView(gh);
@@ -210,7 +246,7 @@ public class PlayerActivity extends Activity {
             @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
         });
         guideBox.addView(guideList, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(guideBox, new FrameLayout.LayoutParams(dp(500), -1, Gravity.START));
+        root.addView(guideBox, new FrameLayout.LayoutParams(BuildConfig.PHONE ? dp(400) : dp(500), -1, Gravity.START));
 
         // the ☰ panel, on the right
         menuBox = new LinearLayout(this);
@@ -226,7 +262,8 @@ public class PlayerActivity extends Activity {
         menuRows.setOrientation(LinearLayout.VERTICAL);
         menuScroll.addView(menuRows);
         menuBox.addView(menuScroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(menuBox, new FrameLayout.LayoutParams(dp(420), -1, Gravity.END));
+        root.addView(menuBox, new FrameLayout.LayoutParams(BuildConfig.PHONE ? dp(360) : dp(420), -1, Gravity.END));
+        if (BuildConfig.PHONE) menuTitle.setOnClickListener(v -> menuBack());   // the panel's title: back / close by touch
 
         // skipping in films: where it will go
         seekBox = panel();
@@ -244,7 +281,15 @@ public class PlayerActivity extends Activity {
 
         setContentView(root);
         view.setResizeMode(getSharedPreferences("player", MODE_PRIVATE).getInt("resize", AspectRatioFrameLayout.RESIZE_MODE_FIT));
-        view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) vis -> top.setVisibility(vis));
+        view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) vis -> top.setVisibility(inPip ? View.GONE : vis));
+        if (BuildConfig.PHONE) {
+            touchSetup();
+            // the player's own buttons: one item at a time (no previous / next track); its ⚙ opens our panel
+            view.setShowPreviousButton(false);
+            view.setShowNextButton(false);
+            View gear = view.findViewById(androidx.media3.ui.R.id.exo_settings);
+            if (gear != null) gear.setOnClickListener(v -> menu());
+        }
         load(getIntent().getStringExtra("json"));
     }
 
@@ -258,7 +303,12 @@ public class PlayerActivity extends Activity {
         ui.removeCallbacks(nextTick);
         titleView.setText(cfg.optString("title"));
         subView.setText(cfg.optString("subtitle"));
-        liveBadge.setVisibility(cfg.optBoolean("live") ? View.VISIBLE : View.GONE);
+        liveBadge.setVisibility(cfg.optBoolean("live") && !BuildConfig.PHONE ? View.VISIBLE : View.GONE);
+        if (BuildConfig.PHONE) {
+            phoneButtons();
+            view.setShowRewindButton(!cfg.optBoolean("live"));       // live: nothing to skip
+            view.setShowFastForwardButton(!cfg.optBoolean("live"));
+        }
         offsetUs = cfg.optLong("avsync", 0) * 1000L;
         JSONArray ch = cfg.optJSONArray("channels");
         if (!cfg.optBoolean("live")) channels = new JSONArray();
@@ -289,7 +339,9 @@ public class PlayerActivity extends Activity {
                 };
             }
         }.setEnableDecoderFallback(true);
-        player = new ExoPlayer.Builder(this, renderers).setMediaSourceFactory(new DefaultMediaSourceFactory(http)).build();
+        ExoPlayer.Builder pb = new ExoPlayer.Builder(this, renderers).setMediaSourceFactory(new DefaultMediaSourceFactory(http));
+        if (BuildConfig.PHONE) pb.setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000);   // the buttons skip like a double-tap
+        player = pb.build();
         view.setPlayer(player);
         String url = cfg.optString("url");
         MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(url));
@@ -354,6 +406,7 @@ public class PlayerActivity extends Activity {
         errorText.setText("This can't be played here (" + why + ").\nIt may be offline, or another app may play it.");
         errorBox.setVisibility(View.VISIBLE);
         errorBox.getChildAt(1).requestFocus();
+        if (BuildConfig.PHONE) view.hideController();
         try { emit("error", new JSONObject().put("message", why).toString()); } catch (Exception ignored) { }
     }
 
@@ -370,6 +423,7 @@ public class PlayerActivity extends Activity {
                     channels = c.optJSONArray("channels") == null ? new JSONArray() : c.optJSONArray("channels");
                     chIndex = c.optInt("index", chIndex);
                     if (channels.length() > 1) cfg.put("canZap", true);   // ↑ ↓ through it too
+                    if (BuildConfig.PHONE) phoneButtons();
                     guide.notifyDataSetChanged();
                     if (guideBox.getVisibility() == View.VISIBLE && chIndex >= 0) guideList.setSelection(chIndex);
                     break;
@@ -615,7 +669,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void page(String title) {
-        menuTitle.setText(title);
+        menuTitle.setText(BuildConfig.PHONE ? (menuUp.size() > 1 ? "‹  " : "✕  ") + title : title);
         menuRows.removeAllViews();
         menuScroll.scrollTo(0, 0);
     }
@@ -740,7 +794,7 @@ public class PlayerActivity extends Activity {
             getSharedPreferences("player", MODE_PRIVATE).edit().putInt("resize", m).apply();   // kept for next time
             menuBack();
         });
-        note("Kept for everything you watch on this TV.");
+        note(BuildConfig.PHONE ? "Kept for everything you watch on this phone." : "Kept for everything you watch on this TV.");
     }
 
     private void avsyncPage() {
@@ -774,6 +828,166 @@ public class PlayerActivity extends Activity {
             if (c instanceof LinearLayout && ((LinearLayout) c).getChildCount() > 0 && ((LinearLayout) c).getChildAt(0) instanceof TextView
                     && ((TextView) ((LinearLayout) c).getChildAt(0)).getText().toString().startsWith(start)) { c.requestFocus(); return; }
         }
+    }
+
+    /* ---------------- touch (phones) ---------------- */
+    private void zap(int dir) {
+        showOsd(dir < 0 ? "▲ Previous channel" : "▼ Next channel");
+        try { emit("zap", new JSONObject().put("dir", dir).toString()); } catch (Exception ignored) { }
+    }
+
+    /** which top-bar buttons this stream has */
+    private void phoneButtons() {
+        boolean live = cfg.optBoolean("live");
+        guideBtn.setVisibility(live && hasGuide() ? View.VISIBLE : View.GONE);
+        int zapVis = live && cfg.optBoolean("canZap") ? View.VISIBLE : View.GONE;
+        prevBtn.setVisibility(zapVis);
+        nextBtn.setVisibility(zapVis);
+    }
+
+    private TextView touchBtn(String label, String what, Runnable run) {
+        TextView b = text(label.length() > 2 ? 15 : 19, Color.WHITE, true);
+        b.setText(label);
+        b.setContentDescription(what);
+        b.setGravity(Gravity.CENTER);
+        b.setMinWidth(dp(48));
+        b.setPadding(dp(12), 0, dp(12), 0);
+        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_pressed}, round(0x663CCF91, 24));
+        bg.addState(new int[]{}, round(0x44000000, 24));
+        b.setBackground(bg);
+        b.setClickable(true);
+        b.setOnClickListener(v -> run.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
+        lp.setMargins(dp(3), 0, dp(3), 0);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private float dragStartY, dragStartValue;
+    private int dragKind = 0;   // 0 not yet, 1 volume, 2 brightness, -1 not ours (the screen's edges)
+    private boolean touchOurs = false;   // this finger's touch: our gestures (true) or a button / panel (false)
+    private android.view.GestureDetector gestures;
+    private android.media.AudioManager audio;
+    private final int[] at = new int[2];
+    // the player's own buttons and bar: touches on them are theirs
+    private static final String[] CONTROL_IDS = {"exo_play_pause", "exo_play", "exo_pause", "exo_rew", "exo_ffwd", "exo_rew_with_amount", "exo_ffwd_with_amount",
+            "exo_progress", "exo_settings", "exo_subtitle", "exo_prev", "exo_next", "exo_fullscreen", "exo_overflow_show", "exo_overflow_hide", "exo_minimal_fullscreen"};
+
+    private void touchSetup() {
+        audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        gestures = new android.view.GestureDetector(this, new android.view.GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(@NonNull android.view.MotionEvent e) { return true; }
+            @Override public boolean onSingleTapConfirmed(@NonNull android.view.MotionEvent e) {
+                if (guideBox.getVisibility() == View.VISIBLE) { hideGuide(); return true; }
+                if (menuBox.getVisibility() == View.VISIBLE) { hideMenu(); return true; }
+                if (view.isControllerFullyVisible()) view.hideController(); else view.showController();
+                return true;
+            }
+            @Override public boolean onDoubleTap(@NonNull android.view.MotionEvent e) {
+                if (player == null || guideBox.getVisibility() == View.VISIBLE || menuBox.getVisibility() == View.VISIBLE) return true;
+                float x = e.getX() / Math.max(1, view.getWidth());
+                if ((x > .35f && x < .65f) || cfg.optBoolean("live")) {
+                    if (player.getPlayWhenReady()) player.pause(); else player.play();
+                    showOsd(player.getPlayWhenReady() ? "▶  Playing" : "❚❚  Paused");
+                    return true;
+                }
+                int dir = x < .5f ? -1 : 1;
+                long dur = player.getDuration();
+                long to = Math.max(0, player.getCurrentPosition() + dir * 10000L);
+                if (dur != C.TIME_UNSET && dur > 0) to = Math.min(dur - 1000, to);
+                player.seekTo(to);
+                showOsd((dir < 0 ? "⏪  −10 s   " : "⏩  +10 s   ") + clock(to));
+                return true;
+            }
+        });
+    }
+
+    /** is the touch on v (shown)? */
+    private boolean hit(View v, android.view.MotionEvent e) {
+        if (v == null || !v.isShown() || v.getAlpha() < .05f) return false;
+        v.getLocationOnScreen(at);
+        float x = e.getRawX(), y = e.getRawY();
+        return x >= at[0] && x < at[0] + v.getWidth() && y >= at[1] && y < at[1] + v.getHeight();
+    }
+
+    /** a touch on something you press (the player's buttons, the top bar's, a panel) rather than the picture */
+    private boolean onControl(android.view.MotionEvent e) {
+        if (hit(guideBox, e) || hit(menuBox, e) || hit(errorBox, e) || hit(nextBox, e)) return true;
+        for (int i = 0; i < top.getChildCount(); i++) { View c = top.getChildAt(i); if (c.isClickable() && hit(c, e)) return true; }
+        if (view.isControllerFullyVisible()) for (String name : CONTROL_IDS) {
+            int id = getResources().getIdentifier(name, "id", getPackageName());
+            if (id != 0 && hit(view.findViewById(id), e)) return true;
+        }
+        return false;
+    }
+
+    /* Phones: every touch passes here first. Touches on a button / panel go on as usual; the rest of the
+       picture is ours (tap = controls, double-tap = skip / pause, drag = volume / brightness) — the
+       player's own touch handling (which hides the controls on any tap) never sees them. */
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+        if (!BuildConfig.PHONE || inPip || gestures == null) return super.dispatchTouchEvent(e);
+        if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) touchOurs = !onControl(e);
+        if (!touchOurs) return super.dispatchTouchEvent(e);
+        picture(e);
+        return true;
+    }
+
+    private void picture(android.view.MotionEvent e) {
+        int max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+        int h = Math.max(1, view.getHeight());
+        switch (e.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                dragKind = 0;
+                dragStartY = e.getY();
+                // the very top and bottom belong to Android (status bar, gesture bar)
+                if (e.getY() < h * .1f || e.getY() > h * .9f) dragKind = -1;
+                break;
+            case android.view.MotionEvent.ACTION_MOVE:
+                if (dragKind == 0 && Math.abs(e.getY() - dragStartY) > dp(28) && guideBox.getVisibility() != View.VISIBLE && menuBox.getVisibility() != View.VISIBLE) {
+                    dragKind = e.getX() > view.getWidth() / 2f ? 1 : 2;
+                    dragStartY = e.getY();
+                    if (dragKind == 1) dragStartValue = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / (float) max;
+                    else { float b = getWindow().getAttributes().screenBrightness; dragStartValue = b < 0 ? .5f : b; }
+                }
+                if (dragKind > 0) {
+                    float f = Math.max(0f, Math.min(1f, dragStartValue + (dragStartY - e.getY()) / (h * .7f)));
+                    if (dragKind == 1) {
+                        audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, Math.round(f * max), 0);
+                        showOsd("🔊  Volume " + Math.round(f * 100) + " %");
+                    } else {
+                        WindowManager.LayoutParams lp = getWindow().getAttributes();
+                        lp.screenBrightness = Math.max(.02f, f);
+                        getWindow().setAttributes(lp);
+                        showOsd("☀  Brightness " + Math.round(f * 100) + " %");
+                    }
+                    return;
+                }
+                break;
+        }
+        if (dragKind > 0) return;
+        gestures.onTouchEvent(e);
+    }
+
+    /* picture-in-picture: leaving the app (Home, another app) while it plays keeps it in a small window */
+    @Override protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (!BuildConfig.PHONE || player == null || closed || android.os.Build.VERSION.SDK_INT < 26) return;
+        if (!player.isPlaying() || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return;
+        try {
+            Format f = player.getVideoFormat();
+            android.util.Rational r = f != null && f.width > 0 && f.height > 0 ? new android.util.Rational(f.width, f.height) : new android.util.Rational(16, 9);
+            float q = r.floatValue();
+            if (q > 2.39f) r = new android.util.Rational(239, 100); else if (q < 0.42f) r = new android.util.Rational(42, 100);
+            enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().setAspectRatio(r).build());
+        } catch (Exception ignored) { }
+    }
+
+    @Override public void onPictureInPictureModeChanged(boolean pip, android.content.res.Configuration c) {
+        super.onPictureInPictureModeChanged(pip, c);
+        inPip = pip;
+        if (pip) { view.hideController(); view.setUseController(false); hideGuide(); hideMenu(); top.setVisibility(View.GONE); osd.setVisibility(View.GONE); }
+        else view.setUseController(true);
     }
 
     /* ---------------- closing ---------------- */

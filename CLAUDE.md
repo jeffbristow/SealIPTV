@@ -149,6 +149,31 @@ dist/                      Seal-IPTV-Sync-Server-<ver>.zip (upload; never contai
 ../tools/release.js        builds + signs a release into dist/release/<ver>/; --publish = gh release v<ver>
 ../release-notes/<ver>.md  "What's new" for each release (needed for --publish)
 
+Android PHONE app (2026-11-01): the same seal-iptv-android project, Gradle flavour "mobile"
+(app id com.sealiptv.mobile; "tv" = com.sealiptv.tv, unchanged). BuildConfig.PHONE /
+APK_PART. build-apk.ps1 builds both -> dist/SealIPTV-FireTV-<v>.apk + SealIPTV-Android-<v>.apk
+(-Only tv|mobile); release.js puts the phone APK in update.json "mobile.apk" (UpdateManager
+reads its own APK_PART; the pages zip tv.web is shared). Pages: build.js makes mobile.html
+(= index.html with phone.css + phone.js instead of tv.css + tvnav.js, phoneflag.js:
+SEAL_TV + SEAL_PHONE, viewport = device width); MainActivity loads mobile.html, no 1280
+scaling, no immersive / keep-screen-on. app.js: PHONE / DEVICE ('phone'), tap on a channel
+= play. phone.js: tab bar (a div — styles.css stacks <nav>s), More = the sidebar as a sheet,
+Category button + sheet, Settings sections over the list, __tvBack; tab switches clear
+history. PlayerActivity (PHONE): touch top bar, double-tap seek, drag volume / brightness,
+picture-in-picture, the ExoPlayer ⚙ opens our panel. src/mobile/AndroidManifest.xml:
+pages turn, player sensorLandscape, no leanback. Test on PC: TV_HARNESS=<abs path to
+devtest/phone-harness.js> node devtest/tv-run.js <out> (PHONE_LANDSCAPE=1 sideways).
+Phone sync setup: phoneSetup() on PHONE = "📲 Get it from another device" (code big, QR folded
+away); the same PhoneServer / phone:start as the TV's "Set up from your phone". /hello sends
+kind: 'phone' (tvfind -> { phone: true }); the served page says phone/TV from <html data-dev>
+(core.js). connectTv() = "Connect a TV or phone". Store._load keeps an unreadable
+seal-iptv.json aside (.unreadable-<time>) instead of overwriting it (a phone once lost its
+playlist across a reinstall, not reproduced). Test: a pretend PC in sync (test vault on
+php -d extension=pdo_sqlite -S 127.0.0.1:8798 + adb reverse tcp:8798) -> tvfind.send.
+The user's Pixel 6a (GrapheneOS, Android 17): adb over USB; Proton is always-on VPN with
+lockdown — with Proton off NOTHING reaches the internet (UnknownHostException), only
+adb reverse tcp:8790 to the fake provider on this PC.
+
 ## Commands (in `seal-iptv/`)
 
 ```bash

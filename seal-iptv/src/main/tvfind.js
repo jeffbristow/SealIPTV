@@ -44,7 +44,7 @@ async function find({ addresses, fetch: fetchImpl = globalThis.fetch, timeout = 
       const res = await fetchImpl(`http://${address}/hello`, { signal: AbortSignal.timeout(timeout) });
       if (!res.ok) return;
       const j = JSON.parse(await res.text());
-      if (j && j.app === 'seal-iptv-setup') found.push({ address, name: String(j.name || 'Seal IPTV').slice(0, 64) });
+      if (j && j.app === 'seal-iptv-setup') found.push({ address, name: String(j.name || 'Seal IPTV').slice(0, 64), phone: j.kind === 'phone' });
     } catch { /* nothing there */ }
   };
   await Promise.all(Array.from({ length: Math.min(at, hosts.length) }, async () => { while (next < hosts.length) await one(hosts[next++]); }));
@@ -54,9 +54,9 @@ async function find({ addresses, fetch: fetchImpl = globalThis.fetch, timeout = 
 /** Seal data with the TV's code and post it: -> the TV's answer */
 async function send({ address, code, data, fetch: fetchImpl = globalThis.fetch }) {
   const c = link.normal(code);
-  if (c.length !== 10) throw new Error('Type the code shown on the TV (10 letters and numbers).');
+  if (c.length !== 10) throw new Error('Type the code it shows (10 letters and numbers).');
   const where = String(address || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
-  if (!/^[\w.-]+(:\d+)?$/.test(where)) throw new Error('That isn\'t a TV\'s address (it looks like 192.168.1.20:8765).');
+  if (!/^[\w.-]+(:\d+)?$/.test(where)) throw new Error('That isn\'t an address (it looks like 192.168.1.20:8765).');
   let res;
   try {
     res = await fetchImpl(`http://${where.includes(':') ? where : where + ':8765'}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: link.seal(link.keyFrom(c), data), signal: AbortSignal.timeout(90000) });

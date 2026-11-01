@@ -49,6 +49,17 @@ try {
   const plain = new Store(path.join(dir, 'plain'), null);
   const pp = plain.saveProfile({ type: 'xtream', server: 'x.tv', username: 'u', password: 'pw' });
   ok(plain.getProfile(pp.id).password === 'pw', 'works without secure storage too');
+
+  // a settings file that can't be read is kept aside, never overwritten by the next save
+  const bad = path.join(dir, 'broken');
+  fs.mkdirSync(bad);
+  fs.writeFileSync(path.join(bad, 'seal-iptv.json'), '{"profiles":[{"id":"p1","name":"Mine"');   // cut short
+  const err = console.error; console.error = () => {};
+  const st2 = new Store(bad, fakeSecure);
+  console.error = err;
+  st2.setSettings({ playback: { watchedPercent: 80 } });
+  const kept = fs.readdirSync(bad).filter(f => f.startsWith('seal-iptv.json.unreadable-'));
+  ok(kept.length === 1 && fs.readFileSync(path.join(bad, kept[0]), 'utf8').includes('"Mine"'), 'an unreadable settings file is kept aside before anything is saved');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

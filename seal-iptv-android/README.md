@@ -17,6 +17,22 @@ From 1.1.0 on, Seal IPTV updates itself: it checks GitHub when it starts (Settin
 
 An APK installs over the old version (keeping playlists and settings) only when it's signed with the same key: keep `keystore\` and `keystore.properties` safe and private (never in git).
 
+## Android phones
+
+The same app for phones: `SealIPTV-Android-<version>.apk` (app id `com.sealiptv.mobile`, so it can sit next to the TV one). Same playlists, favorites, sync and VPN guard; the pages are laid out for a phone:
+
+- **Tabs at the bottom:** Home, Live TV, Guide, Movies, Series, and **More** (Sports, Pay-Per-View, Collections, Favorites, Watchlist, your categories, Settings, the playlist and the VPN status).
+- **Categories:** the *Category* button above a list opens them in a sheet, with a box to find one.
+- **Tap** a channel to watch it, a poster to open it; **press and hold** for its menu (favorite, watchlist, your categories).
+- **Settings:** a list of sections; one opens over it (‹ or Back goes back to the list).
+- **The player** is always sideways. Tap: controls. Top bar: ← Back, ☰ Channels (live), ▲ ▼ the channel before / after. ⚙ in the controls: audio track, subtitles, speed, picture size, audio sync, another app. Double-tap the left / right of the picture: back / forward 10 s (the middle: pause). Drag up / down on the right: volume, on the left: brightness. Home or another app while it plays: a picture-in-picture window.
+- **Back** (gesture or button) closes a sheet or dialog, then goes back a page, then Home, then leaves.
+- **Setting it up from your PC or TV:** on the phone, **📲 Get it from another device** (welcome screen, Settings → Sync, Settings → Playlists) shows a short code. On a Seal IPTV that's already in sync: **Settings → Sync → 📺 Connect a TV or phone**, pick the phone (same Wi-Fi) and type the code — the phone joins the vault as a device of its own. Nothing in sync yet: the same window has a QR code / address to open on another phone or computer and type in the sync server or a playlist login. If nothing finds the phone, allow LAN connections in Proton VPN.
+
+Install: allow installing from your browser / file manager (Android asks the first time), then open the APK — or from this PC with USB debugging on: `C:\Android\Sdk\platform-tools\adb.exe install -r ..\dist\SealIPTV-Android-<version>.apk`. It updates itself like the TV app (its own APK in each release, the shared pages zip).
+
+**VPN guard on a phone:** with *Settings → VPN → Only play when my VPN is on*, Seal IPTV checks Android's VPN connection and asks Proton's server whether the traffic comes from Proton. Proton's own *always-on VPN / block connections without VPN* (Android Settings → Network → VPN) is a good extra: nothing gets out at all while Proton is off.
+
 ## The remote
 
 | Button | |

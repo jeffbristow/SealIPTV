@@ -36,6 +36,26 @@ android {
         }
     }
 
+    // two apps from the same code: the Fire TV / Google TV one (remote, 1280-wide pages) and the
+    // phone one (touch, its own page layout: mobile.html). Separate app ids, so both can be installed;
+    // the same signing key. The pages zip of a release is shared; each has its own APK.
+    flavorDimensions = ['device']
+    productFlavors {
+        tv {
+            dimension 'device'
+            applicationId 'com.sealiptv.tv'
+            buildConfigField 'boolean', 'PHONE', 'false'
+            buildConfigField 'String', 'APK_PART', '"tv"'
+        }
+        mobile {
+            dimension 'device'
+            applicationId 'com.sealiptv.mobile'
+            minSdk 26
+            buildConfigField 'boolean', 'PHONE', 'true'
+            buildConfigField 'String', 'APK_PART', '"mobile"'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

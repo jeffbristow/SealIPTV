@@ -62,6 +62,19 @@ swap(`<script src="../../node_modules/hls.js/dist/hls.min.js"></script>
 <script src="player-tv.js"></script>`);
 fs.writeFileSync(path.join(OUT, 'index.html'), html);
 
+// the phone app's page (MainActivity loads it in the mobile build): the same page, laid out at the phone's
+// own width, touch instead of the remote (phone.js / phone.css instead of tvnav.js / tv.css)
+let mob = html;
+const mswap = (a, b) => { if (!mob.includes(a)) throw new Error('index.html changed: ' + a.slice(0, 50)); mob = mob.replace(a, b); };
+mswap('<html lang="en" class="tv">', '<html lang="en" class="phone">');
+mswap('<meta name="viewport" content="width=1280, user-scalable=no">', '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">');
+mswap('<link rel="stylesheet" href="tv.css">', '<link rel="stylesheet" href="phone.css">');
+mswap('<script src="tvflag.js"></script>', '<script src="phoneflag.js"></script>');
+mswap('<script src="tvnav.js"></script>', '<script src="phone.js"></script>');
+fs.writeFileSync(path.join(OUT, 'mobile.html'), mob);
+fs.writeFileSync(path.join(OUT, 'phoneflag.js'), "window.SEAL_TV = true; window.SEAL_PHONE = true; document.documentElement.classList.add('phone');\n");
+for (const f of ['phone.js', 'phone.css']) fs.copyFileSync(path.join(__dirname, 'src', f), path.join(OUT, f));
+
 // the page a phone opens for "Set up from your phone" (phone/page.js, served by PhoneServer.java): one file, its script inline
 const phoneJs = esbuild.buildSync({ entryPoints: [path.join(__dirname, 'src', 'phone', 'page.js')], bundle: true, write: false, format: 'iife', platform: 'browser', target: ['chrome80', 'safari14'], minify: true, legalComments: 'none', logLevel: 'warning' }).outputFiles[0].text;
 const phoneHtml = fs.readFileSync(path.join(__dirname, 'src', 'phone', 'phone.html'), 'utf8');

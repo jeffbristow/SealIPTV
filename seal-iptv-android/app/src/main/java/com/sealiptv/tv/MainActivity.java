@@ -119,7 +119,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // a TV stays on while the app is open; a phone only while something plays (PlayerActivity)
+        if (!BuildConfig.PHONE) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else {
+            getWindow().setStatusBarColor(Color.parseColor("#121418"));
+            getWindow().setNavigationBarColor(Color.parseColor("#181b21"));
+        }
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#121418"));
         setContentView(web);
@@ -133,8 +138,9 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         // the page is laid out 1280 px wide (index.html); scale it so exactly that fills the TV,
         // whatever the screen (1080p Fire TV = 1.5x, 720p = 1x, 4K = 3x) — no sideways scrolling
+        // (a phone: mobile.html is laid out at the phone's own width, no scaling)
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        web.setInitialScale(Math.max(50, Math.round(Math.max(dm.widthPixels, dm.heightPixels) * 100f / 1280f)));
+        if (!BuildConfig.PHONE) web.setInitialScale(Math.max(50, Math.round(Math.max(dm.widthPixels, dm.heightPixels) * 100f / 1280f)));
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);   // providers' posters are often http://
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
@@ -200,9 +206,10 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(bridge, "SealNative");
         String downloaded = UpdateManager.pickWeb(this);
         webVersion = downloaded != null ? downloaded : UpdateManager.builtInWebVersion(this);
+        String page = BuildConfig.PHONE ? "mobile.html" : "index.html";   // the phone's pages: touch, its own layout
         web.loadUrl(downloaded != null
-                ? "https://appassets.androidplatform.net/update/" + downloaded + "/index.html"
-                : "https://appassets.androidplatform.net/assets/www/index.html");
+                ? "https://appassets.androidplatform.net/update/" + downloaded + "/" + page
+                : "https://appassets.androidplatform.net/assets/www/" + page);
         web.requestFocus();
 
         watchNetwork();
@@ -295,6 +302,6 @@ public class MainActivity extends Activity {
 
     @Override public void onWindowFocusChanged(boolean has) {
         super.onWindowFocusChanged(has);
-        if (has) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (has && !BuildConfig.PHONE) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 }

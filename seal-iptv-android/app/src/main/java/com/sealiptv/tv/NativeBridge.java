@@ -414,7 +414,7 @@ public class NativeBridge {
     /* ---------------- device, apps, keyboard ---------------- */
     @JavascriptInterface public String deviceName() {
         try { String n = Settings.Global.getString(activity.getContentResolver(), "device_name"); if (n != null && !n.isEmpty()) return n; } catch (Exception ignored) { }
-        return "Fire TV (" + Build.MODEL + ")";
+        return BuildConfig.PHONE ? Build.MODEL : "Fire TV (" + Build.MODEL + ")";
     }
 
     @JavascriptInterface public String appVersion() { return BuildConfig.VERSION_NAME; }

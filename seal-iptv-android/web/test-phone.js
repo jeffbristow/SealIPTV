@@ -26,6 +26,6 @@ ok(link.seal(key, { a: 1 }) !== link.seal(key, { a: 1 }), 'the same message seal
 const page = path.join(__dirname, '..', 'app', 'src', 'main', 'assets', 'www', 'phone.html');
 if (fs.existsSync(page)) {
   const html = fs.readFileSync(page, 'utf8');
-  ok(/<script>[\s\S]*Send to the TV[\s\S]*<\/script>/.test(html) && !/\/\*PAGE_JS\*\//.test(html) && !/<script src=/.test(html), 'the phone\'s page (build.js) is one file with its script inside');
+  ok(/<script>[\s\S]*Send to the [\s\S]*<\/script>/.test(html) && !/\/\*PAGE_JS\*\//.test(html) && !/<script src=/.test(html), 'the phone\'s page (build.js) is one file with its script inside');
 }
 console.log(`\nPhone setup tests: ${passed} passed`);

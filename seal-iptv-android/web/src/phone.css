@@ -1,0 +1,250 @@
+/* =====================================================================
+ * Seal IPTV for Android phones — phone.css   (on top of styles.css)
+ * ---------------------------------------------------------------------
+ * The same pages as Windows and the TV, laid out for a phone held
+ * upright (and sideways): a tab bar at the bottom instead of the sidebar
+ * (the sidebar is the "More" sheet), categories in a sheet, posters three
+ * across, big touch targets, menus and dialogs as sheets from the bottom.
+ * phone.js adds the tab bar, the category button and the back handling.
+ * Sections: 1 base · 2 shell (tabs, More, top bar) · 3 lists · 4 posters,
+ *           Home · 5 details · 6 TV Guide · 7 settings · 8 forms ·
+ *           9 sheets, dialogs, toasts
+ * ===================================================================== */
+
+/* ---------- 1. base ---------- */
+html.phone { --tabs: 58px; -webkit-text-size-adjust: 100%; }
+html.phone body { font-size: 15px; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; overscroll-behavior: none; }
+html.phone ::-webkit-scrollbar { width: 0; height: 0; }
+html.phone .win-only, html.phone .tv-hide { display: none !important; }   /* (the pages' own ← Back too: the top bar has ‹) */
+html.phone .hint-remote { display: none !important; }
+html.phone :focus { outline: none; }
+html.phone :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* nothing hovers on a touch screen: no lit-up rows left behind after a tap */
+@media (hover: none) {
+  html.phone .card:hover .poster { outline: none; }
+  html.phone .channel:hover, html.phone .cat:hover, html.phone .episode:hover { background: none; }
+  html.phone .channel.active:hover, html.phone .cat.active:hover { background: var(--bg-4); }
+}
+html.phone .card:active .poster, html.phone .channel:active, html.phone .episode:active, html.phone .cat:active, html.phone .btn:active, html.phone .ph-tab:active { filter: brightness(1.25); }
+
+/* ---------- 2. the shell ---------- */
+html.phone #app { display: flex; flex-direction: column; height: 100%; }
+html.phone #main { flex: 1; min-height: 0; }
+
+/* the tab bar (phone.js) */
+#phTabs { display: none; }
+html.phone #phTabs { display: flex; flex: none; height: var(--tabs); background: var(--bg-2); border-top: 1px solid var(--line); }
+html.phone.ph-typing #phTabs { display: none; }   /* the keyboard is up */
+.ph-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; background: none; color: var(--text-3); font-size: 11px; padding: 4px 0 2px; }
+.ph-tab .ico { font-size: 20px; line-height: 1; filter: grayscale(.7); opacity: .8; }
+.ph-tab.active { color: var(--accent); }
+.ph-tab.active .ico { filter: none; opacity: 1; }
+
+/* the sidebar = the "More" sheet */
+html.phone #sidebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; max-height: 82%; border: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+  box-shadow: 0 -20px 50px rgba(0, 0, 0, .6); transform: translateY(105%); transition: transform .2s ease; padding-bottom: 8px; }
+html.phone.ph-more #sidebar { transform: none; }
+#phBack { display: none; }
+html.phone.ph-more #phBack, html.phone.ph-cats #phBack { display: block; position: fixed; inset: 0; z-index: 85; background: rgba(0, 0, 0, .55); }
+html.phone #sidebar::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--bg-4); margin: 8px auto 0; flex: none; }
+html.phone #sidebar .brand { padding: 10px 18px 6px; }
+html.phone #sidebar nav { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 12px; overflow-y: auto; }
+html.phone #sidebar .nav { padding: 12px; background: var(--bg-3); border-radius: 12px; font-size: 14px; min-height: 48px; }
+html.phone #sidebar .nav.active { background: var(--bg-4); color: var(--accent); }
+html.phone #sidebar .nav[data-view="home"], html.phone #sidebar .nav[data-view="live"], html.phone #sidebar .nav[data-view="movies"], html.phone #sidebar .nav[data-view="series"], html.phone #sidebar .nav[data-view="guide"] { display: none; }
+html.phone #sidebar .nav-sep { display: none; }
+html.phone #sidebar .my-nav { display: contents; }
+html.phone #sidebar .side-foot { padding: 10px 14px 4px; }
+html.phone #sidebar #profileSel { min-height: 44px; }
+
+/* the top bar: title + buttons, then the search box across */
+html.phone #topbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px 10px; min-height: 0; }
+html.phone #topbar h1 { flex: 1; min-width: 0; font-size: 19px; overflow: hidden; text-overflow: ellipsis; order: 1; }
+html.phone #topbar .spacer, html.phone #refreshInfo { display: none; }
+html.phone #phUp { order: 0; flex: none; width: 40px; height: 40px; margin: -2px -4px -2px -6px; border: 0; background: none; color: var(--text); font-size: 26px; line-height: 1; border-radius: 50%; }
+html.phone #phUp.hidden { display: none; }
+html.phone #topbar .vpn-pill { order: 2; flex: none; margin: 0; padding: 6px 10px; font-size: 12px; max-width: 46%; }
+html.phone #topbar .vpn-pill .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.phone #refreshBtn { order: 3; flex: none; width: 40px; height: 40px; padding: 0; font-size: 0; border-radius: 50%; }
+html.phone #refreshBtn::before { content: '⟳'; font-size: 20px; }
+html.phone #topbar .search { order: 4; flex: 1 1 100%; max-width: none; margin: 0; }
+html.phone #topbar .search input { height: 42px; font-size: 16px; border-radius: 21px; padding: 0 16px; background: var(--bg-3); }
+html.phone #sortSel { order: 5; flex: 0 0 150px; width: 150px; padding-right: 26px; text-overflow: ellipsis; min-height: 42px; height: 42px; font-size: 14px; border-radius: 21px; }
+/* search and sort on one row when there's a sort */
+html.phone #topbar:has(#sortSel:not(.hidden)) .search { flex: 1 1 0; }
+html.phone #hiddenSearchBtn { order: 6; }
+html.phone .upd-bar { flex-wrap: wrap; padding: 8px 12px; }
+
+/* ---------- 3. Live TV, categories ---------- */
+html.phone #view { flex-direction: column; }
+html.phone .live-info { display: none; }
+/* the category button above a list (phone.js) */
+.ph-catbar { display: none; }
+html.phone .ph-catbar { display: flex; align-items: center; gap: 8px; flex: none; margin: 8px 12px 2px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); color: var(--text); font-size: 15px; text-align: left; }
+.ph-catbar .lbl { color: var(--text-3); font-size: 12px; flex: none; }
+.ph-catbar .val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ph-catbar .chev { color: var(--text-3); flex: none; }
+/* … and the categories themselves: a sheet from the bottom */
+html.phone #view > .cats { position: fixed; left: 0; right: 0; bottom: 0; top: 12%; z-index: 90; width: auto; border: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; background: var(--bg-2); padding: 0 10px 16px;
+  box-shadow: 0 -20px 50px rgba(0, 0, 0, .6); transform: translateY(105%); transition: transform .2s ease; visibility: hidden; }
+html.phone.ph-cats #view > .cats { transform: none; visibility: visible; }
+.ph-cats-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 14px 6px 10px; background: var(--bg-2); }
+.ph-cats-head b { flex: 1; font-size: 17px; }
+.ph-cats-head input { flex: 1; height: 40px; font-size: 16px; border-radius: 20px; padding: 0 14px; background: var(--bg-3); }
+html.phone .cat { padding: 12px; font-size: 15px; border-radius: 10px; }
+html.phone .cat .n { font-size: 12px; }
+
+html.phone .channels { padding: 4px 6px 10px; }
+html.phone .channel { padding: 8px 6px; gap: 10px; min-height: 58px; border-radius: 10px; }
+html.phone .channel .num { width: 30px; font-size: 12px; }
+html.phone .channel .logo { width: 64px; height: 42px; }
+html.phone .channel .name { font-size: 15px; }
+html.phone .star { font-size: 22px; min-width: 44px; min-height: 44px; padding: 0; color: var(--text-3); }
+html.phone .empty { padding: 32px 18px; }
+
+/* ---------- 4. posters, Home ---------- */
+html.phone .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 10px; padding: 12px; }
+html.phone .ev-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+html.phone .card .title { font-size: 12.5px; margin-top: 5px; }
+html.phone .card .sub { font-size: 11px; }
+html.phone .badge { font-size: 10.5px; }
+html.phone .home { padding: 2px 0 20px; }
+html.phone .shelf { padding: 12px 0 2px 12px; }
+html.phone .shelf-head { padding-right: 12px; flex-wrap: wrap; row-gap: 6px; }
+html.phone .shelf-head h2 { font-size: 16px; }
+html.phone .shelf-row { grid-auto-columns: 112px; gap: 10px; padding-right: 12px; scroll-snap-type: x proximity; }
+html.phone .shelf-row > * { scroll-snap-align: start; }
+html.phone .shelf-row.wide { grid-auto-columns: 168px; }
+html.phone .spotlight { margin: 10px 12px 4px; padding: 16px; gap: 14px; min-height: 0; border-radius: 14px; align-items: flex-start; }
+html.phone .spot-poster { width: 92px; }
+html.phone .spotlight h2 { font-size: 19px; }
+html.phone .spot-line { font-size: 13px; }
+html.phone .spot-actions { margin-top: 12px; gap: 8px; }
+html.phone .stats { padding: 10px 12px 0; gap: 8px; }
+html.phone .stat { min-width: 0; flex: 1 1 40%; padding: 10px 12px; }
+html.phone .stat b { font-size: 19px; }
+html.phone .ev-filters { padding: 10px 12px 2px; overflow-x: auto; flex-wrap: nowrap; }
+html.phone .ev-filters .chip { flex: none; }
+html.phone .col-hint { padding: 10px 12px 0; }
+html.phone .media-head { padding: 12px 12px 4px; }
+html.phone .shelf-head .col-next { max-width: 100%; }
+html.phone .fav-hint { padding-right: 12px; }
+
+/* ---------- 5. a movie / a series ---------- */
+html.phone .detail .inner { padding: 8px 14px 30px; }
+html.phone .detail .backdrop { height: 260px; }
+/* the poster beside the title, the buttons across under both */
+html.phone .detail .head { display: block; margin-top: 6px; }
+html.phone .detail .head::after { content: ''; display: block; clear: both; }
+html.phone .detail .head .poster { float: left; width: 112px; margin: 0 14px 12px 0; border-radius: 10px; }
+html.phone .detail .head .actions { clear: both; padding-top: 2px; }
+html.phone .detail h2 { font-size: 21px; line-height: 1.2; }
+html.phone .meta { gap: 6px 10px; font-size: 13px; }
+html.phone .plot { font-size: 14px; }
+html.phone .actions { gap: 8px; }
+html.phone .actions .btn { min-height: 42px; padding: 8px 14px; }
+html.phone .actions .btn.primary { flex: 1 1 100%; font-size: 16px; min-height: 48px; }
+html.phone .back { min-height: 36px; }
+html.phone .seasons { flex-wrap: nowrap; overflow-x: auto; margin: 16px -14px 8px; padding: 0 14px; }
+html.phone .season { flex: none; padding: 8px 16px; }
+html.phone .episode { gap: 10px; padding: 8px 4px; }
+html.phone .episode .thumb { width: 116px; }
+html.phone .episode .txt .t { font-size: 14px; }
+html.phone .seen-btn { width: 40px; height: 40px; }
+html.phone .dl-btn { display: none; }
+
+/* ---------- 6. TV Guide ---------- */
+html.phone .guide { --g-ch: 116px; --g-row: 58px; }
+html.phone .g-top { flex-direction: column; gap: 8px; height: auto; padding: 10px 12px; }
+html.phone .g-top > * { width: 100%; }
+html.phone .g-info h3 { font-size: 16px; }
+html.phone .g-ch { gap: 6px; padding: 0 6px; }
+html.phone .g-ch .num { display: none; }
+html.phone .g-ch .logo { width: 34px; height: 26px; }
+html.phone .g-ch .name { font-size: 12px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; }
+
+/* ---------- 7. Settings: the list of sections, then a section over it ---------- */
+html.phone .settings-wrap { flex-direction: column; position: relative; }
+html.phone .set-nav { width: auto; flex: 1; border: 0; padding: 10px 12px 20px; gap: 4px; }
+html.phone .set-item { padding: 12px; background: var(--bg-2); border-radius: 12px; min-height: 58px; }
+html.phone .set-item.active { background: var(--bg-2); color: var(--text-2); }
+html.phone .set-item .txt b { font-size: 15px; color: var(--text); }
+html.phone .set-item::after { content: '›'; margin-left: auto; font-size: 22px; color: var(--text-3); }
+html.phone .settings-wrap > .settings { display: none; }
+html.phone .settings-wrap.ph-open > .set-nav { display: none; }
+html.phone .settings-wrap.ph-open > .settings { display: block; padding: 0 12px 30px; }
+.ph-sec-head { display: none; }
+html.phone .ph-sec-head { display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 5; margin: 0 -12px 10px; padding: 6px 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.ph-sec-head button { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 8px 6px; min-height: 40px; }
+html.phone .panel { padding: 14px; border-radius: 14px; }
+html.phone .panel h2 { font-size: 17px; }
+html.phone .panel .row { flex-wrap: wrap; gap: 8px; }
+html.phone .two-col { grid-template-columns: 1fr; }
+html.phone .profile-row { flex-wrap: wrap; }
+html.phone .apart { margin-left: 0; }
+html.phone .about-stats > div { min-width: 0; flex: 1 1 40%; }
+/* switches instead of small check boxes */
+html.phone label.check { font-size: 14.5px; padding: 8px 0; gap: 12px; }
+html.phone label.check > input[type=checkbox] { -webkit-appearance: none; appearance: none; order: 9; margin: 0 0 0 auto; flex: none; position: relative; width: 48px; height: 28px; border-radius: 14px; background: var(--bg-4); border: 1px solid var(--line); transition: background .15s; }
+html.phone label.check > input[type=checkbox]::before { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--text-3); transition: transform .15s, background .15s; }
+html.phone label.check > input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
+html.phone label.check > input[type=checkbox]:checked::before { transform: translateX(20px); background: #fff; }
+html.phone label.check > input[type=checkbox]:disabled { opacity: .45; }
+
+/* ---------- 8. forms, buttons ---------- */
+html.phone input[type=text], html.phone input[type=password], html.phone input[type=number], html.phone input[type=search], html.phone input[type=url], html.phone select, html.phone textarea { font-size: 16px; padding: 10px 12px; border-radius: 10px; min-height: 44px; }
+html.phone label { font-size: 13px; margin-top: 12px; }
+html.phone .btn { min-height: 40px; padding: 8px 14px; border-radius: 10px; }
+html.phone .btn.small { min-height: 34px; }
+html.phone .btn.big { min-height: 50px; }
+html.phone .icon-btn { min-width: 40px; min-height: 40px; }
+html.phone .seg button { padding: 8px 12px; }
+html.phone .chip { padding: 8px 14px; }
+html.phone .pin-input { font-size: 22px; letter-spacing: .3em; text-align: center; }
+
+/* ---------- 9. sheets, dialogs, toasts ---------- */
+/* a right-click menu (press and hold): a sheet from the bottom */
+html.phone .ctx { left: 0 !important; right: 0; top: auto !important; bottom: 0; min-width: 0; max-height: 75%; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 10px 10px 16px; box-shadow: 0 -20px 50px rgba(0, 0, 0, .7); animation: ph-up .16s ease; }
+html.phone .ctx button { padding: 14px; font-size: 15.5px; border-radius: 10px; }
+html.phone .modal { align-items: flex-end; }
+html.phone .modal-card, html.phone .modal-card.wide { width: 100%; max-height: 92%; border-radius: 18px 18px 0 0; border-bottom: 0; padding: 16px 16px 14px; animation: ph-up .16s ease; }
+html.phone .modal-head h3 { font-size: 17px; }
+html.phone .modal-foot { flex-wrap: wrap; position: sticky; bottom: -14px; background: var(--bg-2); padding: 10px 0 4px; margin-top: 12px; }
+html.phone .modal-foot .btn { min-height: 46px; flex: 1 1 auto; }
+html.phone .modal-foot .spacer { display: none; }
+html.phone #toasts { left: 12px; right: 12px; bottom: calc(var(--tabs) + 10px); align-items: center; }
+html.phone .toast { max-width: 100%; }
+html.phone .search-recent { left: 0; right: 0; }
+@keyframes ph-up { from { transform: translateY(30px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+/* sideways: more room across, less up and down */
+@media (orientation: landscape) {
+  html.phone { --tabs: 50px; }
+  html.phone .ph-tab { flex-direction: row; gap: 6px; font-size: 13px; }
+  html.phone #topbar { flex-wrap: nowrap; }
+  html.phone #topbar .search { order: 2; flex: 1 1 auto; }
+  html.phone #topbar .search input { height: 38px; }
+  html.phone .detail .head .poster { width: 140px; }
+  html.phone #view > .cats { top: 0; left: auto; width: 360px; border-radius: 0; border-left: 1px solid var(--line); transform: translateX(105%); }
+  html.phone .modal-card, html.phone .modal-card.wide { width: min(640px, 100%); border-radius: 18px 18px 0 0; }
+  html.phone .modal { justify-content: center; }
+}
+html.phone .ctx button:focus, html.phone .modal button:focus { outline: none; }
+html.phone .ph-break { order: 3; flex: 0 0 100%; height: 0; }
+@media (orientation: landscape) { html.phone .ph-break { display: none; } }
+@media (orientation: landscape) {
+  html.phone #topbar h1 { flex: 0 1 auto; max-width: 34%; }
+  html.phone #topbar .vpn-pill { max-width: 26%; }
+  html.phone .g-top { flex-direction: row; align-items: flex-start; gap: 16px; }
+  html.phone .g-top > * { width: auto; flex: 1; }
+}
+
+/* ---------- "Get it from another device" (app.js phoneSetup): the code big, the QR folded away ---------- */
+html.phone .phone-get .big-code { margin: 2px 0 14px; font-size: 30px; font-weight: 700; letter-spacing: .1em; color: var(--accent); text-align: center; background: var(--bg-3); border-radius: 12px; padding: 12px 6px; font-family: var(--mono); user-select: text; }
+html.phone .phone-steps { margin: 0 0 12px; padding-left: 20px; line-height: 1.55; font-size: 14.5px; }
+html.phone .phone-steps li { margin-bottom: 6px; }
+html.phone .phone-more { margin: 6px 0 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+html.phone .phone-more summary { color: var(--text-2); font-size: 14px; min-height: 32px; display: flex; align-items: center; }
+html.phone .phone-qr { width: 220px; height: 220px; margin: 8px auto 4px; padding: 8px; background: #fff; border-radius: 12px; }
+html.phone .phone-qr svg { width: 100%; height: 100%; display: block; }
+html.phone .ct-list { display: flex; flex-direction: column; gap: 6px; }
