@@ -478,3 +478,9 @@ img.net-logo { background: #f2f3f5; border-radius: 6px; padding: 4px; box-sizing
 /* ---- Connect a TV (Settings → Sync): the TVs found on the network ---- */
 .ct-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 36px; }
 .ct-tv.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* ---------- US age ratings (Rated in app.js): R, PG-13, TV-MA … ---------- */
+.badge.cert { top: auto; left: auto; bottom: 8px; right: 6px; background: rgba(10,12,16,.82); border: 1px solid rgba(255,255,255,.55); color: #fff; font-weight: 700; letter-spacing: .02em; padding: 1px 5px; border-radius: 4px; }
+.card .poster .bar ~ .badge.cert { bottom: 10px; }
+.cert:empty { display: none; }
+.cert-tag { border: 1px solid var(--text-2); color: var(--text); border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 700; line-height: 1.6; align-self: center; }

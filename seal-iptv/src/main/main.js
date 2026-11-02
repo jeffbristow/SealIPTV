@@ -25,6 +25,7 @@ const { Xtream } = require('./xtream');
 const { Parental } = require('./parental');
 const { SyncService } = require('./sync');
 const { Artwork } = require('./artwork');
+const { Ratings } = require('./ratings');
 const { Trending } = require('./trending');
 const { Studios } = require('./studios');
 const tvfind = require('./tvfind');
@@ -43,7 +44,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const VERSION = process.env.SEAL_IPTV_RUNNING_VERSION || app.getVersion();
 const UA = { seal: `SealIPTV/${VERSION}`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 
-let store, library, catalog, vpn, win, parental, sync, artwork, trending, updater, imageCache, media;
+let store, library, catalog, vpn, win, parental, sync, artwork, ratings, trending, updater, imageCache, media;
 
 function userAgent() {
   const n = store.getSettings().network;
@@ -64,6 +65,7 @@ function init() {
   parental = new Parental(store);
   catalog = new Catalog({ dir, store, vpn, library, userAgent, parental });
   artwork = new Artwork({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+  ratings = new Ratings({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   trending = new Trending({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   // the Disney / Netflix / Prime collections: the newest list we have now, a newer one looked for a little later
   const studios = new Studios({ dir, allowed: () => vpn.allowed(), userAgent: () => UA.seal });
@@ -370,6 +372,7 @@ function registerIpc() {
 
   /* ---- posters the provider doesn't have (artwork.js) ---- */
   handle('art:find', list => artwork.find(list, { addresses: true }));   // shown through sealimg: (kept on disk)
+  handle('ratings:find', list => ratings.find(list));   // US age ratings for posters / pages (ratings.js)
   handle('art:keep', (url, data) => artwork.keep(url, data));
   handle('art:testKey', key => artwork.testTmdb(key));
   handle('art:clear', () => artwork.clear());
@@ -549,5 +552,5 @@ app.whenReady().then(() => {
   registerUpdates();
   createWindow();
 });
-app.on('before-quit', () => { try { if (media) media.shutdown(); } catch { /* saved as it was */ } try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); } catch { /* nothing to save */ } try { imageCache.flushFailed(); } catch { /* nothing to save */ } });
+app.on('before-quit', () => { try { if (media) media.shutdown(); } catch { /* saved as it was */ } try { library.flush(); } catch { /* nothing to save */ } try { artwork.flush(); ratings.flush(); } catch { /* nothing to save */ } try { imageCache.flushFailed(); } catch { /* nothing to save */ } });
 app.on('window-all-closed', () => app.quit());

@@ -15,6 +15,7 @@
  *   4. Stream addresses
  *   5. Turning the API's answers into the app's catalogue
  * ===================================================================== */
+const { usRating } = require('./ratings');   // a movie's / series' US age rating, when the provider sends one
 
 class Xtream {
   /**
@@ -160,6 +161,7 @@ class Xtream {
       year: yearOf(i.releasedate || i.release_date, ''),
       duration: Number(i.duration_secs) || 0,
       rating: rating(i.rating_5based, i.rating),
+      cert: usRating(i.mpaa_rating || i.mpaa || i.certification || i.age_rating || ''),   // only a US one (R, PG-13 …)
       trailer: i.youtube_trailer || '',
       ext: m.container_extension || ''
     };
@@ -193,6 +195,7 @@ class Xtream {
       cast: i.cast || '',
       year: yearOf(i.releaseDate || i.release_date, ''),
       rating: rating(i.rating_5based, i.rating),
+      cert: usRating(i.mpaa_rating || i.mpaa || i.certification || i.age_rating || ''),
       seasons
     };
   }

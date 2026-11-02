@@ -228,6 +228,62 @@ const Art = (() => {
   return { scan, keep };
 })();
 
+/* US age ratings (main: ratings.js): a badge on movie / series posters and on their pages, filled in
+   when they come into view — in batches, like Art above. The provider's own rating (a movie's details)
+   is used as it is; the rest come from TMDB (needs its key) and are kept, so each title is asked once. */
+const Rated = (() => {
+  const known = new Map();      // kind|name|year -> 'R' | '' (this run: pages drawn again fill in at once)
+  const want = new Map();
+  let timer = null, scanning = false;
+  const keyOf = (k, n, y) => `${k}|${n}|${y || ''}`;
+  // (an empty badge isn't shown, and the browser never says a hidden thing is on screen: what's watched
+  //  is the poster / info line it's in)
+  const boxOf = new Map();
+  const io = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); const el = boxOf.get(e.target); boxOf.delete(e.target); if (el) queue(el); } }, { rootMargin: '400px' })
+    : null;
+  function fill(el, r) {
+    el.textContent = r || '';
+    if (r) el.title = r === 'NR' ? 'Not rated' : `Rated ${r}`;
+  }
+  function queue(el) {
+    want.set(el, { kind: el.dataset.rk, name: el.dataset.rn, year: Number(el.dataset.ry) || 0 });
+    clearTimeout(timer);
+    timer = setTimeout(flush, 150);
+  }
+  async function flush() {
+    const els = [...want.keys()].slice(0, 60);
+    const list = els.map(el => want.get(el));
+    for (const el of els) want.delete(el);
+    if (want.size) timer = setTimeout(flush, 400);
+    let rs;
+    try { rs = await call('ratings:find', list); } catch { return; }
+    rs.forEach((r, i) => {
+      known.set(keyOf(list[i].kind, list[i].name, list[i].year), r || '');
+      fill(els[i], r);
+    });
+  }
+  function scan() {
+    scanning = false;
+    for (const el of document.querySelectorAll('.cert[data-rk]:not([data-rq])')) {
+      el.dataset.rq = '1';
+      const k = keyOf(el.dataset.rk, el.dataset.rn, Number(el.dataset.ry) || 0);
+      if (known.has(k)) { fill(el, known.get(k)); continue; }
+      const box = el.parentElement;
+      if (io && box) { boxOf.set(box, el); io.observe(box); } else queue(el);
+    }
+  }
+  new MutationObserver(() => { if (!scanning) { scanning = true; requestAnimationFrame(scan); } }).observe(document.documentElement, { childList: true, subtree: true });
+  /** the badge's markup: cls 'badge cert' (a poster) or 'cert cert-tag' (a page); given = the provider's own rating */
+  function tag(kind, name, year, cls = 'badge cert', given = '') {
+    if (kind !== 'movie' && kind !== 'series') return '';
+    if (given) return `<span class="${cls}" data-rq="1" title="Rated ${esc(given)}">${esc(given)}</span>`;
+    const r = known.get(keyOf(kind, name, Number(year) || 0));
+    return `<span class="${cls}" data-rk="${kind}" data-rn="${esc(name)}" data-ry="${Number(year) || 0}"${r !== undefined ? ' data-rq="1"' : ''}>${esc(r || '')}</span>`;
+  }
+  return { scan, tag };
+})();
+
 const fmtTime = s => {
   s = Math.max(0, Math.floor(s || 0));
   const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
@@ -1478,7 +1534,7 @@ function posterCard(it, opts = {}) {
   const el = h(`<div class="card${wide ? ' wide' : ''}" tabindex="0">
     <div class="poster">${pic(it.poster || it.image, it.name, 'pi', { kind: it.kind, name: it.name, year: it.year }, it.fb)}
       ${it.fav ? '<span class="badge fav">★</span>' : ''}${it.newEps ? '<span class="badge new">New episodes</span>' : ''}${it.watched ? '<span class="badge seen">✓ Watched</span>' : ''}${it.fromHidden ? '<span class="badge hid">Hidden category</span>' : ''}
-      ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}</div>
+      ${pct ? `<div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}${Rated.tag(it.kind, it.name, it.year)}</div>
     <div class="title" title="${esc(opts.title || it.name)}">${esc(opts.title || it.name)}</div><div class="sub">${esc(sub)}</div></div>`);
   el.onclick = opts.onClick || (() => go(it.kind === 'series' ? 'show' : 'movie', it.id));
   if (it.kind === 'movie' || it.kind === 'series') el.oncontextmenu = e => { e.preventDefault(); cardMenu(e, it.kind, { id: it.id, name: it.name, image: it.poster || it.image, cat: it.cat }); };
@@ -1515,7 +1571,7 @@ async function renderMovie(view) {
         <div class="poster">${pic(poster, name, 'pi', { kind: 'movie', name, year: i.year || m.year })}</div>
         <div style="min-width:0">
           <h2>${esc(name)}</h2>
-          <div class="meta">${rating ? `<span class="rating">★ ${esc(rating)}</span>` : ''}${meta.map(x => `<span>${esc(x)}</span>`).join('<span>·</span>')}</div>
+          <div class="meta">${Rated.tag('movie', name, i.year || m.year, 'cert cert-tag', i.cert)}${rating ? `<span class="rating">★ ${esc(rating)}</span>` : ''}${meta.map(x => `<span>${esc(x)}</span>`).join('<span>·</span>')}</div>
           <div class="actions" id="mActions"></div>
           ${i.plot ? `<p class="plot selectable">${esc(i.plot)}</p>` : ''}
           <div class="facts">${i.director ? `<p><b>Director</b> ${esc(i.director)}</p>` : ''}${i.cast ? `<p><b>Cast</b> ${esc(i.cast)}</p>` : ''}</div>
@@ -1598,7 +1654,7 @@ async function renderShow(view) {
         <div class="poster">${pic(poster, name, 'pi', { kind: 'series', name, year: i.year || d.year })}</div>
         <div style="min-width:0">
           <h2>${esc(name)}</h2>
-          <div class="meta">${(i.rating || d.rating) ? `<span class="rating">★ ${esc(i.rating || d.rating)}</span>` : ''}${meta.map(x => `<span>${esc(x)}</span>`).join('<span>·</span>')}</div>
+          <div class="meta">${Rated.tag('series', name, i.year || d.year, 'cert cert-tag', i.cert)}${(i.rating || d.rating) ? `<span class="rating">★ ${esc(i.rating || d.rating)}</span>` : ''}${meta.map(x => `<span>${esc(x)}</span>`).join('<span>·</span>')}</div>
           <div class="actions" id="sActions"></div>
           ${i.plot || d.plot ? `<p class="plot selectable">${esc(i.plot || d.plot)}</p>` : ''}
           ${i.cast ? `<div class="facts"><p><b>Cast</b> ${esc(i.cast)}</p></div>` : ''}

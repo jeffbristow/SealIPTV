@@ -30,6 +30,7 @@ const { Xtream } = require('../../../seal-iptv/src/main/xtream');
 const { Parental } = require('../../../seal-iptv/src/main/parental');
 const { SyncService } = require('../../../seal-iptv/src/main/sync');
 const { Artwork } = require('../../../seal-iptv/src/main/artwork');
+const { Ratings } = require('../../../seal-iptv/src/main/ratings');
 const { Trending } = require('../../../seal-iptv/src/main/trending');
 const { Studios } = require('../../../seal-iptv/src/main/studios');
 const franchises = require('../../../seal-iptv/src/main/franchises');
@@ -63,6 +64,7 @@ function userAgent() {
 }
 const catalog = new Catalog({ dir: DATA, store, vpn, library, userAgent, parental, slow: true });   // (whole-section indexes a little at a time)
 const artwork = new Artwork({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
+const ratings = new Ratings({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 const trending = new Trending({ dir: DATA, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
 // the Disney / Netflix / Prime collections: the newest list we have now, a newer one looked for a little later
 const studios = new Studios({ dir: DATA, allowed: () => vpn.allowed(), userAgent: () => UA.seal });
@@ -272,6 +274,7 @@ handle('cats:flag', (section, catId, patch, pin) => {
 
 /* ---- posters the provider doesn't have (artwork.js) ---- */
 handle('art:find', list => artwork.find(list));
+handle('ratings:find', list => ratings.find(list));   // US age ratings (ratings.js)
 handle('art:keep', (url, data) => artwork.keep(url, data));
 handle('art:testKey', key => artwork.testTmdb(key));
 handle('art:clear', () => artwork.clear());
@@ -429,7 +432,7 @@ window.api = {
   on: (channel, fn) => { if (!listeners.has(channel)) listeners.set(channel, new Set()); listeners.get(channel).add(fn); }
 };
 window.SealEvents = { on: onEvent };
-window.addEventListener('pagehide', () => { try { library.flush(); artwork.flush(); } catch { /* nothing to save */ } });
+window.addEventListener('pagehide', () => { try { library.flush(); artwork.flush(); ratings.flush(); } catch { /* nothing to save */ } });
 // the Fire TV home button doesn't unload the page: save the library now and then
-setInterval(() => { try { library.flush(); artwork.flush(); } catch { /* later */ } }, 30000);
-onEvent('pause', () => { try { library.flush(); artwork.flush(); } catch { /* later */ } keepRefs(); });
+setInterval(() => { try { library.flush(); artwork.flush(); ratings.flush(); } catch { /* later */ } }, 30000);
+onEvent('pause', () => { try { library.flush(); artwork.flush(); ratings.flush(); } catch { /* later */ } keepRefs(); });
