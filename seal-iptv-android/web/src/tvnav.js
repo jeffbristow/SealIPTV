@@ -55,6 +55,8 @@
 
   /* Android's text box closed: null = cancelled, else the text (the app sees it as typing) */
   /* the search box while Android's text box is open: results follow the typing */
+  /** is Android's text box open (typing letter by letter: app.js keeps no recent search until OK) */
+  window.__tvEditing = () => !!editing;
   window.__tvTyping = text => {
     const el = editing;
     if (!el || !el.isConnected || el.id !== 'search') return;

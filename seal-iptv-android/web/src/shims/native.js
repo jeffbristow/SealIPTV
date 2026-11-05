@@ -43,21 +43,63 @@ function readPieces(next, charset) {
   const parts = [];
   return eachPiece(next, charset, t => parts.push(t)) ? parts.join('') : null;
 }
+const decoder = charset => { try { return new TextDecoder(charset || 'utf-8'); } catch { return new TextDecoder('utf-8'); } };
+/** base64 -> bytes (the browser's own when it has it: a byte at a time in JS took seconds for a big playlist on a TV) */
+function bytesOf(b64) {
+  if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(b64);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
 /** The same, handing each piece's text to fn instead of keeping it all (the TV guide). false if it's gone. */
 function eachPiece(next, charset, fn) {
-  let dec;
-  try { dec = new TextDecoder(charset || 'utf-8'); } catch { dec = new TextDecoder('utf-8'); }
+  const dec = decoder(charset);
   for (let n = 0; ; n++) {
     const b64 = next(n);
     if (b64 == null) return false;
     if (b64 === '') break;
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    fn(dec.decode(bytes, { stream: true }));
+    fn(dec.decode(bytesOf(b64), { stream: true }));
   }
   fn(dec.decode());
   return true;
+}
+const tick = () => new Promise(ok => setTimeout(ok, 0));
+/**
+ * A big answer (a provider's movie list: 50 MB+) as text, without stopping the page:
+ * APK 1.8.3+ serves the downloaded file at /blob/<name> and the WebView reads it on its own
+ * (a piece at a time as it comes); older APKs: through the bridge, a pause after each piece
+ * (all at once, the remote did nothing for up to 19 s on a Google TV).
+ */
+async function readBlob(blob, charset) {
+  const dec = decoder(charset), parts = [];
+  const pageFetch = globalThis.__pageFetch;   // (the browser's own: fetch here is Android's, shims/inject.js)
+  if (N.blobFetch && pageFetch) {
+    try {
+      const res = await pageFetch('https://appassets.androidplatform.net/blob/' + encodeURIComponent(blob), { cache: 'no-store' });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(dec.decode(value, { stream: true }));
+        }
+        parts.push(dec.decode());
+        return parts.join('');
+      }
+    } catch { /* through the bridge below */ }
+    parts.length = 0;
+  }
+  const d2 = decoder(charset);
+  for (let n = 0; ; n++) {
+    const b64 = N.blobChunk(blob, n);
+    if (b64 == null) throw new Error('the answer is gone');
+    if (b64 === '') break;
+    parts.push(d2.decode(bytesOf(b64), { stream: true }));
+    await tick();
+  }
+  parts.push(d2.decode());
+  return parts.join('');
 }
 
 /**
@@ -76,20 +118,23 @@ function request(opts) {
               const b64 = N.blobChunk(blob, n);
               if (b64 == null) throw new Error('the answer is gone');
               if (b64 === '') break;
-              const bin = atob(b64);
-              const bytes = new Uint8Array(bin.length);
-              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              (r._dec || (r._dec = (() => { try { return new TextDecoder(charset || 'utf-8'); } catch { return new TextDecoder('utf-8'); } })()));
-              fn(r._dec.decode(bytes, { stream: true }));
-              await new Promise(ok => setTimeout(ok, 0));   // the page stays responsive meanwhile
+              r._dec || (r._dec = decoder(charset));
+              fn(r._dec.decode(bytesOf(b64), { stream: true }));
+              await tick();   // the page stays responsive meanwhile
             }
             fn(r._dec ? r._dec.decode() : '');
           } finally { try { N.blobDrop(blob); } catch { /* gone */ } }
         };
       } else if (r && r.ok && r.blob) {
-        try { r.body = readPieces(n => N.blobChunk(r.blob, n), r.charset) || ''; }
-        catch (e) { r = { ok: false, error: 'reading the answer failed: ' + e.message }; }
-        finally { try { N.blobDrop(r.blob); } catch { /* gone */ } }
+        const blob = r.blob;
+        (async () => {
+          let out = r;
+          try { r.body = (await readBlob(blob, r.charset)) || ''; }
+          catch (e) { out = { ok: false, error: 'reading the answer failed: ' + e.message }; }
+          finally { try { N.blobDrop(blob); } catch { /* gone */ } }   // (gone before the answer is handed on)
+          resolve(out);
+        })();
+        return;
       }
       resolve(r);
     });

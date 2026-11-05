@@ -16,7 +16,7 @@ const CHANNELS = new Set([
   'art:find', 'art:keep', 'art:testKey', 'art:clear', 'ratings:find',
   'update:check', 'update:install', 'update:restart', 'update:openPage'
 ]);
-const EVENTS = new Set(['vpn:status', 'catalog:step', 'sync:applied', 'sync:status', 'update:progress', 'media:changed', 'media:conflict', 'media:note', 'media:takeover']);
+const EVENTS = new Set(['vpn:status', 'catalog:step', 'catalog:counts', 'sync:applied', 'sync:status', 'update:progress', 'media:changed', 'media:conflict', 'media:note', 'media:takeover']);
 
 contextBridge.exposeInMainWorld('api', {
   invoke: (channel, ...args) => {

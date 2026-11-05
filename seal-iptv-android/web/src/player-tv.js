@@ -119,7 +119,8 @@ const Player = (() => {
   function finish(c) {
     if (cur === c) cur = null;
     call('play:stopped').catch(() => {});
-    if (['home', 'movie', 'show', 'favorites'].includes(state.view)) render();
+    // (the remote stays on what was played: it went back to the top of Home)
+    if (['home', 'movie', 'show', 'favorites'].includes(state.view)) renderKeepPlace();
   }
 
   window.SealEvents.on('player', async ev => {

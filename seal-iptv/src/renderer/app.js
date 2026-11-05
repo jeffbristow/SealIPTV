@@ -334,6 +334,7 @@ async function start() {
   updateLockBtn();
   window.api.on('vpn:status', onVpnStatus);
   window.api.on('catalog:step', t => { if (state.refreshing) { busyText(t); } });
+  window.api.on('catalog:counts', () => refreshCounts());
   wireChrome();
   renderProfiles();
   renderMyNav();
@@ -362,8 +363,27 @@ async function autoRefresh() {
       onVpnStatus(s);
       if (!s.ok) { $('#refreshInfo').textContent = 'Playlist not updated: VPN is off'; return; }
     }
-    await reload({ quiet: !!(state.summary && state.summary.fetchedAt) });
+    const quiet = !!(state.summary && state.summary.fetchedAt);
+    // a TV: reading a big playlist still stops the page for a second or three now and then — it waits
+    // until the remote has been left alone (it froze the remote just as Home came up)
+    if (TV && quiet) {
+      const was = state.summary.fetchedAt;
+      await remoteIdle(15000);
+      if (!state.summary || state.summary.fetchedAt !== was) return;   // reloaded by hand meanwhile
+    }
+    await reload({ quiet });
   } catch (e) { fail(e); }
+}
+
+/** resolves once no key has been pressed for ms */
+function remoteIdle(ms) {
+  return new Promise(ok => {
+    let t;
+    const arm = () => { clearTimeout(t); t = setTimeout(done, ms); };
+    const done = () => { window.removeEventListener('keydown', arm, true); ok(); };
+    window.addEventListener('keydown', arm, true);
+    arm();
+  });
 }
 
 /* =================================================================
@@ -405,15 +425,19 @@ function focusMark() {
   if (!a || !view.contains(a)) return null;
   const all = [...view.querySelectorAll(FOCUSABLE_IN_VIEW)];
   const sc = scrollerOf(a);
-  return { idx: all.indexOf(a), text: a.textContent.trim().slice(0, 80), scroller: sc ? '.' + [...sc.classList].join('.') : '', top: sc ? sc.scrollTop : 0 };
+  return { idx: all.indexOf(a), text: a.textContent.trim().slice(0, 80), title: titleOf(a), scroller: sc ? '.' + [...sc.classList].join('.') : '', top: sc ? sc.scrollTop : 0 };
 }
+/** a poster's / row's own title (what's under it — "12 min left", "Up next · S1 · E13" — changes after watching) */
+const titleOf = el => ((el.querySelector && el.querySelector(':scope > .title, :scope .txt > .t, :scope .name')) || {}).textContent || '';
 function focusBack(m, tries = 0) {
   const view = $('#view');
   if (m.scroller && tries === 0) { const sc = view.querySelector(m.scroller); if (sc) sc.scrollTop = m.top; }   // also loads the rows that were there
   const all = [...view.querySelectorAll(FOCUSABLE_IN_VIEW)];
-  // the same text nearest its old place (pages loaded since may have moved it a little), else the same place
-  let el = null, best = Infinity;
-  all.forEach((x, i) => { if (x.textContent.trim().slice(0, 80) === m.text && Math.abs(i - m.idx) < best) { best = Math.abs(i - m.idx); el = x; } });
+  // the same text nearest its old place (pages loaded since may have moved it a little), else the same
+  // title (watching it changed the line under it), else the same place
+  const near = same => { let hit = null, best = Infinity; all.forEach((x, i) => { if (same(x) && Math.abs(i - m.idx) < best) { best = Math.abs(i - m.idx); hit = x; } }); return hit; };
+  let el = near(x => x.textContent.trim().slice(0, 80) === m.text);
+  if (!el && m.title && tries >= 2) el = near(x => titleOf(x) === m.title);
   if (!el && tries >= 6) el = all[Math.min(m.idx, all.length - 1)];
   if (!el) { if (tries < 8) setTimeout(() => focusBack(m, tries + 1), 150 + tries * 100); return; }
   el.focus({ preventScroll: true });
@@ -429,6 +453,15 @@ function keepFocus(box, draw) {
   const now = all();
   const el = now[Math.min(i, now.length - 1)];
   if (el) el.focus({ preventScroll: true });
+}
+
+/** The page drawn again where it is (after the player closes, a reload in the background): on a TV the
+ *  remote stays on the same title, also when it has moved (Continue watching puts it first) — it went
+ *  back to the page's first button, or the sidebar. */
+function renderKeepPlace() {
+  const mark = TV ? focusMark() : null;
+  render();
+  if (mark) focusBack(mark);
 }
 
 /* TV: a page drawn once it has loaded (a movie, a series) starts on its main button —
@@ -518,14 +551,25 @@ function wireChrome() {
 
 /* ---- recent searches (this device only) ---- */
 const RECENT_KEY = 'seal.recentSearches';
-const recentSearches = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter(x => typeof x === 'string'); } catch { return []; } };
+/** (a search that's only the start of a word in another one — "mira" beside "miracle", kept while typing
+ *  on a TV before 1.8.3 — is left out; "miracle" beside "miracle fr" stays) */
+const recentSearches = () => {
+  let list;
+  try { list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter(x => typeof x === 'string'); } catch { return []; }
+  const low = list.map(x => x.toLowerCase());
+  return list.filter((x, n) => !low.some((y, m) => m !== n && y.length > low[n].length && y.startsWith(low[n]) && /[\p{L}\p{N}]/u.test(y[low[n].length])));
+};
 let recentTimer;
 /** kept once the same search has stayed for a moment (not every letter typed) */
 function rememberSearch(q) {
   clearTimeout(recentTimer);
   if (!q || q.length < 2) return;
+  // a TV: typing with the remote takes more than 2 s a letter ("mira", "mirac", "miracl" were kept);
+  // while Android's text box is open nothing is kept — its OK sends the whole search
+  const typing = () => !!(window.__tvEditing && window.__tvEditing());
+  if (typing()) return;
   recentTimer = setTimeout(() => {
-    if ($('#search').value.trim() !== q) return;
+    if ($('#search').value.trim() !== q || typing()) return;
     const list = [q, ...recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8);
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* not kept */ }
   }, 2000);
@@ -557,7 +601,8 @@ function renderProfiles() {
 }
 
 function updateCounts() {
-  const c = state.summary && state.summary.counts;
+  // what the pages list (hidden / locked categories and hidden other-language titles left out), not the whole playlist
+  const c = state.summary && (state.summary.shown || state.summary.counts);
   const f = n => (n ? n.toLocaleString() : '');
   $('#nLive').textContent = c ? f(c.live) : '';
   $('#nMovies').textContent = c ? f(c.movies) : '';
@@ -565,6 +610,17 @@ function updateCounts() {
   const at = state.summary && state.summary.fetchedAt;
   $('#refreshInfo').textContent = at ? `Updated ${fmtDate(at)} ${fmtClock(at)}` : '';
   show($('#refreshBtn'), !!profile());
+}
+
+/** The sidebar's numbers again, after something that changes what's listed: the PIN, a category hidden or
+ *  locked, the language / adult settings (a moment later: several changes at once ask once) */
+let countsTimer;
+function refreshCounts() {
+  clearTimeout(countsTimer);
+  countsTimer = setTimeout(async () => {
+    if (!profile() || state.refreshing) return;
+    try { state.summary = await call('catalog:summary'); updateCounts(); } catch { /* the numbers stay */ }
+  }, 300);
 }
 
 async function useProfile(id) {
@@ -681,6 +737,9 @@ function updateLockBtn() {
   show($('#lockBtn'), !!(p.hasPin && (p.unlocked || p.searchHidden)));
   $('#lockBtn .txt').textContent = p.unlocked ? 'Locked categories open · Lock' : 'Hidden categories in search · Lock';
   updateHiddenSearchBtn();
+  // locked categories counted in the sidebar while the PIN is entered (also when it locks again by itself)
+  if (updateLockBtn.was !== undefined && updateLockBtn.was !== !!p.unlocked) refreshCounts();
+  updateLockBtn.was = !!p.unlocked;
 }
 
 /* ---- "Include hidden" in search (parental PIN; ends with Lock or the "keep open" time) ---- */
@@ -827,6 +886,7 @@ function hideMenu() { show($('#ctxMenu'), false); }
 async function setCatFlag(section, c, patch) {
   try {
     const r = await withPin(() => call('cats:flag', section, c.id, patch), 'Locking or unlocking a category needs the parental PIN.');
+    if (r !== undefined) refreshCounts();
     return r !== undefined;
   } catch (e) { fail(e); return false; }
 }
@@ -1079,6 +1139,9 @@ async function resumeFromHome(p) {
  * ================================================================= */
 function catList(section, el, onPick) {
   return call('catalog:cats', section).then(r => {
+    // the sidebar says the same as "All" (an older summary only had the whole playlist's numbers until now)
+    const n = { live: '#nLive', movies: '#nMovies', series: '#nSeries' }[section];
+    if (n && state.summary) { state.summary.shown = { ...(state.summary.shown || state.summary.counts), [section]: r.total }; $(n).textContent = r.total ? r.total.toLocaleString() : ''; }
     const cur = state.sec[section].cat;
     const all = [{ id: '', name: 'All', count: r.total }, { id: '*fav', name: '⭐ Favorites', count: null }, ...r.cats];
     el.innerHTML = '';
@@ -2516,8 +2579,11 @@ function mediaEvents() {
  * 11. SETTINGS
  * ================================================================= */
 async function saveSettings(patch, note) {
-  try { state.settings = await call('settings:set', patch); if (note) toast(note); }
-  catch (e) { fail(e); }
+  try {
+    state.settings = await call('settings:set', patch);
+    if (note) toast(note);
+    if (patch && (patch.content || patch.parental)) refreshCounts();   // other languages / adult categories shown or hidden
+  } catch (e) { fail(e); }
 }
 
 function renderSettings(view) {
@@ -2706,7 +2772,7 @@ function renderSettings(view) {
   };
   pc.querySelector('#parAdult').onchange = async e => {
     const want = e.target.checked;
-    try { const r = await withPin(() => call('parental:options', { autoAdult: want })); if (r === undefined) e.target.checked = !want; else { state.parental = r; toast(want ? 'Adult categories are locked.' : 'Adult categories are no longer locked automatically.'); } }
+    try { const r = await withPin(() => call('parental:options', { autoAdult: want })); if (r === undefined) e.target.checked = !want; else { state.parental = r; refreshCounts(); toast(want ? 'Adult categories are locked.' : 'Adult categories are no longer locked automatically.'); } }
     catch (err) { e.target.checked = !want; fail(err); }
   };
   pc.querySelector('#parSettings').onchange = async e => {
@@ -3103,7 +3169,7 @@ async function reload({ quiet = false } = {}) {
     const c = state.summary.counts;
     const kept = state.summary.carried ? ` Your favorites, watched marks and categories were kept for ${state.summary.carried.toLocaleString()} title${state.summary.carried === 1 ? '' : 's'} with new links.` : '';
     toast(`Playlist loaded: ${c.live.toLocaleString()} channels, ${c.movies.toLocaleString()} movies, ${c.series.toLocaleString()} series.${kept}`);
-    if (!['settings', 'movie', 'show'].includes(state.view)) render();
+    if (!['settings', 'movie', 'show'].includes(state.view)) renderKeepPlace();
   } catch (e) {
     fail(e);
   } finally {

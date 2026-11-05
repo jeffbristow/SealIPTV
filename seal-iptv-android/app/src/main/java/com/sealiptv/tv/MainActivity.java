@@ -103,13 +103,23 @@ public class MainActivity extends Activity {
 
     /** a playlist file of this app's own, by name only (no folders), with its size */
     static WebResourceResponse catalogFile(java.io.File dir, String name) {
-        java.io.File f = name == null || !name.matches("[\\w.-]+\\.json") ? null : new java.io.File(dir, name);
+        return ownFile(dir, name, "[\\w.-]+\\.json", "application/json");
+    }
+
+    /** a downloaded answer waiting to be read (NativeBridge blobs: b<n>), for /blob/<name>: the WebView reads it
+     *  itself, as it comes, instead of the page asking for it 1 MB at a time through the bridge (core.js readBlob) */
+    static WebResourceResponse blobFile(java.io.File dir, String name) {
+        return ownFile(dir, name, "b\\d+", "application/octet-stream");
+    }
+
+    private static WebResourceResponse ownFile(java.io.File dir, String name, String pattern, String type) {
+        java.io.File f = name == null || !name.matches(pattern) ? null : new java.io.File(dir, name);
         HashMap<String, String> h = new HashMap<>();
         try {
             if (f == null || !f.isFile()) return new WebResourceResponse("text/plain", "utf-8", 404, "Not found", h, new ByteArrayInputStream(new byte[0]));
             h.put("Content-Length", String.valueOf(f.length()));
             h.put("Cache-Control", "no-store");
-            return new WebResourceResponse("application/json", "utf-8", 200, "OK", h, new java.io.BufferedInputStream(new java.io.FileInputStream(f), 1 << 16));
+            return new WebResourceResponse(type, type.startsWith("application/json") ? "utf-8" : null, 200, "OK", h, new java.io.BufferedInputStream(new java.io.FileInputStream(f), 1 << 16));
         } catch (Exception e) {
             return new WebResourceResponse("text/plain", "utf-8", 500, "Error", h, new ByteArrayInputStream(new byte[0]));
         }
@@ -157,6 +167,7 @@ public class MainActivity extends Activity {
                 if ("appassets.androidplatform.net".equals(u.getHost())) {
                     // the saved playlists, read by fetch() at start-up: much faster than through the bridge (core.js)
                     if (u.getPath() != null && u.getPath().startsWith("/catalog/")) return catalogFile(catalogDir, u.getLastPathSegment());
+                    if (u.getPath() != null && u.getPath().startsWith("/blob/")) return blobFile(new java.io.File(getCacheDir(), "blobs"), u.getLastPathSegment());
                     // a provider's picture (app.js imgSrc): from the cache, or fetched now — newer WebViews
                     // won't load http:// pictures into these https:// pages themselves
                     if ("/img/".equals(u.getPath())) return picture(u.getQueryParameter("u"));

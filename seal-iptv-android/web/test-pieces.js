@@ -52,5 +52,36 @@ const big = '[' + unit.repeat(Math.ceil((8 * CHUNK) / Buffer.byteLength(unit))) 
   ok(fs.readFileSync('/data/small.json') === '{"a":1}', 'small files: one piece, as before');
   assert.throws(() => fs.readFileSync('/data/none.json'), /ENOENT/);
   ok(true, 'a missing file: ENOENT');
+
+  // appendFileSync (catalog.js saves a big playlist a batch at a time on a TV)
+  fs.writeFileSync('/data/catalog/y.json', '[');
+  fs.appendFileSync('/data/catalog/y.json', big.slice(1));
+  ok(files.get('/data/catalog/y.json').toString('utf8') === big, 'appendFileSync: a big addition in pieces, exact');
+
+  // the bridge's pieces don't stop the page: something else gets a turn while an answer is read
+  let turns = 0;
+  const spin = setInterval(() => turns++, 0);
+  const r2 = await request({ url: 'big' });
+  clearInterval(spin);
+  ok(r2.body === big && turns >= 3, `an answer read through the bridge lets the page run in between (${turns} turns)`);
+
+  // APK 1.8.3+: the answer fetched from /blob/<name>, read as it comes (a piece split mid-character)
+  window.SealNative.blobFetch = () => true;
+  let asked = null;
+  globalThis.__pageFetch = async url => {
+    asked = url;
+    const name = decodeURIComponent(url.split('/blob/')[1]), buf = blobs.get(name);
+    if (!buf) return { ok: false, status: 404 };
+    const cuts = [0, 1000001, 3333333, 5000000, buf.length];
+    let i = 0;
+    return { ok: true, status: 200, body: { getReader: () => ({ read: async () => (i < cuts.length - 1 ? { done: false, value: new Uint8Array(buf.subarray(cuts[i], cuts[++i])) } : { done: true }) }) } };
+  };
+  let bridgePieces = 0;
+  const realChunk = window.SealNative.blobChunk;
+  window.SealNative.blobChunk = (b, n) => { bridgePieces++; return realChunk(b, n); };
+  const r3 = await request({ url: 'big' });
+  ok(r3.body === big && /^https:\/\/appassets\.androidplatform\.net\/blob\/b1$/.test(asked) && bridgePieces === 0 && blobs.size === 0, 'APK 1.8.3+: the answer is fetched from /blob/b1 (no bridge pieces), exactly, and removed after');
+  globalThis.__pageFetch = async () => { throw new Error('no'); };
+  ok((await request({ url: 'big' })).body === big && bridgePieces > 0, '… and if that fails, through the bridge as before');
   console.log(`\nPieces tests: ${passed} passed`);
 })().catch(e => { console.error(e); process.exit(1); });

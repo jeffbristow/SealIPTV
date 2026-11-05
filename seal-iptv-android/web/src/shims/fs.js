@@ -66,6 +66,20 @@ module.exports = {
       at = end;
     }
   },
+  /** adds text to the end of a file (catalog.js saves a big playlist a batch at a time on a TV) */
+  appendFileSync(p, data) {
+    p = String(p);
+    const text = typeof data === 'string' ? data : String(data);
+    if (!N.appendFile) throw new Error('Could not save ' + p);
+    let at = 0;
+    while (at < text.length) {
+      let end = Math.min(text.length, at + PIECE);
+      const c = text.charCodeAt(end - 1);
+      if (end < text.length && c >= 0xd800 && c <= 0xdbff) end--;
+      if (!N.appendFile(p, text.slice(at, end))) throw new Error('Could not save ' + p);
+      at = end;
+    }
+  },
   renameSync(a, b) { if (!N.renameFile(String(a), String(b))) throw enoent(a); },
   unlinkSync(p) { if (!N.deleteFile(String(p))) throw enoent(p); },
   existsSync(p) { return !!N.exists(String(p)); },

@@ -73,13 +73,41 @@ const plainItem = ({ _q, _core, _foreign, plot, ...i }) => i;
    that took longer than reading the file). LANG: the language rules they were found with (language.js). */
 const LANG = 1;
 const savedItem = i => (foreignOf(i) ? { ...plainItem(i), _foreign: true } : plainItem(i));
+/** a section's titles per category: { catId: [titles, of them in another language] } (kept with the summary) */
+function catCountsOf(items) {
+  const out = {};
+  for (const i of items) {
+    const k = i.cat == null ? '' : String(i.cat);
+    const n = out[k] || (out[k] = [0, 0]);
+    n[0]++;
+    if (foreignOf(i)) n[1]++;
+  }
+  return out;
+}
 /* Saved with letters beyond Latin-1 as \u escapes: the text is then read as one byte a letter, not two
    (a few titles in Greek or Japanese made a TV hold 75 MB instead of 37 MB while reading the file). */
+const asciiJson = o => JSON.stringify(o).replace(/[Ā-￿]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
 const writeJson = (f, o) => {
   const tmp = f + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(o).replace(/[Ā-￿]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0')));
+  fs.writeFileSync(tmp, asciiJson(o));
   fs.renameSync(tmp, f);
 };
+const tick = () => new Promise(ok => later(ok, 0));
+/**
+ * A section's file ({ lang, items }) written a batch of titles at a time, a pause after each (a TV: the
+ * movie list in one go kept the page from answering the remote for seconds). The same file as writeJson.
+ */
+async function writeSectionSlow(f, items, BATCH = 4000) {
+  const tmp = f + '.tmp';
+  fs.writeFileSync(tmp, `{"lang":${LANG},"items":[`);
+  for (let at = 0; at < items.length; at += BATCH) {
+    const part = asciiJson(items.slice(at, at + BATCH).map(savedItem));
+    fs.appendFileSync(tmp, (at ? ',' : '') + part.slice(1, -1));
+    await tick();
+  }
+  fs.appendFileSync(tmp, ']}');
+  fs.renameSync(tmp, f);
+}
 /** setTimeout that doesn't keep Node running (tests) */
 const EVENT_FRESH = 20 * 60000;   // event channels' names are fetched again after this (Sports / Pay-Per-View)
 const later = (fn, ms) => { const t = setTimeout(fn, ms); if (t && t.unref) t.unref(); return t; };
@@ -154,7 +182,7 @@ class Catalog {
 
   /** A catalogue saved in sections: each section's items (and _byId) are read the first time they're asked for. */
   _lazy(pid, d) {
-    const c = { fetchedAt: d.fetchedAt || 0, account: d.account || null, counts: d.counts || {}, home: d.home || {}, refs: d.refs || {}, _pid: pid, _byId: {}, _read: {} };
+    const c = { fetchedAt: d.fetchedAt || 0, account: d.account || null, counts: d.counts || {}, catCounts: d.catCounts || {}, home: d.home || {}, refs: d.refs || {}, _pid: pid, _byId: {}, _read: {} };
     const set = (o, k, value) => Object.defineProperty(o, k, { value, writable: true, enumerable: true, configurable: true });
     for (const s of SECTIONS) {
       const sec = { cats: (d.cats && d.cats[s]) || [] };
@@ -170,6 +198,12 @@ class Catalog {
         c._read[s] = true;
         set(sec, 'items', items);
         set(c._byId, s, new Map(items.map(i => [i.id, i])));
+        // a summary saved before 1.8.3 has no counts per category (the sidebar's numbers): kept now for next time
+        if (!c.catCounts[s] && items.length) {
+          c.catCounts[s] = catCountsOf(items);
+          if (this.onCounts) later(() => { try { this.onCounts(); } catch { /* the window isn't there */ } }, 0);   // the sidebar's numbers changed
+          if (!c._catCountsSoon) c._catCountsSoon = later(() => { c._catCountsSoon = null; if (this.mem.get(pid) === c) try { this._saveSummary(pid, c, this._refs(pid, c, false)); } catch { /* next time */ } }, 5000);
+        }
         this._warm(c, [items]);
       };
       Object.defineProperty(sec, 'items', { get: () => (read(), sec.items), enumerable: true, configurable: true });
@@ -254,21 +288,37 @@ class Catalog {
   /** The sections first, then the summary (until it's written, the older file is still the one read). */
   _save(pid, c) {
     fs.mkdirSync(this.dir, { recursive: true });
-    const counts = {}, home = {};
+    const counts = {}, home = {}, catCounts = {};
     for (const s of SECTIONS) {
       const items = c[s].items.map(savedItem);
       writeJson(this._secFile(pid, s), { lang: LANG, items });
       counts[s] = items.length;
+      catCounts[s] = catCountsOf(c[s].items);
       if (s !== 'live') home[s] = items.filter(i => i.added).sort((a, b) => b.added - a.added).slice(0, HOME_KEEP);
     }
-    Object.assign(c, { counts, home });
+    Object.assign(c, { counts, home, catCounts });
+    this._saveSummary(pid, c);
+  }
+
+  /** _save on a TV: the same files, the big sections a batch of titles at a time (writeSectionSlow) */
+  async _saveSlow(pid, c) {
+    fs.mkdirSync(this.dir, { recursive: true });
+    const counts = {}, home = {}, catCounts = {};
+    for (const s of SECTIONS) {
+      const items = c[s].items;
+      await writeSectionSlow(this._secFile(pid, s), items);   // (works out each title's language: catCountsOf is quick after)
+      counts[s] = items.length;
+      catCounts[s] = catCountsOf(items);
+      if (s !== 'live') home[s] = items.filter(i => i.added).sort((a, b) => b.added - a.added).slice(0, HOME_KEEP).map(savedItem);
+    }
+    Object.assign(c, { counts, home, catCounts });
     this._saveSummary(pid, c);
   }
 
   _saveSummary(pid, c, refs = this._refs(pid, c)) {
     const cats = {};
     for (const s of SECTIONS) cats[s] = c[s].cats;
-    writeJson(this._file(pid), { v: 2, fetchedAt: c.fetchedAt, account: c.account || null, counts: c.counts, cats, home: c.home, refs });
+    writeJson(this._file(pid), { v: 2, fetchedAt: c.fetchedAt, account: c.account || null, counts: c.counts, catCounts: c.catCounts || {}, cats, home: c.home, refs });
     if (c._read) c.refs = refs;
   }
 
@@ -295,7 +345,30 @@ class Catalog {
   summary(pid) {
     const c = this.get(pid);
     const n = s => (this._isRead(c, s) ? c[s].items.length : c.counts[s] || 0);
-    return { fetchedAt: c.fetchedAt || 0, account: c.account || null, counts: { live: n('live'), movies: n('movies'), series: n('series') } };
+    return { fetchedAt: c.fetchedAt || 0, account: c.account || null, counts: { live: n('live'), movies: n('movies'), series: n('series') }, shown: this.shownCounts(pid) };
+  }
+
+  /**
+   * How many titles each section lists now (the sidebar's numbers): hidden categories, locked ones (PIN not
+   * entered) and other-language titles (when they're hidden) left out — what "All" on its page says.
+   * A section not read yet: from the counts per category kept with the summary, without reading it.
+   */
+  shownCounts(pid) {
+    const c = this.get(pid), open = this.parental.isUnlocked(), out = {};
+    for (const s of SECTIONS) {
+      const rules = this.rules(pid, s);
+      if (this._isRead(c, s)) { out[s] = this._shown(pid, s, rules, open).items.length; continue; }
+      const per = c.catCounts && c.catCounts[s];
+      if (!per) { out[s] = c.counts[s] || 0; continue; }   // (nothing kept yet: the whole playlist's)
+      let n = 0;
+      for (const [cat, [all, foreign]] of Object.entries(per)) {
+        const r = rules.get(cat);
+        if (r && (r.hidden || (r.locked && !open))) continue;
+        n += rules.hideForeign && !(r && r.show) ? all - foreign : all;
+      }
+      out[s] = n;
+    }
+    return out;
   }
 
   /** Is the saved copy older than the refresh setting? */
@@ -358,6 +431,7 @@ class Catalog {
         const [cats, items] = await Promise.all([x.categories(s), x.streams(s)]);
         c[s].cats = Xtream.normCategories(cats);
         c[s].items = items.map(i => Xtream.normItem(s, i)).filter(i => i.id && i.id !== 'undefined');
+        if (this.slow) await tick();   // (a TV: the remote gets a turn between the big steps)
       }
     } else {
       onStep('Loading the playlist…');
@@ -365,10 +439,11 @@ class Catalog {
     }
     c.fetchedAt = Date.now();
     this._index(c);
+    if (this.slow) await tick();
     let carried = 0;
     try { carried = this._carryOver(pid, old, c); } catch { /* the library stays as it was */ }
     this.mem.set(pid, c);
-    this._save(pid, c);
+    if (this.slow) await this._saveSlow(pid, c); else this._save(pid, c);
     for (const k of [...this.details.keys()]) if (k.startsWith(pid + '|')) this.details.delete(k);
     this.evFresh.delete(pid);
     return { ...this.summary(pid), carried };
@@ -444,6 +519,12 @@ class Catalog {
     const flags = this.library.catFlags(pid);
     const s = this.store.getSettings();
     const autoAdult = s.parental.autoAdult !== false, hideForeign = !!s.content.hideNonEnglish;
+    // kept while the categories, the settings and the flags stay the same (Home asked for them for each
+    // title it shows: working out every category's language each time took ~0.35 s on a TV)
+    const key = `${autoAdult}|${hideForeign}|${JSON.stringify(flags)}`;
+    if (!this._rulesMemo) this._rulesMemo = new WeakMap();
+    const kept = this._rulesMemo.get(c.cats);
+    if (kept && kept.key === key) return kept.out;
     const out = new Map();
     for (const cat of c.cats) {
       const f = flags[section + ':' + cat.id] || {};
@@ -457,6 +538,7 @@ class Catalog {
       });
     }
     out.hideForeign = hideForeign;
+    this._rulesMemo.set(c.cats, { key, out });
     return out;
   }
 
@@ -528,6 +610,31 @@ class Catalog {
   }
 
   /**
+   * A section's titles that may be listed now, and its count per category (foreign titles left
+   * out, locked / hidden ones counted), worked out once and kept while nothing they depend on
+   * changes: the playlist (a new items list), the PIN, the language / adult settings, the
+   * category flags. (A TV took ~0.2 s to go through 140,000 movies each time a page opened.)
+   */
+  _shown(pid, section, rules, open) {
+    const c = this.get(pid)[section];
+    const s = this.store.getSettings();
+    const key = [open, s.parental.autoAdult !== false, !!s.content.hideNonEnglish, JSON.stringify(this.library.catFlags(pid))].join('|');
+    if (!this._shownMemo) this._shownMemo = new WeakMap();
+    const m = this._shownMemo.get(c.items);
+    if (m && m.key === key) return m;
+    const counts = new Map(), items = [];
+    for (const i of c.items) {
+      const r = rules.get(i.cat);
+      if (rules.hideForeign && foreignOf(i) && !(r && r.show)) continue;
+      counts.set(i.cat, (counts.get(i.cat) || 0) + 1);
+      if (this._visible(i, rules, open)) items.push(i);
+    }
+    const res = { key, counts, items };
+    this._shownMemo.set(c.items, res);
+    return res;
+  }
+
+  /**
    * Categories for the lists (hidden ones left out), or all of them for
    * Settings (all = true). Counts are of what's shown.
    */
@@ -535,14 +642,8 @@ class Catalog {
     const c = this.get(pid)[section];
     const rules = this.rules(pid, section);
     const open = this.parental.isUnlocked();
-    const counts = new Map();
-    let total = 0;
-    for (const i of c.items) {
-      const r = rules.get(i.cat);
-      if (rules.hideForeign && foreignOf(i) && !(r && r.show)) continue;
-      counts.set(i.cat, (counts.get(i.cat) || 0) + 1);
-      if (this._visible(i, rules, open)) total++;
-    }
+    const shown = this._shown(pid, section, rules, open);
+    const counts = shown.counts, total = shown.items.length;
     const known = c.cats.filter(x => counts.has(x.id) || all).map(x => ({ ...x, count: counts.get(x.id) || 0, ...rules.get(x.id), open }))
       .filter(x => all || !x.hidden);
     const orphan = [...counts.keys()].filter(id => !c._catNames.has(id));
@@ -560,7 +661,8 @@ class Catalog {
     if (r && r.locked && !open) throw Catalog.lockedError(section, cat, c._catNames.get(cat));
     // hidden categories never show up in search — unless "search hidden categories too" is on (PIN)
     const allowHidden = !!(q && String(q).trim() && this.parental.searchHidden && this.parental.searchHidden());
-    let items = c.items.filter(i => this._visible(i, rules, open, allowHidden));
+    // (the cached list is shared: everything below makes new arrays, never sorts it in place)
+    let items = allowHidden ? c.items.filter(i => this._visible(i, rules, open, true)) : this._shown(pid, section, rules, open).items;
     let favAt = null;
     if (cat === '*fav') {
       // in the order chosen for Favorites, unless another sort is picked
@@ -1143,4 +1245,4 @@ class Catalog {
   }
 }
 
-module.exports = { Catalog, SECTIONS, KIND, matchRank, coreName };
+module.exports = { Catalog, SECTIONS, KIND, matchRank, coreName, writeSectionSlow };

@@ -131,6 +131,69 @@ const fakeFetch = async (url, opts) => {
     ok(/^\{"lang":1,/.test(saved) && /"_foreign":true/.test(saved), 'each section\'s file says which titles are in another language');
     ok(!/[^\x00-\xff]/.test(saved) &&new Catalog({ dir, store, vpn, library, fetch: fakeFetch }).list(pm.id, { section: 'live' }).items[0].name === 'Ελλάδα One', 'other scripts are saved as \\u escapes (one byte a letter when read) and read back the same');
     await rejects(cat.test({ type: 'm3u', m3uFile: path.join(dir, 'missing.m3u') }), /can't be read/, 'a missing playlist file is reported');
+
+    // a TV (slow): the same files, the sections written a batch at a time
+    const slowDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sealiptv-slow-'));
+    try {
+      const catS = new Catalog({ dir: slowDir, store, vpn, library, fetch: fakeFetch, slow: true });
+      const { writeSectionSlow } = require('../src/main/catalog');
+      await catS.refresh(pm.id);
+      await cat.refresh(pm.id);
+      const same = s => fs.readFileSync(path.join(slowDir, 'catalog', pm.id + s), 'utf8') === fs.readFileSync(path.join(dir, 'catalog', pm.id + s), 'utf8');
+      ok(['.live.json', '.movies.json', '.series.json'].every(same), 'a TV saves a playlist a batch at a time: the same files');
+      ok(new Catalog({ dir: slowDir, store, vpn, library, fetch: fakeFetch }).list(pm.id, { section: 'live' }).items[0].name === 'Ελλάδα One', '… read back the same');
+      const many = Array.from({ length: 23 }, (_, n) => ({ id: String(n), name: n === 7 ? 'Τίτλος ' + n : 'T' + n, cat: '1' }));
+      const f1 = path.join(slowDir, 'a.json');
+      await writeSectionSlow(f1, many, 5);
+      const back = JSON.parse(fs.readFileSync(f1, 'utf8'));
+      ok(back.lang === 1 && back.items.length === 23 && back.items[7].name === 'Τίτλος 7' && back.items[7]._foreign === true && !fs.existsSync(f1 + '.tmp'), 'batches of 5: all 23 titles, other scripts kept, no .tmp left');
+      await writeSectionSlow(f1, []);
+      ok(JSON.parse(fs.readFileSync(f1, 'utf8')).items.length === 0, 'an empty section saves too');
+    } finally { fs.rmSync(slowDir, { recursive: true, force: true }); }
+
+    // what a page lists is kept between pages: worked out again when the PIN or a category's flags change
+    const c1 = cat.cats(p.id, 'live');
+    const shownOf = () => cat._shown(p.id, 'live', cat.rules(p.id, 'live'), false);
+    ok(cat.cats(p.id, 'live').total === c1.total && shownOf() === shownOf(), 'the list of what may be shown is kept');
+    library.setCatFlag(p.id, 'live:2', { hide: true });
+    ok(cat.cats(p.id, 'live').total === c1.total - 1 && cat.list(p.id, { section: 'live' }).total === c1.total - 1, 'hiding a category: counted again at once');
+    library.setCatFlag(p.id, 'live:2', { hide: false });
+    ok(cat.list(p.id, { section: 'live' }).total === c1.total, '… and shown again');
+
+    // the sidebar's numbers: what the pages list, worked out from the summary without reading a section
+    API.get_live_streams.push({ stream_id: 14, name: 'Ελληνικό Κανάλι', category_id: '1', num: 4 });
+    let open = false;
+    const par = { isUnlocked: () => open };
+    const catP = new Catalog({ dir, store, vpn, library, fetch: fakeFetch, parental: par });
+    await catP.refresh(p.id);
+    const fresh = () => new Catalog({ dir, store, vpn, library, fetch: fakeFetch, parental: par });
+    const listed = () => fresh().list(p.id, { section: 'live' }).total;
+    const check = msg => { const f = fresh(); const s = f.summary(p.id).shown.live; ok(f.unread(p.id).includes('live') && s === listed(), `${msg}: ${s}, as Live TV lists`); };
+    check('sidebar count, nothing hidden');
+    ok(fresh().summary(p.id).counts.live === 4, '… (the playlist has 4)');
+    library.setCatFlag(p.id, 'live:2', { hide: true });
+    check('a hidden category left out');
+    library.setCatFlag(p.id, 'live:2', { hide: false });
+    library.setCatFlag(p.id, 'live:1', { lock: true });
+    check('a locked category left out');
+    open = true;
+    check('… counted while the PIN is entered');
+    open = false;
+    library.setCatFlag(p.id, 'live:1', { lock: null });
+    store.setSettings({ content: { hideNonEnglish: true } });
+    check('other-language titles left out when they\'re hidden');
+    store.setSettings({ content: { hideNonEnglish: false } });
+    // a summary saved before these counts were kept: filled in once the section has been read
+    const sumFile = path.join(dir, 'catalog', p.id + '.json');
+    const sd = JSON.parse(fs.readFileSync(sumFile, 'utf8'));
+    delete sd.catCounts;
+    fs.writeFileSync(sumFile, JSON.stringify(sd));
+    const old = fresh();
+    ok(old.summary(p.id).shown.live === 4, 'an older summary: the playlist\'s count until a section is read');
+    old.list(p.id, { section: 'live' });
+    old._saveSummary(p.id, old.get(p.id), old._refs(p.id, old.get(p.id), false));
+    ok(JSON.parse(fs.readFileSync(sumFile, 'utf8')).catCounts.live['1'][0] === 2, '… then the counts per category are kept with it');
+    API.get_live_streams.pop();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

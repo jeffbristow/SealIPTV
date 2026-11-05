@@ -64,6 +64,7 @@ function init() {
   vpn = new VpnGuard({ getSettings: () => store.getSettings() });
   parental = new Parental(store);
   catalog = new Catalog({ dir, store, vpn, library, userAgent, parental });
+  catalog.onCounts = () => send('catalog:counts');   // a section read: the sidebar's numbers (catalog.shownCounts)
   artwork = new Artwork({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   ratings = new Ratings({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });
   trending = new Trending({ dir, getSettings: () => store.getSettings(), allowed: () => vpn.allowed(), userAgent: () => UA.seal });

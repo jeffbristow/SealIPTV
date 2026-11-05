@@ -132,8 +132,78 @@ final class ImageCache {
                 f.delete(); return null; }
             if (System.currentTimeMillis() - f.lastModified() > DAY) //noinspection ResultOfMethodCallIgnored
                 f.setLastModified(System.currentTimeMillis());
+            // kept before pictures were made smaller (1.8.3): made smaller now, once
+            if (shrinkable(type) && sampleFor(f) > 1) {
+                byte[] body = readAll(f);
+                byte[] small = shrink(body);
+                if (small != body) {
+                    File tmp = new File(dir, f.getName() + ".tmp");
+                    try (FileOutputStream o = new FileOutputStream(tmp)) { o.write(small); }
+                    if (tmp.renameTo(f)) { synchronized (this) { if (size >= 0) size -= body.length - small.length; } }
+                    else //noinspection ResultOfMethodCallIgnored
+                        tmp.delete();
+                    return answer(sniff(small, small.length), new ByteArrayInputStream(small));
+                }
+            }
             return answer(type, new FileInputStream(f));
         } catch (Exception e) { return null; }
+    }
+
+    /* ---- pictures made smaller ----
+       Providers send posters at 600x900 (some at 3600x2400); a TV shows them at about 225x340. The WebView
+       decodes and keeps each one at its full size: Home on a Google TV held 82 megapixels of pictures
+       (~330 MB) and the TV ran out of memory (swap, stalls). Kept at half size or less, never under
+       KEEP_SIDE on the long side (the series / movie page shows the poster at ~315 px wide). */
+    private static final int KEEP_SIDE = 450;
+
+    private static boolean shrinkable(String type) {
+        return "image/jpeg".equals(type) || "image/png".equals(type) || "image/webp".equals(type) || "image/bmp".equals(type);
+    }
+
+    /** 1, 2, 4 …: how much smaller a picture of this size can be (its long side stays >= KEEP_SIDE) */
+    private static int sampleOf(int w, int h) {
+        int side = Math.max(w, h), s = 1;
+        if (side <= 0) return 1;
+        while (side / (s * 2) >= KEEP_SIDE) s *= 2;
+        return s;
+    }
+
+    private static int sampleFor(File f) {
+        android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+        o.inJustDecodeBounds = true;   // (only the size: reads the file's start)
+        android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+        return sampleOf(o.outWidth, o.outHeight);
+    }
+
+    /** the picture smaller (JPEG; PNG when it has see-through parts), or body itself when it's small already */
+    static byte[] shrink(byte[] body) {
+        try {
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeByteArray(body, 0, body.length, o);
+            int s = sampleOf(o.outWidth, o.outHeight);
+            if (s <= 1) return body;
+            o = new android.graphics.BitmapFactory.Options();
+            o.inSampleSize = s;
+            android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeByteArray(body, 0, body.length, o);
+            if (bm == null) return body;
+            ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
+            boolean ok = bm.hasAlpha() ? bm.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                    : bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, out);
+            bm.recycle();
+            if (!ok || out.size() == 0) return body;
+            return out.toByteArray();
+        } catch (Throwable e) { return body; }   // (OutOfMemoryError included: the picture as it came)
+    }
+
+    private static byte[] readAll(File f) throws java.io.IOException {
+        try (InputStream in = new FileInputStream(f)) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream((int) Math.min(f.length(), MAX_ONE));
+            byte[] b = new byte[32768];
+            int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            return buf.toByteArray();
+        }
     }
 
     private WebResourceResponse download(String url, String ua, File f) {
@@ -174,6 +244,7 @@ final class ImageCache {
             } finally { c.disconnect(); }
             String type = sniff(body, body.length);
             if (type == null) return fail(url);   // not a picture (an error page …)
+            if (shrinkable(type)) { body = shrink(body); type = sniff(body, body.length); }   // (see KEEP_SIDE)
             File tmp = new File(dir, f.getName() + ".tmp");
             try (FileOutputStream o = new FileOutputStream(tmp)) { o.write(body); }
             if (!tmp.renameTo(f)) { //noinspection ResultOfMethodCallIgnored

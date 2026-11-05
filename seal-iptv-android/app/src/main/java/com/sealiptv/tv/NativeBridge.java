@@ -195,6 +195,9 @@ public class NativeBridge {
 
     @JavascriptInterface public String blobChunk(String name, int n) { return chunkOf(blob(name), n); }
 
+    /** the page may fetch('/blob/<name>') instead of blobChunk (MainActivity.blobFile; 1.8.3+) */
+    @JavascriptInterface public boolean blobFetch() { return true; }
+
     @JavascriptInterface public void blobDrop(String name) { //noinspection ResultOfMethodCallIgnored
         blob(name).delete(); }
 
