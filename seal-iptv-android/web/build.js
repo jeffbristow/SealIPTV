@@ -54,6 +54,7 @@ swap(`<script src="../../node_modules/hls.js/dist/hls.min.js"></script>
 <script src="../../node_modules/mpegts.js/dist/mpegts.js"></script>
 <script src="app.js"></script>
 <script src="avsync.js"></script>
+<script src="audioprint.js"></script>
 <script src="player.js"></script>`, `<script src="tvflag.js"></script>
 <script src="core.js"></script>
 <script src="app.js"></script>

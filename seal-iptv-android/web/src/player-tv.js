@@ -14,6 +14,9 @@
  *   external { pos }            "Open in another app" chosen in the player
  *   error { message }           the stream didn't play
  *   closed { pos, dur }         Back / Home
+ *   print { from, h }           an episode's sound (AudioPrint numbers) -> intros.js;
+ *                               where its intro / credits are goes back (cmd 'marks'):
+ *                               Skip intro / Next episode
  * and for the channel guide (OK / ← on a live channel):
  *   guide                       opened -> the whole category is loaded and sent (cmd 'channels')
  *   epgNeed { ids }             rows in view -> what's on now / next (cmd 'epg')
@@ -74,7 +77,10 @@ const Player = (() => {
     // the channel watched before, for 0 / ⟲ (only when it's another channel)
     if (req.kind === 'live' && cur && cur.live && cur.req.id !== req.id && opts.prev === undefined) opts.prev = prevOf(cur);
     if (req.kind === 'live' && opts.prev === undefined && cur && cur.live) opts.prev = cur.opts.prev;
-    const c = { req, opts, prep, key: prep.key, meta: metaOf(req), live: prep.live, marked: false, lastSave: 0, pos: start, dur: 0 };
+    if (cur && cur.prints) call('intro:end', cur.key).catch(() => {});
+    const c = { req, opts, prep, key: prep.key, meta: metaOf(req), live: prep.live, marked: false, lastSave: 0, pos: start, dur: 0, prints: false, marks: '' };
+    // an episode: its sound is listened to for the series' intro and end credits (intros.js)
+    if (req.kind === 'episode' && req.seriesName && prep.key) c.prints = !!(await call('intro:begin', { key: prep.key, show: req.seriesName, season: req.season }).catch(() => null));
     cur = c;
     const nx = nextEpisode(c);
     const ch = prep.live && opts.channels && opts.channels.length > 1 ? opts.channels : null;
@@ -85,7 +91,7 @@ const Player = (() => {
       avsync: AvSync.get(), device: AvSync.device(),
       canZap: !!(opts.channels && opts.channels.length > 1),
       next: nx && state.settings.playback.autoNext ? `${epLabel(nx.season, nx.episode)} · ${nx.name}` : '',
-      hasNext: !!nx, guide: prep.live,
+      hasNext: !!nx, guide: prep.live, prints: c.prints,
       ...(ch ? { index: opts.index, ...(ch !== sentList ? { channels: brief(ch) } : {}) } : { channels: [] })
     }));
     sentList = ch;
@@ -118,6 +124,7 @@ const Player = (() => {
 
   function finish(c) {
     if (cur === c) cur = null;
+    if (c.prints) call('intro:end', c.key).catch(() => {});
     call('play:stopped').catch(() => {});
     // (the remote stays on what was played: it went back to the top of Home)
     if (['home', 'movie', 'show', 'favorites'].includes(state.view)) renderKeepPlace();
@@ -138,6 +145,14 @@ const Player = (() => {
         if (pb.autoWatched) markWatched(c);
         if (!nextEpisode(c) || !pb.autoNext) { N.playerCommand(JSON.stringify({ cmd: 'close' })); }
         break;
+      case 'print': {
+        if (!c.prints) break;
+        const st = await call('intro:add', c.key, ev.from, ev.h, c.dur).catch(() => null);
+        if (!st || cur !== c) break;
+        const marks = JSON.stringify({ intro: st.intro, credits: st.credits });
+        if (marks !== c.marks) { c.marks = marks; N.playerCommand(JSON.stringify({ cmd: 'marks', intro: st.intro, credits: st.credits })); }
+        break;
+      }
       case 'next': {
         const nx = nextEpisode(c);
         saveProgress(c, true);

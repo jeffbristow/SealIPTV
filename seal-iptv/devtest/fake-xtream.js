@@ -16,6 +16,8 @@
  * poster link is broken (for the poster look-up, artwork.js).
  *   episodes        -> .mp4 (10 seconds: good for "next episode")
  * Live channel 7 is "offline" (404) to see the error screen.
+ * FAKE_INTROS=1: the first series' episodes are sound only (fake-episodes.js),
+ * each with the same intro and end credits: for Skip intro / Next episode.
  * ===================================================================== */
 const http = require('http');
 const https = require('https');
@@ -53,6 +55,9 @@ function eventChannels() {
   return list.map(([label, title, t, c], i) => ({ num: CHANNELS.length + i + 1, name: title ? evName(label, title, t) : label + ':', stream_type: 'live', stream_id: 1100 + i, stream_icon: '', epg_channel_id: '', added: '1700000000', category_id: String(LIVE_CATS.length + c), tv_archive: 0 }));
 }
 const NOART = process.env.FAKE_NOART === '1';
+const INTROS = process.env.FAKE_INTROS === '1';
+const fakeEps = require('./fake-episodes');
+const epNumber = id => { const n = Number(id) - 300000; return (Math.floor(n / 10) - 1) * 6 + (n % 10); };   // series 3000: 1, 2, …
 const vod = MOVIES.map((name, i) => ({ num: i + 1, name: `${name} (${2005 + (i % 19)})`, stream_type: 'movie', stream_id: 2000 + i, stream_icon: NOART && i % 3 === 0 ? `http://127.0.0.1:${PORT}/gone/m${i}.jpg` : `http://127.0.0.1:${PORT}/img/poster/m${i}.svg`, rating: String(5 + (i % 5)), rating_5based: 2.5 + (i % 5) / 2, added: String(1760000000 + i * 86400), category_id: String(1 + (i % VOD_CATS.length)), container_extension: i % 3 === 0 ? 'mp4' : 'm3u8' }));
 const series = SERIES.map((name, i) => ({ num: i + 1, name, series_id: 3000 + i, cover: NOART && i % 2 === 0 ? '' : `http://127.0.0.1:${PORT}/img/poster/s${i}.svg`, plot: `${name} follows a crew of seals keeping the north coast safe.`, cast: 'Sam Seal, Pat Pup', genre: SERIES_CATS[i % SERIES_CATS.length], releaseDate: `${2016 + i}-03-01`, last_modified: String(1760000000 + i * 3600), rating: '8', rating_5based: 4, category_id: String(1 + (i % SERIES_CATS.length)) }));
 const cats = list => list.map((n, i) => ({ category_id: String(i + 1), category_name: n, parent_id: 0 }));
@@ -64,7 +69,8 @@ function seriesInfo(id) {
   for (let n = 1; n <= seasons; n++) {
     episodes[n] = [];
     for (let e = 1; e <= 6; e++) {
-      episodes[n].push({ id: String(id * 100 + n * 10 + e), episode_num: e, title: `${s.name} S${pad(n)}E${pad(e)} - Chapter ${e}`, container_extension: 'mp4', season: n, info: { plot: `Episode ${e} of season ${n}. The crew faces a storm.`, duration_secs: 10, movie_image: `http://127.0.0.1:${PORT}/img/still/${id}-${n}-${e}.svg` } });
+      const wav = INTROS && Number(id) === 3000;
+      episodes[n].push({ id: String(id * 100 + n * 10 + e), episode_num: e, title: `${s.name} S${pad(n)}E${pad(e)} - Chapter ${e}`, container_extension: wav ? 'wav' : 'mp4', season: n, info: { plot: `Episode ${e} of season ${n}. The crew faces a storm.`, duration_secs: wav ? fakeEps.layout((n - 1) * 6 + e).dur : 10, movie_image: `http://127.0.0.1:${PORT}/img/still/${id}-${n}-${e}.svg` } });
     }
   }
   return { seasons: Object.keys(episodes).map(n => ({ season_number: Number(n), name: `Season ${n}` })), info: { name: s.name, cover: s.cover, plot: s.plot, cast: s.cast, genre: s.genre, releaseDate: s.releaseDate, rating_5based: s.rating_5based, backdrop_path: [s.cover] }, episodes };
@@ -194,6 +200,7 @@ http.createServer((req, res) => {
     if (m[2] !== USER || m[3] !== PASS) { res.writeHead(401); return res.end(); }
     if (m[1] === 'live' && m[4] === '1006') { res.writeHead(404); return res.end(); }
     if (m[1] === 'live' && m[5] === 'ts') return liveTs(res).catch(() => res.end());
+    if (m[1] === 'series' && m[5] === 'wav') return fakeEps.serve(req, res, epNumber(m[4]));
     const hls = m[1] === 'live' || (m[1] === 'movie' && m[5] === 'm3u8');
     if (PROXY) return hls ? proxyPlaylist(req, res) : proxyFile(MP4, req, res);
     return redirect(res, hls ? HLS : MP4);

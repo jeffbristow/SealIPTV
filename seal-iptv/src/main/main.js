@@ -19,6 +19,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Store } = require('./store');
 const { Library } = require('./library');
+const { Intros } = require('./intros');
 const { Catalog } = require('./catalog');
 const { VpnGuard } = require('./vpn');
 const { Xtream } = require('./xtream');
@@ -44,6 +45,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const VERSION = process.env.SEAL_IPTV_RUNNING_VERSION || app.getVersion();
 const UA = { seal: `SealIPTV/${VERSION}`, vlc: 'VLC/3.0.21 LibVLC/3.0.21' };
 
+let intros;   // Skip intro / Next episode (intros.js)
 let store, library, catalog, vpn, win, parental, sync, artwork, ratings, trending, updater, imageCache, media;
 
 function userAgent() {
@@ -61,6 +63,7 @@ function init() {
   };
   store = new Store(dir, secure);
   library = new Library(dir);
+  intros = new Intros(dir);
   vpn = new VpnGuard({ getSettings: () => store.getSettings() });
   parental = new Parental(store);
   catalog = new Catalog({ dir, store, vpn, library, userAgent, parental });
@@ -393,6 +396,10 @@ function registerIpc() {
   handle('play:prepare', req => preparePlay(req));
   handle('play:stopped', () => { playUa = null; playing = false; media.afterPlay(); return true; });
   handle('play:netlog', () => netLog.slice());
+  // Skip intro / Next episode: the sound of the episode playing (player.js) -> where its intro and credits are
+  handle('intro:begin', o => intros.begin(o));
+  handle('intro:add', (key, first, h, dur) => intros.add(key, first, h, dur));
+  handle('intro:end', key => intros.end(key));
   handle('play:external', req => playExternal(req));
   handle('play:findVlc', () => findVlc());
 }

@@ -365,6 +365,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 .sync-measure #syTap { min-width: 180px; }
 .p-details { margin-top: 12px; text-align: left; }
 .p-details pre { max-height: 220px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 11px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; }
+/* Skip intro / Next episode (player.js: found by sound, intros.js) */
+.p-mark { position: absolute; right: 32px; bottom: 120px; z-index: 3; font-size: 17px; padding: 12px 22px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 .p-next { position: absolute; right: 24px; bottom: 110px; background: rgba(18,20,24,.94); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; width: 320px; }
 
 /* ---------- 13. Welcome + VPN ---------- */

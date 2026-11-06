@@ -34,6 +34,7 @@ const { Ratings } = require('../../../seal-iptv/src/main/ratings');
 const { Trending } = require('../../../seal-iptv/src/main/trending');
 const { Studios } = require('../../../seal-iptv/src/main/studios');
 const franchises = require('../../../seal-iptv/src/main/franchises');
+const { Intros } = require('../../../seal-iptv/src/main/intros');
 
 /* =================================================================
  * 1. START-UP
@@ -55,6 +56,7 @@ const send = (ch, data) => { for (const fn of listeners.get(ch) || []) { try { f
 const secure = { available: () => true, encrypt: s => N.encrypt(s), decrypt: b => { const r = N.decrypt(b); if (r == null) throw new Error('cannot decrypt'); return r; } };
 const store = new Store(DATA, secure);
 const library = new Library(DATA);
+const intros = new Intros(DATA);   // Skip intro / Next episode
 const vpn = new VpnGuard({ getSettings: () => store.getSettings(), vpnActive: () => N.vpnActive() || null });
 const parental = new Parental(store);
 function userAgent() {
@@ -396,6 +398,10 @@ handle('play:prepare', async req => {
 });
 handle('play:stopped', () => { playUa = null; guard(); return true; });
 handle('play:netlog', () => []);
+// Skip intro / Next episode: the sound of the episode playing (PlayerActivity -> player-tv.js) -> where its intro and credits are
+handle('intro:begin', o => intros.begin(o));
+handle('intro:add', (key, first, h, dur) => intros.add(key, first, h, dur));
+handle('intro:end', key => intros.end(key));
 handle('play:findVlc', () => 'another app on ' + HERE + ' (Android asks which)');
 handle('play:external', async req => {
   const id = pid();

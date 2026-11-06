@@ -179,8 +179,29 @@ const parentalSteps = [
   { js: "go('live')", wait: 1500, log: 'live, non-English hidden', logJs: catsNow },
   { js: "go('movies')", wait: 1500, file: shot('p8-movies-foreign-hidden'), log: 'movie categories', logJs: "JSON.stringify([...document.querySelectorAll('#cats .cat')].map(b => b.innerText.replace(/\s+/g, ' ').trim()))" }
 ];
+// `FAKE_INTROS=1 node devtest/shots.js <folder> intros`: Skip intro / Next episode, learned from two episodes (sound only, muted)
+const until = (cond, ms = 120000) => `new Promise(r => { const t0 = Date.now(); const f = () => { let ok = false; try { ok = (${cond}); } catch (e) { /* not yet */ } if (ok || Date.now() - t0 > ${ms}) r(ok); else setTimeout(f, 250); }; f(); })`;
+const vt = "$('#video').currentTime";
+const markState = `JSON.stringify({ t: Math.round(${vt} * 10) / 10, ep: $('#pSub').textContent, button: $('#pMark').classList.contains('hidden') ? '' : $('#pMark').textContent })`;
+const markShown = "!$('#pMark').classList.contains('hidden')";
+const onEp = n => until(`$('#pSub').textContent.includes('E0${n}') && ${vt} > 1`);
+const introSteps = [
+  { js: 'reload()', wait: 5000 },
+  { js: "go('show', '3000')", wait: 2500 },
+  { js: "document.querySelector('.episode').click()", wait: 3000 },
+  { js: `$('#video').muted = true; ${until(`${vt} >= 70`)}`, wait: 200, log: 'episode 1 at 70 s (nothing known yet)', logJs: markState },
+  { js: `$('#video').currentTime = $('#video').duration - 50; ${onEp(2)}`, wait: 500 },
+  { js: `$('#video').muted = true; ${until(`${vt} >= 125`)}`, wait: 200, log: 'episode 2 at 125 s (intro learned from 1 + 2)', logJs: markState },
+  { js: `$('#video').currentTime = $('#video').duration - 50; ${onEp(3)}`, wait: 500 },
+  { js: `$('#video').muted = true; ${until(`${markShown} || ${vt} >= 75`)}`, wait: 300, file: shot('i1-skip-intro'), log: 'episode 3: Skip intro (the intro is 40–80 s)', logJs: markState },
+  { js: "$('#pMark').click()", wait: 1500, log: 'after Skip intro', logJs: markState },
+  { js: `$('#video').currentTime = 490; ${until(`${markShown} || ${vt} >= 528`)}`, wait: 300, file: shot('i2-next-episode'), log: 'episode 3: Next episode (the credits are 500–530 s)', logJs: markState },
+  { js: `$('#pMark').click(); ${onEp(4)}`, wait: 500, log: 'after Next episode', logJs: markState },
+  { js: `$('#video').muted = true; ${until(`${markShown} || ${vt} >= 85`)}`, wait: 300, log: 'episode 4: Skip intro (the intro is 50–90 s)', logJs: markState },
+  { js: 'Player.close()', wait: 1500 }
+];
 const stepsFile = path.join(data, 'steps.json');
-fs.writeFileSync(stepsFile, JSON.stringify(process.argv[3] === 'sync' ? syncSteps : process.argv[3] === 'http' ? httpSteps : process.argv[3] === 'fail' ? failSteps : process.argv[3] === 'search' ? searchSteps : process.argv[3] === 'guide' ? guideSteps : process.argv[3] === 'smooth' ? smoothSteps : process.argv[3] === 'parental' ? parentalSteps : steps));
+fs.writeFileSync(stepsFile, JSON.stringify(process.argv[3] === 'sync' ? syncSteps : process.argv[3] === 'http' ? httpSteps : process.argv[3] === 'fail' ? failSteps : process.argv[3] === 'search' ? searchSteps : process.argv[3] === 'guide' ? guideSteps : process.argv[3] === 'smooth' ? smoothSteps : process.argv[3] === 'parental' ? parentalSteps : process.argv[3] === 'intros' ? introSteps : steps));
 
 const server = spawn(process.execPath, [path.join(__dirname, 'fake-xtream.js'), String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'], env: process.env });
 const served = [];

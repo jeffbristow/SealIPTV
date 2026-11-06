@@ -19,6 +19,7 @@
  *   2. Starting (VPN refusal, resume question)
  *   3. Engines + fallback
  *   4. Progress, watched, next episode
+ *   4b. Skip intro / Next episode (the episode's sound -> intros.js)
  *   5. Controls + keyboard
  *   6. Stopping
  * ===================================================================== */
@@ -87,8 +88,14 @@ const Player = (() => {
     }
     cur = {
       req, opts, prep, key: prep.key, meta: metaOf(req), live: prep.live,
-      start, started: false, marked: false, lastSave: 0, engines: [], hls: null, mts: null, retries: 0, attempts: []
+      start, started: false, marked: false, lastSave: 0, engines: [], hls: null, mts: null, retries: 0, attempts: [],
+      prints: false, marks: { intro: null, credits: null }, markShown: '', markHidden: ''
     };
+    // an episode: its sound is listened to for the series' intro and end credits
+    if (req.kind === 'episode' && req.seriesName && prep.key && window.AudioPrint) {
+      const c = cur;
+      call('intro:begin', { key: prep.key, show: req.seriesName, season: req.season }).then(r => { if (r && cur === c) { c.prints = true; listen(c); } }).catch(() => {});
+    }
     openUi();
     attach();
   }
@@ -323,6 +330,101 @@ const Player = (() => {
   }
   function hideNext() { clearInterval(nextTimer); nextTimer = null; show($('#pNext'), false); }
 
+  /* =================================================================
+   * 4b. SKIP INTRO / NEXT EPISODE
+   *     The sound is copied off the video (captureStream: what plays
+   *     isn't touched) and turned into prints (audioprint.js); intros.js
+   *     says where this episode's intro and end credits are.
+   * ================================================================= */
+  const ears = { ctx: null, stream: null, src: null, node: null, print: null, c: null, expect: -1, sent: Promise.resolve() };
+
+  function listen(c) {
+    try {
+      if (!ears.ctx) ears.ctx = new AudioContext();
+      if (ears.ctx.state === 'suspended') ears.ctx.resume().catch(() => {});
+      if (!ears.node) {
+        ears.node = ears.ctx.createScriptProcessor(4096, 2, 1);   // its output stays silent
+        ears.node.connect(ears.ctx.destination);
+        ears.node.onaudioprocess = heard;
+      }
+      ears.c = c;
+      ears.expect = -1;
+      ears.print = AudioPrint.create((first, h) => {
+        const cc = ears.c;
+        if (!cc || cc !== cur) return;
+        const dur = Number.isFinite(video.duration) ? video.duration : 0;
+        ears.sent = ears.sent.then(() => call('intro:add', cc.key, first, Array.from(h), dur)).then(st => { if (st && cur === cc) cc.marks = st; }).catch(() => {});
+      });
+      if (!ears.stream) {
+        ears.stream = video.captureStream();
+        ears.stream.addEventListener('addtrack', e => { if (e.track.kind === 'audio') hearTrack(e.track); });
+      }
+      const t = ears.stream.getAudioTracks()[0];
+      if (t) hearTrack(t);
+    } catch (e) { console.log('Skip intro: not listening', e); }
+  }
+
+  function hearTrack(track) {
+    if (!ears.ctx || (ears.src && ears.src.track === track)) return;
+    if (ears.src) { try { ears.src.node.disconnect(); } catch { /* gone */ } }
+    const node = ears.ctx.createMediaStreamSource(new MediaStream([track]));
+    node.connect(ears.node);
+    ears.src = { track, node };
+    ears.expect = -1;
+  }
+
+  function heard(e) {
+    const c = ears.c;
+    if (!c || c !== cur || !c.prints || video.paused || video.seeking || video.playbackRate !== 1 || video.readyState < 3) { ears.expect = -1; return; }
+    const ib = e.inputBuffer, n = ib.length, rate = ib.sampleRate;
+    const mono = new Float32Array(n);
+    for (let ch = 0; ch < ib.numberOfChannels; ch++) { const d = ib.getChannelData(ch); for (let i = 0; i < n; i++) mono[i] += d[i]; }
+    if (ib.numberOfChannels > 1) for (let i = 0; i < n; i++) mono[i] /= ib.numberOfChannels;
+    // this sound ended about now: it started n samples before the video's time
+    const t = Math.max(0, video.currentTime - n / rate);
+    if (ears.expect < 0 || Math.abs(t - ears.expect) > 0.5) { ears.print.reset(t); ears.expect = t; }
+    ears.expect += n / rate;
+    ears.print.push(mono, rate);
+  }
+
+  function unlisten(c) {
+    if (ears.c === c) { if (ears.print) ears.print.flush(); ears.c = null; }
+    hideMark();
+    if (c && c.prints) { const key = c.key; ears.sent = ears.sent.then(() => call('intro:end', key)).catch(() => {}); }
+  }
+
+  /** the button that fits where the episode is now ('' none) */
+  function markNow(c) {
+    if (!c || c.live || !c.started || !$('#pNext').classList.contains('hidden') || !$('#pMsg').classList.contains('hidden')) return '';
+    const t = video.currentTime, { intro, credits } = c.marks;
+    if (intro && t >= intro.start && t < intro.end - 1.5) return 'intro';
+    if (credits && nextEpisode() && t >= credits.start) return 'credits';
+    return '';
+  }
+  function showMark() {
+    const c = cur;
+    let m = markNow(c);
+    if (m !== c.markHidden) c.markHidden = ''; else m = '';
+    if (m === c.markShown) return;
+    c.markShown = m;
+    const b = $('#pMark');
+    if (!m) return show(b, false);
+    b.textContent = m === 'intro' ? 'Skip intro ⏭' : 'Next episode ▶';
+    show(b, true);
+  }
+  function hideMark() { show($('#pMark'), false); if (cur) cur.markShown = ''; }
+  function useMark() {
+    const c = cur;
+    if (!c || !c.markShown) return false;
+    const m = c.markShown;
+    hideMark();
+    if (m === 'intro') { c.markHidden = 'intro'; video.currentTime = c.marks.intro.end; osd('⏭ Intro skipped'); }
+    else $('#pNextEp').click();
+    return true;
+  }
+  $('#pMark').onclick = useMark;
+  video.addEventListener('timeupdate', () => { if (cur && cur.prints) showMark(); });
+
   function zap(step) {
     const ch = cur && cur.opts.channels;
     if (!ch) return;
@@ -415,6 +517,8 @@ const Player = (() => {
     if (e.key === ']' || e.key === '}') { e.preventDefault(); nudge(e.shiftKey || e.key === '}' ? 50 : 10); poke(); return; }
     if (/INPUT|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== 'range') return;
     const k = e.key;
+    // Enter with nothing else in hand: Skip intro / Next episode while it shows
+    if (k === 'Enter' && cur && cur.markShown && [document.body, video, $('#pMark')].includes(document.activeElement)) { e.preventDefault(); useMark(); return; }
     const handled = {
       ' ': toggle, k: toggle, K: toggle,
       ArrowLeft: () => seekBy(-10), ArrowRight: () => seekBy(30),
@@ -422,6 +526,7 @@ const Player = (() => {
       PageUp: () => zap(-1), PageDown: () => zap(1),
       f: fullscreen, F: fullscreen, m: () => $('#pMute').click(), M: () => $('#pMute').click(),
       n: () => $('#pNextEp').click(), N: () => $('#pNextEp').click(),
+      s: useMark, S: useMark,
       Escape: () => { if (document.fullscreenElement) document.exitFullscreen(); else close(); }
     }[k];
     if (handled) { e.preventDefault(); handled(); poke(); }
@@ -434,6 +539,7 @@ const Player = (() => {
     hideNext();
     if (!cur) return;
     saveProgress(true);
+    unlisten(cur);
     destroyEngine();
     AvSync.stop();
     show($('#pSync'), false);

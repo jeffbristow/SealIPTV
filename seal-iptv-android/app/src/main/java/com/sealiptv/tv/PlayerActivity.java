@@ -9,9 +9,14 @@
  * Tells player-tv.js (event 'player'): progress / ended / next / zap /
  * avsync / external / error / closed, and for the channel guide:
  * guide (opened) / epgNeed { ids } / tune { index } / number { num } / last.
+ * Episodes ("prints": true): print { from, h }, the sound heard as
+ * AudioPrint numbers (SoundTap); player-tv.js answers with marks
+ * { intro: { start, end }, credits: { start, end } } (s, found by intros.js)
+ * and the player offers Skip intro / Next episode then.
  *
  * Remote:
  *   ← →  (films)  skip 10 s; held: faster, to where the bar shows (on release)
+ *   OK            Skip intro / Next episode while one shows (Back hides it)
  *   OK / ← (live) the channel guide: ↑ ↓, OK = watch, Back / → = close
  *   ↑ ↓ (live)    channel up / down (also CH+ / CH−)
  *   0-9 (live)    channel number; 0 alone (or ⟲ Last) = the channel before
@@ -125,6 +130,22 @@ public class PlayerActivity extends Activity {
     private ProgressBar seekBar;
     private long seekTo = -1;
 
+    // Skip intro / Next episode: where they are in this episode (ms; -1 = not known)
+    private Button markBtn;
+    private long introStart = -1, introEnd = -1, creditsStart = -1;
+    private String markShown = "", markDismissed = "";
+    private final SoundTap tap = new SoundTap((first, h, n) -> {
+        final int[] copy = java.util.Arrays.copyOf(h, n);
+        ui.post(() -> {
+            if (closed) return;
+            try {
+                JSONArray a = new JSONArray();
+                for (int x : copy) a.put(x);
+                emit("print", new JSONObject().put("from", first).put("h", a).toString());
+            } catch (Exception ignored) { }
+        });
+    });
+
     // touch (phones)
     private View guideBtn, prevBtn, nextBtn;
     private boolean inPip = false;
@@ -204,6 +225,15 @@ public class PlayerActivity extends Activity {
         FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(dp(360), -2, Gravity.BOTTOM | Gravity.END);
         nl.setMargins(0, 0, dp(28), dp(110));
         root.addView(nextBox, nl);
+
+        markBtn = button("Skip intro", true);
+        markBtn.setVisibility(View.GONE);
+        markBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, BuildConfig.PHONE ? 15 : 18);
+        markBtn.setPadding(dp(22), dp(10), dp(22), dp(10));
+        markBtn.setOnClickListener(v -> useMark());
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+        ml.setMargins(0, 0, dp(BuildConfig.PHONE ? 16 : 40), dp(BuildConfig.PHONE ? 96 : 120));
+        root.addView(markBtn, ml);
 
         errorBox = panel();
         errorText = text(16, Color.WHITE, false);
@@ -301,6 +331,12 @@ public class PlayerActivity extends Activity {
         nextBox.setVisibility(View.GONE);
         errorBox.setVisibility(View.GONE);
         ui.removeCallbacks(nextTick);
+        ui.removeCallbacks(markTick);
+        introStart = introEnd = creditsStart = -1;
+        markShown = ""; markDismissed = "";
+        markBtn.setVisibility(View.GONE);
+        tap.enabled = cfg.optBoolean("prints");
+        tap.restart();
         titleView.setText(cfg.optString("title"));
         subView.setText(cfg.optString("subtitle"));
         liveBadge.setVisibility(cfg.optBoolean("live") && !BuildConfig.PHONE ? View.VISIBLE : View.GONE);
@@ -336,6 +372,17 @@ public class PlayerActivity extends Activity {
                         long p = super.getCurrentPositionUs(sourceEnded);
                         return p == AudioSink.CURRENT_POSITION_NOT_SET ? p : Math.max(0, p - offsetUs);
                     }
+                    // the sound on its way out, listened to for Skip intro / Next episode (SoundTap)
+                    @Override public void configure(@NonNull Format f, int size, int[] channels) throws ConfigurationException {
+                        tap.configure(f);
+                        super.configure(f, size, channels);
+                    }
+                    @Override public void setOutputStreamOffsetUs(long us) { tap.setStreamOffsetUs(us); super.setOutputStreamOffsetUs(us); }
+                    @Override public boolean handleBuffer(@NonNull java.nio.ByteBuffer b, long ptsUs, int units) throws InitializationException, WriteException {
+                        tap.take(b, ptsUs);
+                        return super.handleBuffer(b, ptsUs, units);
+                    }
+                    @Override public void flush() { tap.restart(); super.flush(); }
                 };
             }
         }.setEnableDecoderFallback(true);
@@ -367,6 +414,57 @@ public class PlayerActivity extends Activity {
             ui.postDelayed(this, 5000);
         }
     };
+
+    /* ---------------- Skip intro / Next episode ---------------- */
+    private final Runnable markTick = new Runnable() {
+        @Override public void run() {
+            if (player == null || closed) return;
+            showMark();
+            ui.postDelayed(this, 500);
+        }
+    };
+
+    /** which button fits where the episode is now ("" none) */
+    private String markNow() {
+        if (player == null || nextBox.getVisibility() == View.VISIBLE || errorBox.getVisibility() == View.VISIBLE) return "";
+        long pos = player.getCurrentPosition();
+        if (introStart >= 0 && pos >= introStart && pos < introEnd - 1500) return "intro";
+        if (creditsStart >= 0 && cfg.optBoolean("hasNext") && pos >= creditsStart) return "credits";
+        return "";
+    }
+
+    private void showMark() {
+        String m = markNow();
+        if (!m.equals(markDismissed)) markDismissed = "";
+        else m = "";
+        if (m.equals(markShown)) return;
+        markShown = m;
+        if (m.isEmpty()) { markBtn.setVisibility(View.GONE); return; }
+        markBtn.setText(m.equals("intro") ? "Skip intro  ⏭" : "Next episode  ▶");
+        markBtn.setVisibility(View.VISIBLE);
+        if (!view.isControllerFullyVisible() && menuBox.getVisibility() != View.VISIBLE && guideBox.getVisibility() != View.VISIBLE) markBtn.requestFocus();
+    }
+
+    private void useMark() {
+        String m = markShown;
+        markBtn.setVisibility(View.GONE);
+        markShown = "";
+        if (m.equals("intro") && player != null) {
+            markDismissed = "intro";
+            player.seekTo(introEnd);
+            showOsd("⏭  Intro skipped");
+        } else if (m.equals("credits")) goNext();
+    }
+
+    /** marks from player-tv.js (s; missing = not known) */
+    private void marks(JSONObject c) {
+        JSONObject i = c.optJSONObject("intro"), cr = c.optJSONObject("credits");
+        introStart = i == null ? -1 : Math.round(i.optDouble("start", -1) * 1000);
+        introEnd = i == null ? -1 : Math.round(i.optDouble("end", -1) * 1000);
+        creditsStart = cr == null ? -1 : Math.round(cr.optDouble("start", -1) * 1000);
+        ui.removeCallbacks(markTick);
+        if (introStart >= 0 || creditsStart >= 0) ui.post(markTick);
+    }
 
     private void ended() {
         emit("ended", null);
@@ -419,6 +517,7 @@ public class PlayerActivity extends Activity {
                 case "avsync": offsetUs = c.optLong("ms") * 1000L; break;
                 case "subtitle": subView.setText(c.optString("text")); break;
                 case "osd": showOsd(c.optString("text")); break;
+                case "marks": marks(c); break;
                 case "channels":      // the whole category, for the guide (player-tv.js loads it when the guide opens)
                     channels = c.optJSONArray("channels") == null ? new JSONArray() : c.optJSONArray("channels");
                     chIndex = c.optInt("index", chIndex);
@@ -461,8 +560,14 @@ public class PlayerActivity extends Activity {
         }
 
         boolean panel = errorBox.getVisibility() == View.VISIBLE || nextBox.getVisibility() == View.VISIBLE;
+        boolean mark = markBtn.getVisibility() == View.VISIBLE && !view.isControllerFullyVisible();
+        if (mark && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (!down && e.getRepeatCount() == 0) useMark();
+            return true;
+        }
         if (k == KeyEvent.KEYCODE_BACK) {
             if (!down) return true;
+            if (mark) { markDismissed = markShown; markShown = ""; markBtn.setVisibility(View.GONE); return true; }
             if (nextBox.getVisibility() == View.VISIBLE) { ui.removeCallbacks(nextTick); nextBox.setVisibility(View.GONE); finishPlayer(true); return true; }
             if (errorBox.getVisibility() == View.VISIBLE) { finishPlayer(true); return true; }
             if (view.isControllerFullyVisible()) { view.hideController(); return true; }
@@ -995,6 +1100,7 @@ public class PlayerActivity extends Activity {
         if (closed) return;
         if (tell) emit("closed", null);
         closed = true;
+        tap.release();
         ui.removeCallbacksAndMessages(null);
         if (player != null) { player.release(); player = null; }
         finish();
