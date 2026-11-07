@@ -33,7 +33,7 @@ const GAP = 3 * FPS;                 // a stretch goes on over this much that do
 const INTRO_MIN = 10 * FPS, INTRO_MAX = 150 * FPS;
 const CREDITS_MIN = 10 * FPS, CREDITS_MAX = 6 * 60 * FPS;
 const LIVE_MIN = 4 * FPS;            // seconds of the same sound before the button shows
-const KEEP_PRINTS = 4, KEEP_TEMPLATES = 4;
+const KEEP_PRINTS = 6, KEEP_TEMPLATES = 4;
 const COMMON = 24;                   // a number seen this often in one print says nothing (steady sound)
 
 /** a series' name to tell it apart: "FROM (2022)" = "From (2022)" = "EN - From" (as library.js) */
@@ -120,14 +120,23 @@ function longest(a, b, o, from, to, min) {
     start = -1;
   };
   const lo = Math.max(from, b.first, a.first + o), hi = Math.min(to, b.first + b.h.length, a.first + a.h.length + o);
+  if (hi <= lo) return null;
+  // 1 the same sound, 0 not, -1 nothing to compare (silence)
+  const m = new Int8Array(hi - lo);
   for (let j = lo; j < hi; j++) {
     const y = b.h[j - b.first], x = a.h[j - o - a.first];
-    if (!x || !y) continue;
-    const near = pop(x ^ y) <= NEAR;
+    m[j - lo] = !x || !y ? -1 : pop(x ^ y) <= NEAR ? 1 : 0;
+  }
+  // a stretch starts and ends on two in a row the same (one alone can be chance: it made intros start early)
+  const pair = i => m[i] === 1 && ((i + 1 < m.length && m[i + 1] === 1) || (i > 0 && m[i - 1] === 1));
+  for (let i = 0; i < m.length; i++) {
+    if (m[i] < 0) continue;
+    const j = lo + i;
     if (start >= 0 && j - lastGood > GAP) close();
-    if (near) {
-      if (start < 0) { start = j; good = 0; compared = 0; }
-      lastGood = j; good++;
+    if (m[i] === 1) {
+      if (start < 0) { if (!pair(i)) continue; start = j; good = 0; compared = 0; }
+      good++;
+      if (pair(i)) lastGood = j;
     }
     if (start >= 0) compared++;
   }
@@ -145,6 +154,74 @@ function common(a, b, min, max, idx = indexOf(a)) {
     if (!best || r.to - r.from > best.b[1] - best.b[0]) best = { a: [r.from - o, r.to - o], b: [r.from, r.to] };
   }
   return best;
+}
+
+/**
+ * every stretch of the same sound in two prints (b's frames [from, to)), none overlapping; null when too
+ * long (the same episode). Not the ones cut off where either print starts or ends (heard from the middle
+ * of the intro: resumed; stopped in it) — only part of it.
+ */
+function commons(a, b, min, max, idx = indexOf(a), intro = false) {
+  const out = [];
+  // (only intros: credits go on to the end. Started a few seconds in: silence before, not a late start)
+  const cut = (f, t, p) => intro && ((p.first > 5 * FPS && f <= p.first + GAP) || t >= p.first + p.h.length - GAP);
+  for (const o of shifts(idx, b, -Infinity, Infinity, 12)) {
+    const r = longest(a, b, o, -Infinity, Infinity, min);
+    if (!r) continue;
+    if (r.to - r.from > max) return null;
+    if (cut(r.from - o, r.to - o, a) || cut(r.from, r.to, b)) continue;
+    const lap = out.findIndex(x => x[0] < r.to && r.from < x[1]);
+    if (lap < 0) out.push([r.from, r.to]);
+    else if (r.to - r.from > out[lap][1] - out[lap][0]) out[lap] = [r.from, r.to];
+  }
+  return out;
+}
+
+/**
+ * What most of the episodes seen before have in common with this one: lists (one per episode) of
+ * [from, to) -> { from, to, support } or null. Stretches that overlap are one; its part they all
+ * share is what's kept. Intros: a short one right at the start (a channel's logo: in every episode
+ * too) only when there's nothing else; then most episodes, then the longest.
+ */
+const EARLY = 15 * FPS, LOGO = 20 * FPS;
+const logoLike = (from, to) => from < EARLY && to - from < LOGO;
+function agree(lists, min, intro) {
+  const all = [];
+  lists.forEach((l, i) => l.forEach(([f, t]) => all.push({ f, t, i })));
+  all.sort((x, y) => x.f - y.f);
+  const groups = [];
+  for (const x of all) {
+    const g = groups.find(g => g.some(y => y.f < x.t && x.f < y.t));
+    if (g) g.push(x); else groups.push([x]);
+  }
+  let best = null;
+  for (const g of groups) {
+    const per = new Map();     // per episode: its longest in the group
+    for (const x of g) if (!per.has(x.i) || x.t - x.f > per.get(x.i).t - per.get(x.i).f) per.set(x.i, x);
+    const eps = [...per.values()];
+    // core: what they all share. The whole: the longest two of them share (an intro can come long in
+    // some episodes and cut short in others: FROM; what only one other has can be a recap of it)
+    let cf = -Infinity, ct = Infinity;
+    for (const x of eps) { cf = Math.max(cf, x.f); ct = Math.min(ct, x.t); }
+    let from = cf, to = ct;
+    for (let i = 0; i < eps.length; i++) {
+      for (let j = i + 1; j < eps.length; j++) {
+        const f = Math.max(eps[i].f, eps[j].f), t = Math.min(eps[i].t, eps[j].t);
+        if (t - f > to - from && f <= cf && t >= ct) { from = f; to = t; }
+      }
+    }
+    if (eps.length === 1) { from = eps[0].f; to = eps[0].t; }
+    if (ct - cf < min) continue;
+    const c = { from, to, core: [cf, ct], support: Math.min(2, eps.length), early: intro && logoLike(cf, ct) };
+    if (!best || better(c, best)) best = c;
+  }
+  return best;
+}
+/** is found a better intro (credits) than had: not a logo, more episodes share it (2 is enough), longer */
+function better(c, had) {
+  if (!!c.early !== !!had.early) return !c.early;
+  if (c.support !== had.support) return c.support > had.support;
+  return c.to - c.from > had.to - had.from;
 }
 
 /* ---------------- one series' file ---------------- */
@@ -176,7 +253,7 @@ class Intros {
     const d = this.cache.get(show);
     if (!d) return;
     const part = x => (x && x.h.length ? { first: x.first, h: pack(x.h) } : null);
-    const tpl = t => ({ season: t.season, at: t.at, from: t.from, h: pack(t.p.h) });
+    const tpl = t => ({ season: t.season, at: t.at, from: t.from, support: t.support, core: t.core, h: pack(t.p.h) });
     const out = {
       prints: d.prints.map(p => ({ key: p.key, season: p.season, at: p.at, dur: p.dur, head: part(p.head), tail: part(p.tail) })),
       intro: d.intro.map(tpl),
@@ -215,11 +292,24 @@ class Intros {
     const durF = Math.round(s.dur * FPS);
 
     // the intro: compared with the series' intros while in the first 15 minutes
-    if (!s.intro && end <= HEAD + 30 * FPS && d.intro.length) {
+    if ((!s.intro || s.introBy === 'learned') && end <= HEAD + 30 * FPS && d.intro.length) {
       for (const t of d.intro) {
         const m = this._live(t, cur, end);
-        if (m) { s.intro = { start: Math.max(0, m.o) / FPS, end: (m.o + t.p.h.length) / FPS }; break; }
+        if (m) {
+          const ce = t.core ? t.core[1] : t.p.h.length;
+          s.intro = { start: Math.max(0, m.o + (t.core ? t.core[0] : 0)) / FPS, end: (m.o + ce) / FPS };
+          s.introBy = 'heard';
+          s.longer = ce < t.p.h.length ? { t, o: m.o, ce } : null;
+          break;
+        }
       }
+    }
+    // the intro heard is the short one, or the whole (longer in some episodes): it goes on past the short one?
+    const L = s.longer;
+    if (L && s.introBy === 'heard' && end >= L.o + L.ce + LIVE_MIN) {
+      const r = longest(L.t.p, cur, L.o, L.o + L.ce, end, LIVE_MIN);
+      if (r && r.to >= end - 2 * FPS) { s.intro = { start: s.intro.start, end: (L.o + L.t.p.h.length) / FPS }; s.longer = null; }
+      else if (end > L.o + L.ce + 10 * FPS) s.longer = null;     // it ended: the short one
     }
     // the end credits: in the last 7 minutes
     if (!s.credits && durF > 0 && end >= durF - TAIL && d.credits.length) {
@@ -228,8 +318,10 @@ class Intros {
         if (m) { s.credits = { start: Math.max(0, m.o) / FPS, end: Math.min(s.dur, (m.o + t.p.h.length) / FPS) }; break; }
       }
     }
-    // no intro of this series in it yet: is there one in common with an episode seen before? (every minute)
-    if (!s.intro && end <= HEAD && end - s.tried >= 60 * FPS && end >= 2 * 60 * FPS) {
+    // what this episode has in common with ones seen before (every minute of the first 15): the longest
+    // is the intro, kept when longer than the season's (a channel's logo at the start is in every
+    // episode too, and can be all there is in common two minutes in; the intro may still come)
+    if (end <= HEAD && end - s.tried >= 60 * FPS && end >= 2 * 60 * FPS) {
       s.tried = end;
       this._learn(s, 'intro');
     }
@@ -261,23 +353,38 @@ class Intros {
     if (!mine || mine.h.length < (kind === 'intro' ? INTRO_MIN : CREDITS_MIN)) return false;
     const others = d.prints.filter(p => p.key !== s.key && (kind === 'intro' ? p.head : p.tail))
       .sort((p, q) => (q.season === s.season) - (p.season === s.season) || q.at - p.at);
+    // what this episode has in common with each one seen before (an intro still going: once it's over)
+    const min = kind === 'intro' ? INTRO_MIN : CREDITS_MIN, max = kind === 'intro' ? INTRO_MAX : CREDITS_MAX;
+    const going = kind === 'intro' && s.last + 1 < HEAD && !s.ending;
+    const lists = [], same = [], seen = [];
+    const half = durF > 0 ? durF / 2 : Infinity;     // an intro is in the first half (short episodes: not the credits)
     for (const p of others) {
       const theirs = kind === 'intro' ? p.head : p.tail;
       if (!theirs.idx) theirs.idx = indexOf(theirs);
-      const c = kind === 'intro' ? common(theirs, mine, INTRO_MIN, INTRO_MAX, theirs.idx) : common(theirs, mine, CREDITS_MIN, CREDITS_MAX, theirs.idx);
-      if (!c) continue;
-      const [a, b] = c.b;
-      if (kind === 'intro' && b > s.last - GAP && s.last + 1 < HEAD && !s.ending) continue;   // still going: learned once it's over
-      const tpl = { season: s.season, at: Date.now(), from: a, p: { first: 0, h: mine.h.slice(a - mine.first, b - mine.first) } };
-      const list = d[kind].filter(t => !(t.season === s.season));
-      list.unshift(tpl);
-      d[kind] = list.slice(0, KEEP_TEMPLATES);
-      if (kind === 'intro') s.intro = { start: a / FPS, end: b / FPS };
-      else s.credits = { start: a / FPS, end: b / FPS };
-      s.learned = true;
-      return true;
+      const l = commons(theirs, mine, min, max, theirs.idx, kind === 'intro');
+      seen.push(l && l.length ? l.map(([f, t]) => `${(f / FPS).toFixed(1)}-${(t / FPS).toFixed(1)}`).join('+') : '-');
+      if (!l) continue;
+      const ok = kind === 'intro' ? l.filter(([f, t]) => f < half && !(going && t > s.last - GAP)) : l;
+      lists.push(ok);
+      if (p.season === s.season) same.push(ok);
     }
-    return false;
+    // … and what most of them share (two episodes alone can share more: a scene in the next one's recap);
+    // this season's first (a new season can have a new intro)
+    const best = agree(same, min, kind === 'intro') || agree(lists, min, kind === 'intro');
+    this.learnLog = `${kind}: ${others.length} to compare, found ${seen.join(' ') || 'nothing'}${best ? ` -> ${(best.from / FPS).toFixed(1)}-${(best.to / FPS).toFixed(1)}s in ${best.support}` : ''}`;
+    if (!best) return false;
+    const a = best.from, b = best.to;
+    // (this episode: the whole, it's in it; from where they all agree it starts)
+    const found = { start: (kind === 'intro' ? best.core[0] : a) / FPS, end: b / FPS };
+    // the season's own already: kept unless this is better (it's heard while it plays: _live)
+    const had = d[kind].find(t => t.season === s.season);
+    if (had && !better(best, { from: had.from, to: had.from + had.p.h.length, support: had.support || 1, early: kind === 'intro' && logoLike(had.from + (had.core ? had.core[0] : 0), had.from + (had.core ? had.core[1] : had.p.h.length)) })) return false;
+    const tpl = { season: s.season, at: Date.now(), from: a, support: best.support, core: [best.core[0] - a, best.core[1] - a], p: { first: 0, h: mine.h.slice(a - mine.first, b - mine.first) } };
+    d[kind] = [tpl, ...d[kind].filter(t => t.season !== s.season)].slice(0, KEEP_TEMPLATES);
+    s[kind] = found;
+    if (kind === 'intro') s.introBy = 'learned';
+    s.learned = true;
+    return true;
   }
 
   /** the episode stopped: kept for the next ones, and learned from */
@@ -288,20 +395,24 @@ class Intros {
     if (s.last < 0) return null;
     const d = this._load(s.show);
     s.ending = true;
-    if (!s.intro) this._learn(s, 'intro');
-    if (!s.credits) this._learn(s, 'credits');
+    // learned again from all that was heard (a longer one in common replaces the season's)
+    this._learn(s, 'intro');
+    const li = this.learnLog || '';
+    this._learn(s, 'credits');
+    this.learnLog = li + '; ' + (this.learnLog || '');
     const durF = Math.round(s.dur * FPS);
     const head = trim(s.h.subarray(0, Math.min(HEAD, s.last + 1)), 0);
     const t0 = Math.max(0, durF - TAIL);
     const tail = durF > 0 && s.last >= t0 ? trim(s.h.subarray(t0, Math.min(durF, s.last + 1)), t0) : null;
     const found = { intro: s.intro, credits: s.credits };
-    if (head.h.length < 30 * FPS && !(tail && tail.h.length >= 30 * FPS)) { if (s.learned) this._save(s.show); return found; }
+    if (head.h.length < 30 * FPS && !(tail && tail.h.length >= 30 * FPS)) { this.lastLog = `${s.show}: too little heard (head ${head.h.length}, last ${s.last})`; if (s.learned) this._save(s.show); return found; }
     const old = d.prints.find(p => p.key === s.key);
     const p = { key: s.key, season: s.season, at: Date.now(), dur: s.dur, head: head.h.length ? head : (old && old.head) || null, tail: tail && tail.h.length ? tail : (old && old.tail) || null };
     d.prints = [p, ...d.prints.filter(x => x.key !== s.key)].slice(0, KEEP_PRINTS);
+    this.lastLog = `${this.learnLog} | ${s.show}: kept head ${head.h.length} tail ${tail ? tail.h.length : 0} (last ${s.last}, dur ${s.dur}); ${d.prints.length} prints, ${d.intro.length} intros, ${d.credits.length} credits`;
     this._save(s.show);
     return found;
   }
 }
 
-module.exports = { Intros, showName, common, indexOf, longest, shifts, pack, unpack, HEAD, TAIL, NEAR };
+module.exports = { Intros, showName, common, commons, agree, indexOf, longest, shifts, pack, unpack, HEAD, TAIL, NEAR };

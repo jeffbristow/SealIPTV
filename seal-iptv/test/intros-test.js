@@ -35,15 +35,17 @@ function talk(seed, t, r) {
  * an episode: [cold open][intro 40 s][story][credits 30 s] -> its mono sound, at rate.
  * intro / credits the same in every episode; the rest made from the episode's own seed.
  */
-function episode({ seed, cold, story = 500, rate = 48000, gain = 1, noise = 0.01, intro = true, credits = true, introSeed = 11, creditsSeed = 22 }) {
+function episode({ seed, cold, story = 500, rate = 48000, gain = 1, noise = 0.01, intro = true, credits = true, introSeed = 11, creditsSeed = 22, logo = 0, scene = 0 }) {
   const I = intro ? 40 : 0, C = credits ? 30 : 0, dur = cold + I + story + C;
   const r = rng(seed * 977), out = new Float32Array(Math.round(dur * rate));
   const shift = r() / rate;                      // not lined up to a sample
   for (let i = 0; i < out.length; i++) {
     const t = i / rate + shift;
     let x;
-    if (t < cold) x = talk(seed, t, r) + 0.3 * music(seed + 100, t);
+    if (t < logo) x = music(44, t);                // a channel's logo, the same in every episode
+    else if (t < cold) x = talk(seed, t, r) + 0.3 * music(seed + 100, t);
     else if (t < cold + I) x = music(introSeed, t - cold);
+    else if (t < cold + I + scene) x = talk(55, t - cold - I, r) + 0.5 * music(66, t - cold - I);   // a scene two episodes share
     else if (t < cold + I + story) x = talk(seed + 1, t, r) + 0.25 * music(seed + 200, t);
     else x = music(creditsSeed, t - cold - I - story);
     out[i] = gain * x + noise * (r() - 0.5);
@@ -142,6 +144,38 @@ const near = (a, b, tol = 1.5) => Math.abs(a - b) <= tol;
   ok(w21.st.intro && near(w21.st.intro.start, 10), 'season 2 changed its intro: learned too');
   const w6 = watch(intros, 'episode:6', episode({ seed: 8, cold: 50 }));
   ok(w6.st.intro && near(w6.st.intro.start, 50), '… and season 1\'s is still found');
+
+  // a logo (12 s) at the start of every episode and the intro minutes later: the intro is learned, not the logo
+  // (1.8.4 learned the logo two minutes in, then stopped looking: FROM)
+  const ldir = fs.mkdtempSync(path.join(os.tmpdir(), 'seal-intros-'));
+  const li = new Intros(ldir);
+  watch(li, 'logo:1', episode({ seed: 31, cold: 200, logo: 12, story: 300 }));
+  const l2 = watch(li, 'logo:2', episode({ seed: 32, cold: 260, logo: 12, story: 300 }));
+  ok(l2.st.intro && near(l2.st.intro.start, 260) && near(l2.st.intro.end, 300), `a logo first, the intro at 260 s: the intro learned (${l2.st.intro && l2.st.intro.start.toFixed(1)}–${l2.st.intro && l2.st.intro.end.toFixed(1)} s)`);
+  const l3 = watch(li, 'logo:3', episode({ seed: 33, cold: 230, logo: 12, story: 300 }));
+  ok(l3.st.intro && near(l3.st.intro.start, 230) && l3.introAt - 230 <= 8, `… and found in the next episode while it plays (${l3.st.intro && l3.st.intro.start.toFixed(1)} s, known ${l3.introAt && (l3.introAt - 230).toFixed(1)} s in)`);
+  // a template learned before (the logo, by 1.8.4) is replaced by the longer intro
+  const odir = fs.mkdtempSync(path.join(os.tmpdir(), 'seal-intros-'));
+  let oi = new Intros(odir);
+  watch(oi, 'old:1', episode({ seed: 41, cold: 200, logo: 12, story: 300 }));
+  watch(oi, 'old:2', episode({ seed: 42, cold: 240, logo: 12, story: 300 }), { to: 150 });
+  const tplLen = () => oi._load('made up show 2024').intro.map(t => t.p.h.length / AudioPrint.FPS);
+  ok(tplLen().length === 1 && tplLen()[0] < 15, `stopped after 150 s: only the logo known (${tplLen()[0].toFixed(1)} s, like 1.8.4 learned it)`);
+  oi = new Intros(odir);
+  const o3 = watch(oi, 'old:3', episode({ seed: 43, cold: 220, logo: 12, story: 300 }));
+  ok(o3.st.intro && tplLen().length === 1 && near(tplLen()[0], 40), `a whole episode later: the intro replaces it (${tplLen()[0].toFixed(1)} s long)`);
+  const o4 = watch(oi, 'old:4', episode({ seed: 44, cold: 280, logo: 12, story: 300 }));
+  ok(o4.st.intro && near(o4.st.intro.start, 280) && o4.introAt - 280 <= 8, `… and is found in the next one while it plays (${o4.st.intro && o4.st.intro.start.toFixed(1)} s)`);
+
+  // two episodes share a scene right after the intro (one's recap of the other: FROM S3E4/E5); a third doesn't:
+  // the intro is what most share, not the scene
+  const rdir = fs.mkdtempSync(path.join(os.tmpdir(), 'seal-intros-'));
+  const ri = new Intros(rdir);
+  watch(ri, 'recap:1', episode({ seed: 51, cold: 120, story: 300 }));
+  watch(ri, 'recap:2', episode({ seed: 52, cold: 150, story: 300, scene: 90 }));
+  const r3 = watch(ri, 'recap:3', episode({ seed: 53, cold: 180, story: 300, scene: 90 }));
+  const rt = ri._load('made up show 2024').intro.map(t => t.p.h.length / AudioPrint.FPS);
+  ok(r3.st.intro && near(r3.st.intro.start, 180) && near(r3.st.intro.end, 220) && rt.length === 1 && near(rt[0], 40), `a scene two episodes share after the intro: not taken for it (${r3.st.intro && r3.st.intro.start.toFixed(1)}–${r3.st.intro && r3.st.intro.end.toFixed(1)} s, kept ${rt[0] && rt[0].toFixed(1)} s)`);
 
   /* ---- AudioPrint.java: the same numbers (TVs and Windows compare prints) ---- */
   const java = path.join(__dirname, '..', '..', 'seal-iptv-android', 'app', 'src', 'main', 'java', 'com', 'sealiptv', 'tv', 'AudioPrint.java');

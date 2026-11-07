@@ -41,6 +41,7 @@ final class SoundTap {
     private long lastPts = Long.MIN_VALUE;
     private float[] mono = new float[8192];
     private String told = "";
+    private int resets = 0;
 
     // Dolby passed through: a decoder of our own, for listening only
     private MediaCodec dec;
@@ -91,7 +92,10 @@ final class SoundTap {
         int frames = d.remaining() / (bytes * ch);
         if (frames == 0) return;
         double t = (ptsUs - streamOffsetUs) / 1e6;
-        if (restart || expect < 0 || Math.abs(t - expect) > 0.3) { print.reset(t); restart = false; }
+        if (restart || expect < 0 || Math.abs(t - expect) > 0.3) {
+            if (resets++ < 20) Log.i(TAG, "listening from " + t + " s (pts " + ptsUs + ", offset " + streamOffsetUs + ")");
+            print.reset(t); restart = false;
+        }
         expect = t + (double) frames / sr;
         if (mono.length < frames) mono = new float[frames];
         for (int i = 0; i < frames; i++) {

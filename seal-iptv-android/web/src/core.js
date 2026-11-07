@@ -399,9 +399,9 @@ handle('play:prepare', async req => {
 handle('play:stopped', () => { playUa = null; guard(); return true; });
 handle('play:netlog', () => []);
 // Skip intro / Next episode: the sound of the episode playing (PlayerActivity -> player-tv.js) -> where its intro and credits are
-handle('intro:begin', o => intros.begin(o));
+handle('intro:begin', o => { const r = intros.begin(o); console.log('[seal] intro:begin ' + JSON.stringify({ show: o && o.show, season: o && o.season, r })); return r; });
 handle('intro:add', (key, first, h, dur) => intros.add(key, first, h, dur));
-handle('intro:end', key => intros.end(key));
+handle('intro:end', key => { const r = intros.end(key); console.log('[seal] intro:end ' + JSON.stringify(r) + ' ' + intros.lastLog); return r; });
 handle('play:findVlc', () => 'another app on ' + HERE + ' (Android asks which)');
 handle('play:external', async req => {
   const id = pid();

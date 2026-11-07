@@ -439,6 +439,7 @@ public class PlayerActivity extends Activity {
         else m = "";
         if (m.equals(markShown)) return;
         markShown = m;
+        android.util.Log.i("SealPrint", "button: " + (m.isEmpty() ? "hidden" : m) + " at " + (player == null ? -1 : player.getCurrentPosition() / 1000) + " s");
         if (m.isEmpty()) { markBtn.setVisibility(View.GONE); return; }
         markBtn.setText(m.equals("intro") ? "Skip intro  ⏭" : "Next episode  ▶");
         markBtn.setVisibility(View.VISIBLE);
