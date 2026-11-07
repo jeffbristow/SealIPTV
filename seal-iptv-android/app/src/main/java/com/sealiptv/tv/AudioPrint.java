@@ -12,7 +12,7 @@ package com.sealiptv.tv;
 final class AudioPrint {
     interface Out { void frames(int first, int[] h, int n); }
 
-    static final int RATE = 16000, WIN = 4096, HOP = 2000, FPS = RATE / HOP;
+    static final int RATE = 16000, WIN = 4096, HOP = 500, FPS = RATE / HOP, LAG = 4;   // 32 a second, each against 1/8 s before (as audioprint.js)
     static final int[] EDGES = {64, 69, 74, 79, 85, 91, 97, 104, 112, 120, 129, 138, 148, 159, 170, 182, 195, 210, 225, 241, 258, 277, 297, 319, 342, 366, 393, 421, 452, 484, 519, 557, 597, 640};
     static final int BANDS = EDGES.length - 1;
     static final double QUIET = 1e-5;
@@ -37,10 +37,12 @@ final class AudioPrint {
     private float[] buf = new float[WIN * 4];
     private double startTime = 0;
     private long used = 0;
-    private boolean prev = false, prevQuiet = true;
+    private int count = 0;                      // frames since the start / a seek
     private final double[] re = new double[WIN], im = new double[WIN];
-    private double[] cur = new double[BANDS], last = new double[BANDS];
-    private final int[] pending = new int[16];
+    private final double[][] ring = new double[LAG + 1][BANDS];   // the last LAG + 1 frames' bands
+    private final boolean[] quietAt = new boolean[LAG + 1];
+    private double[] cur;
+    private final int[] pending = new int[FPS / 2];     // half a second: the button shows soon after the intro starts
     private int pendingFirst = -1, pendingN = 0;
 
     AudioPrint(Out out) { this.out = out; }
@@ -50,7 +52,7 @@ final class AudioPrint {
         flush();
         step = 0; edge = 0; sum = 0; seen = 0; cnt = 0; have = 0; used = 0;
         startTime = Math.max(0, mediaTime);
-        prev = false; prevQuiet = true;
+        count = 0;
     }
 
     /** mono samples (n of them) at rate, following on from what came before */
@@ -76,16 +78,20 @@ final class AudioPrint {
         if (pendingFirst >= 0 && index != pendingFirst + pendingN) flush();
         if (pendingFirst < 0) pendingFirst = index;
         pending[pendingN++] = h;
-        if (pendingN >= 16) flush();
+        if (pendingN >= pending.length) flush();
     }
 
     private void frames() {
         while (have >= WIN) {
+            int slot = count % (LAG + 1), back = (count + 1) % (LAG + 1);
+            cur = ring[slot];
+            double[] last = ring[back];
             boolean quiet = bands() < QUIET;
+            quietAt[slot] = quiet;
             int index = (int) Math.floor((startTime + (double) used / RATE) * FPS + 0.5);
-            if (prev) {
+            if (count >= LAG) {
                 int h = 0;
-                if (!quiet && !prevQuiet) {
+                if (!quiet && !quietAt[back]) {
                     for (int m = 0; m < BANDS - 1; m++) {
                         if ((cur[m] - cur[m + 1]) - (last[m] - last[m + 1]) > 0) h |= 1 << m;
                     }
@@ -93,8 +99,7 @@ final class AudioPrint {
                 }
                 emit(index, h);
             }
-            double[] t = last; last = cur; cur = t;
-            prev = true; prevQuiet = quiet;
+            count++;
             System.arraycopy(buf, HOP, buf, 0, have - HOP);
             have -= HOP;
             used += HOP;

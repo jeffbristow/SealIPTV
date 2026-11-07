@@ -27,7 +27,7 @@ function talk(seed, t, r) {
 
 /** episode number n (1, 2, …): where its parts are (s) */
 function layout(n) {
-  const cold = 20 + 10 * ((n - 1) % 6);
+  const cold = 20 + 10 * ((n - 1) % 6) + 0.037 * n;     // (not on a whole second: intros never are)
   return { cold, intro: [cold, cold + INTRO], credits: [cold + INTRO + STORY, cold + INTRO + STORY + CREDITS], dur: cold + INTRO + STORY + CREDITS };
 }
 

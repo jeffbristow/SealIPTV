@@ -397,13 +397,17 @@ const Player = (() => {
   function markNow(c) {
     if (!c || c.live || !c.started || !$('#pNext').classList.contains('hidden') || !$('#pMsg').classList.contains('hidden')) return '';
     const t = video.currentTime, { intro, credits } = c.marks;
-    if (intro && t >= intro.start && t < intro.end - 1.5) return 'intro';
+    // (hold: it may go on longer, being listened for: the button stays up meanwhile)
+    if (intro && t >= intro.start && t < intro.end + (intro.hold ? 3 : -1.5)) return 'intro';
     if (credits && nextEpisode() && t >= credits.start) return 'credits';
     return '';
   }
   function showMark() {
     const c = cur;
     let m = markNow(c);
+    // skipped to the end of the short intro, and it goes on (the whole one): offered again
+    const ie = c.marks.intro ? c.marks.intro.end : 0;
+    if (ie !== c.markEnd) { c.markEnd = ie; if (c.markHidden === 'intro') c.markHidden = ''; }
     if (m !== c.markHidden) c.markHidden = ''; else m = '';
     if (m === c.markShown) return;
     c.markShown = m;
@@ -418,7 +422,7 @@ const Player = (() => {
     if (!c || !c.markShown) return false;
     const m = c.markShown;
     hideMark();
-    if (m === 'intro') { c.markHidden = 'intro'; video.currentTime = c.marks.intro.end; osd('⏭ Intro skipped'); }
+    if (m === 'intro') { c.markHidden = 'intro'; if (c.marks.intro.end > video.currentTime) video.currentTime = c.marks.intro.end; osd('⏭ Intro skipped'); }
     else $('#pNextEp').click();
     return true;
   }

@@ -36,6 +36,7 @@ function talk(seed, t, r) {
  * intro / credits the same in every episode; the rest made from the episode's own seed.
  */
 function episode({ seed, cold, story = 500, rate = 48000, gain = 1, noise = 0.01, intro = true, credits = true, introSeed = 11, creditsSeed = 22, logo = 0, scene = 0 }) {
+  cold += ((seed * 37) % 50) / 1000;           // intros don't start on a frame (0–49 ms off)
   const I = intro ? 40 : 0, C = credits ? 30 : 0, dur = cold + I + story + C;
   const r = rng(seed * 977), out = new Float32Array(Math.round(dur * rate));
   const shift = r() / rate;                      // not lined up to a sample
@@ -83,21 +84,22 @@ const near = (a, b, tol = 1.5) => Math.abs(a - b) <= tol;
   /* ---- the prints themselves ---- */
   const e1 = episode({ seed: 1, cold: 60 });
   const p1 = prints(e1);
-  const all = new Int32Array(Math.ceil(e1.dur * 8) + 8);
+  const F = AudioPrint.FPS;
+  const all = new Int32Array(Math.ceil(e1.dur * F) + F);
   for (const [first, h] of p1) all.set(h, first);
-  ok(p1.every(([, h]) => h.length <= 16) && all.filter(Boolean).length > e1.dur * 8 * 0.95, `8 numbers a second (${all.filter(Boolean).length} for ${e1.dur} s)`);
+  ok(F === 32 && p1.every(([, h]) => h.length <= F / 2) && all.filter(Boolean).length > e1.dur * F * 0.95, `32 numbers a second, half a second at a time (${all.filter(Boolean).length} for ${e1.dur} s)`);
   const quiet = prints({ pcm: new Float32Array(48000 * 10), rate: 48000, dur: 10 });
   ok(quiet.every(([, h]) => h.every(x => x === 0)), 'silence: no numbers (0)');
 
   // the same intro in another episode: other volume, noise, sample rate, not lined up
   const e2 = episode({ seed: 2, cold: 20, rate: 44100, gain: 0.6, noise: 0.03 });
-  const all2 = new Int32Array(Math.ceil(e2.dur * 8) + 8);
+  const all2 = new Int32Array(Math.ceil(e2.dur * F) + F);
   for (const [first, h] of prints(e2)) all2.set(h, first);
   let diff = 0, n = 0;
-  for (let k = 8; k < 39 * 8; k++) { const x = all[60 * 8 + k], y = all2[20 * 8 + k]; if (x && y) { diff += AudioPrint.pop(x ^ y); n++; } }
+  for (let k = F; k < 39 * F; k++) { const x = all[Math.round(e1.intro[0] * F) + k], y = all2[Math.round(e2.intro[0] * F) + k]; if (x && y) { diff += AudioPrint.pop(x ^ y); n++; } }
   let rnd = 0, rn = 0;
-  for (let k = 0; k < 300; k++) { const x = all[200 * 8 + k], y = all2[150 * 8 + k]; if (x && y) { rnd += AudioPrint.pop(x ^ y); rn++; } }
-  ok(diff / n < 6 && rnd / rn > 13, `the same intro: ${(diff / n).toFixed(1)} of 32 bits differ; different sound: ${(rnd / rn).toFixed(1)}`);
+  for (let k = 0; k < 30 * F; k++) { const x = all[200 * F + k], y = all2[150 * F + k]; if (x && y) { rnd += AudioPrint.pop(x ^ y); rn++; } }
+  ok(diff / n < 8 && rnd / rn > 13, `the same intro: ${(diff / n).toFixed(1)} of 32 bits differ; different sound: ${(rnd / rn).toFixed(1)}`);
 
   /* ---- learning and finding ---- */
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seal-intros-'));

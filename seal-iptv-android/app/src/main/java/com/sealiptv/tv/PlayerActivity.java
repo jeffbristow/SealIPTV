@@ -133,6 +133,7 @@ public class PlayerActivity extends Activity {
     // Skip intro / Next episode: where they are in this episode (ms; -1 = not known)
     private Button markBtn;
     private long introStart = -1, introEnd = -1, creditsStart = -1;
+    private boolean introHold = false;
     private String markShown = "", markDismissed = "";
     private final SoundTap tap = new SoundTap((first, h, n) -> {
         final int[] copy = java.util.Arrays.copyOf(h, n);
@@ -333,6 +334,7 @@ public class PlayerActivity extends Activity {
         ui.removeCallbacks(nextTick);
         ui.removeCallbacks(markTick);
         introStart = introEnd = creditsStart = -1;
+        introHold = false;
         markShown = ""; markDismissed = "";
         markBtn.setVisibility(View.GONE);
         tap.enabled = cfg.optBoolean("prints");
@@ -428,7 +430,8 @@ public class PlayerActivity extends Activity {
     private String markNow() {
         if (player == null || nextBox.getVisibility() == View.VISIBLE || errorBox.getVisibility() == View.VISIBLE) return "";
         long pos = player.getCurrentPosition();
-        if (introStart >= 0 && pos >= introStart && pos < introEnd - 1500) return "intro";
+        // (hold: it may go on longer, being listened for: the button stays up meanwhile)
+        if (introStart >= 0 && pos >= introStart && pos < introEnd + (introHold ? 3000 : -1500)) return "intro";
         if (creditsStart >= 0 && cfg.optBoolean("hasNext") && pos >= creditsStart) return "credits";
         return "";
     }
@@ -452,7 +455,7 @@ public class PlayerActivity extends Activity {
         markShown = "";
         if (m.equals("intro") && player != null) {
             markDismissed = "intro";
-            player.seekTo(introEnd);
+            if (introEnd > player.getCurrentPosition()) player.seekTo(introEnd);
             showOsd("⏭  Intro skipped");
         } else if (m.equals("credits")) goNext();
     }
@@ -461,7 +464,11 @@ public class PlayerActivity extends Activity {
     private void marks(JSONObject c) {
         JSONObject i = c.optJSONObject("intro"), cr = c.optJSONObject("credits");
         introStart = i == null ? -1 : Math.round(i.optDouble("start", -1) * 1000);
-        introEnd = i == null ? -1 : Math.round(i.optDouble("end", -1) * 1000);
+        long end = i == null ? -1 : Math.round(i.optDouble("end", -1) * 1000);
+        // skipped to the end of the short intro, and it goes on (the whole one): offered again
+        if (end != introEnd && markDismissed.equals("intro")) markDismissed = "";
+        introEnd = end;
+        introHold = i != null && i.optBoolean("hold", false);
         creditsStart = cr == null ? -1 : Math.round(cr.optDouble("start", -1) * 1000);
         ui.removeCallbacks(markTick);
         if (introStart >= 0 || creditsStart >= 0) ui.post(markTick);

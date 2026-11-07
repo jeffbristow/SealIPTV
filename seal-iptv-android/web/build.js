@@ -20,7 +20,7 @@ const WIN = path.join(__dirname, '..', '..', 'seal-iptv', 'src', 'renderer');
 const OUT = path.join(__dirname, '..', 'app', 'src', 'main', 'assets', 'www');
 const SH = p => path.join(__dirname, 'src', 'shims', p);
 const VERSION = require('../../seal-iptv/package.json').version;
-const MIN_NATIVE = 4;   // versionCode 4 (1.1.0): updates, editText
+const MIN_NATIVE = 31;  // versionCode 31 (1.8.5): sound prints 32 a second (intros.js and AudioPrint.java must agree)
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 

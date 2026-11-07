@@ -2,7 +2,7 @@
  * Seal IPTV — intros.js   (Skip intro / Next episode, found by sound)
  * ---------------------------------------------------------------------
  * While an episode plays, the player hands over its sound as prints
- * (audioprint.js / AudioPrint.java: 8 numbers a second). Nothing extra
+ * (audioprint.js / AudioPrint.java: 32 numbers a second). Nothing extra
  * is ever streamed: only what's being watched is listened to.
  *
  * Learning: the start (first 15 minutes) and the end (last 7 minutes)
@@ -28,13 +28,14 @@ const { pop, FPS } = require('../renderer/audioprint');
 
 const HEAD = 15 * 60 * FPS;          // frames kept from the start of an episode
 const TAIL = 7 * 60 * FPS;           // … and from its end
-const NEAR = 9;                      // bits (of 32) that may differ for "the same sound"
+const NEAR = 10;                     // bits (of 32) that may differ for "the same sound"
 const GAP = 3 * FPS;                 // a stretch goes on over this much that doesn't match (dialogue over the theme)
 const INTRO_MIN = 10 * FPS, INTRO_MAX = 150 * FPS;
 const CREDITS_MIN = 10 * FPS, CREDITS_MAX = 6 * 60 * FPS;
-const LIVE_MIN = 4 * FPS;            // seconds of the same sound before the button shows
+const LIVE_MIN = 2 * FPS;            // seconds of the same sound before the button shows
+const LIVE_LOOK = 10 * FPS;          // the sound just heard that's looked at for it
 const KEEP_PRINTS = 6, KEEP_TEMPLATES = 4;
-const COMMON = 24;                   // a number seen this often in one print says nothing (steady sound)
+const COMMON = 3 * FPS;              // a number seen this often in one print says nothing (steady sound)
 
 /** a series' name to tell it apart: "FROM (2022)" = "From (2022)" = "EN - From" (as library.js) */
 const showName = n => String(n || '').toLowerCase().replace(/^\s*[a-z]{2,3}\s*[-:|]\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -127,8 +128,9 @@ function longest(a, b, o, from, to, min) {
     const y = b.h[j - b.first], x = a.h[j - o - a.first];
     m[j - lo] = !x || !y ? -1 : pop(x ^ y) <= NEAR ? 1 : 0;
   }
-  // a stretch starts and ends on two in a row the same (one alone can be chance: it made intros start early)
-  const pair = i => m[i] === 1 && ((i + 1 < m.length && m[i + 1] === 1) || (i > 0 && m[i - 1] === 1));
+  // a stretch starts and ends where most of the half second around is the same (a few alike can be
+  // chance: it made intros start early and end late)
+  const pair = solid(m);
   for (let i = 0; i < m.length; i++) {
     if (m[i] < 0) continue;
     const j = lo + i;
@@ -142,6 +144,18 @@ function longest(a, b, o, from, to, min) {
   }
   close();
   return best;
+}
+
+/** m (1 the same, 0 not, -1 silence) -> is frame i in the same sound: it, and most of the half second around it */
+const SOLID = Math.round(FPS / 4);
+function solid(m) {
+  const same = new Int32Array(m.length + 1), seen = new Int32Array(m.length + 1);
+  for (let i = 0; i < m.length; i++) { same[i + 1] = same[i] + (m[i] === 1); seen[i + 1] = seen[i] + (m[i] >= 0); }
+  return i => {
+    if (m[i] !== 1) return false;
+    const a = Math.max(0, i - SOLID), b = Math.min(m.length, i + SOLID + 1), n = seen[b] - seen[a];
+    return n >= SOLID && (same[b] - same[a]) >= 0.6 * n;
+  };
 }
 
 /** the longest stretch of the same sound in two prints: { a: [from, to), b: [from, to) } in their own frames */
@@ -169,12 +183,13 @@ function commons(a, b, min, max, idx = indexOf(a), intro = false) {
     const r = longest(a, b, o, -Infinity, Infinity, min);
     if (!r) continue;
     if (r.to - r.from > max) return null;
-    if (cut(r.from - o, r.to - o, a) || cut(r.from, r.to, b)) continue;
-    const lap = out.findIndex(x => x[0] < r.to && r.from < x[1]);
-    if (lap < 0) out.push([r.from, r.to]);
-    else if (r.to - r.from > out[lap][1] - out[lap][0]) out[lap] = [r.from, r.to];
+    // (one cut off still stands for its place: shifts next to it match in part too, 32 frames a second)
+    const x = [r.from, r.to, cut(r.from - o, r.to - o, a) || cut(r.from, r.to, b)];
+    const lap = out.findIndex(y => y[0] < r.to && r.from < y[1]);
+    if (lap < 0) out.push(x);
+    else if (r.to - r.from > out[lap][1] - out[lap][0]) out[lap] = x;
   }
-  return out;
+  return out.filter(x => !x[2]).map(([f, t]) => [f, t]);
 }
 
 /**
@@ -238,6 +253,7 @@ class Intros {
     if (this.cache.has(show)) return this.cache.get(show);
     let d = {};
     try { d = JSON.parse(fs.readFileSync(this._file(show), 'utf8')); } catch { d = {}; }
+    if ((d.fps || 8) !== FPS) d = {};      // another frame rate (1.8.4: 8 a second): can't be compared, learned again
     const tpl = t => ({ ...t, p: { first: 0, h: unpack(t.h) } });
     const part = x => (x && x.h ? { first: x.first || 0, h: unpack(x.h) } : null);
     const out = {
@@ -255,6 +271,7 @@ class Intros {
     const part = x => (x && x.h.length ? { first: x.first, h: pack(x.h) } : null);
     const tpl = t => ({ season: t.season, at: t.at, from: t.from, support: t.support, core: t.core, h: pack(t.p.h) });
     const out = {
+      fps: FPS,
       prints: d.prints.map(p => ({ key: p.key, season: p.season, at: p.at, dur: p.dur, head: part(p.head), tail: part(p.tail) })),
       intro: d.intro.map(tpl),
       credits: d.credits.map(tpl)
@@ -297,19 +314,43 @@ class Intros {
         const m = this._live(t, cur, end);
         if (m) {
           const ce = t.core ? t.core[1] : t.p.h.length;
-          s.intro = { start: Math.max(0, m.o + (t.core ? t.core[0] : 0)) / FPS, end: (m.o + ce) / FPS };
           s.introBy = 'heard';
-          s.longer = ce < t.p.h.length ? { t, o: m.o, ce } : null;
+          s.longer = ce < t.p.h.length - 2 * FPS ? { t, o: m.o, ce } : null;
+          s.track = { t, o: m.o, last: end };
+          // hold: the whole may go on past end (a few seconds more are listened to)
+          s.intro = { start: Math.max(0, m.o + (t.core ? t.core[0] : 0)) / FPS, end: (m.o + (s.longer ? ce : t.p.h.length)) / FPS, ...(s.longer ? { hold: true } : {}) };
           break;
         }
       }
     }
-    // the intro heard is the short one, or the whole (longer in some episodes): it goes on past the short one?
+    // the intro heard is the short one, or the whole (longer in some episodes): does it go on past the
+    // short one? Decided in a second or two; the button stays up meanwhile (hold)
     const L = s.longer;
-    if (L && s.introBy === 'heard' && end >= L.o + L.ce + LIVE_MIN) {
-      const r = longest(L.t.p, cur, L.o, L.o + L.ce, end, LIVE_MIN);
-      if (r && r.to >= end - 2 * FPS) { s.intro = { start: s.intro.start, end: (L.o + L.t.p.h.length) / FPS }; s.longer = null; }
-      else if (end > L.o + L.ce + 10 * FPS) s.longer = null;     // it ended: the short one
+    if (L && s.introBy === 'heard' && end >= L.o + L.ce + 1.5 * FPS) {
+      const a = L.o + L.ce;
+      let same = 0, n = 0;
+      for (let j = a; j < end; j++) {
+        const y = s.h[j], x = L.t.p.h[j - L.o];
+        if (!x || !y) continue;
+        n++; if (pop(x ^ y) <= NEAR) same++;
+      }
+      if (n >= FPS && same / n >= 0.5) { s.intro = { start: s.intro.start, end: (L.o + L.t.p.h.length) / FPS }; s.longer = null; }
+      else if (n >= FPS) { s.intro = { start: s.intro.start, end: s.intro.end }; s.longer = null; }   // it ended: the short one
+    }
+    // the intro heard stops before it should (this episode's is shorter): it ended there, the button goes
+    const T = s.track;
+    if (T && s.introBy === 'heard' && s.intro && !s.intro.hold) {
+      // (most of the half second around the same: a few alike can be chance)
+      const lo = Math.max(T.last, T.o, first - FPS), hi = Math.min(end, T.o + T.t.p.h.length);
+      if (hi > lo) {
+        const m = new Int8Array(hi - lo);
+        for (let j = lo; j < hi; j++) { const x = T.t.p.h[j - T.o], y = s.h[j]; m[j - lo] = !x || !y ? -1 : pop(x ^ y) <= NEAR ? 1 : 0; }
+        const ok = solid(m);
+        for (let i = 0; i < m.length; i++) if (ok(i)) T.last = lo + i + 1;
+      }
+      const due = s.intro.end * FPS;
+      if (end - T.last > 3 * FPS && T.last < due - 3 * FPS && end < due) { s.intro = { start: s.intro.start, end: T.last / FPS }; s.track = null; }
+      else if (end >= due) s.track = null;
     }
     // the end credits: in the last 7 minutes
     if (!s.credits && durF > 0 && end >= durF - TAIL && d.credits.length) {
@@ -333,15 +374,30 @@ class Intros {
     return s ? { intro: s.intro, credits: s.credits } : null;
   }
 
-  /** the series' intro (credits) t in the sound just heard: where it starts in this episode (o) */
+  /**
+   * the series' intro (credits) t in the sound just heard: where it starts in this episode (o).
+   * Every place in t is tried against the last LIVE_MIN heard (t is short: a few thousand frames);
+   * numbers the same or a bit off are all it takes (noise leaves few exactly the same: waiting for
+   * those made the button late, and later in some episodes than others)
+   */
   _live(t, cur, end) {
-    if (!t.idx) t.idx = indexOf(t.p);
-    const from = Math.max(0, end - 30 * FPS);
-    for (const o of shifts(t.idx, cur, from, end, 4)) {
-      const r = longest(t.p, cur, o, from, end, LIVE_MIN);
-      if (r && r.to >= end - 2 * FPS) return { o };   // matching now (not something a while ago)
+    const h = cur.h, p = t.p.h, a = end - LIVE_MIN;
+    if (a < 0) return null;
+    let best = -1, bestO = 0;
+    for (let k = LIVE_MIN; k <= p.length; k++) {           // the last frame heard is t's frame k - 1
+      const o = end - k;
+      let same = 0, n = 0;
+      for (let j = a; j < end; j++) {
+        const y = h[j], x = p[j - o];
+        if (!x || !y) continue;
+        n++; if (pop(x ^ y) <= NEAR) same++;
+      }
+      if (n >= LIVE_MIN * 0.75 && same > best) { best = same; bestO = o; if (same === n) break; }
     }
-    return null;
+    if (best < LIVE_MIN * 0.75 * 0.6) return null;
+    // … and it's the same sound for as long as both go back (not a moment alike)
+    const r = longest(t.p, cur, bestO, Math.max(0, end - LIVE_LOOK), end, LIVE_MIN);
+    return r && r.to >= end - FPS ? { o: bestO } : null;
   }
 
   /** the intro / credits of this series, from this episode and one seen before */

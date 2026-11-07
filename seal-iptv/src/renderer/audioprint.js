@@ -1,7 +1,7 @@
 /* =====================================================================
  * Seal IPTV — audioprint.js   (audio fingerprints: Skip intro / Next episode)
  * ---------------------------------------------------------------------
- * Turns the sound of what's playing into 8 numbers a second. The same
+ * Turns the sound of what's playing into 32 numbers a second. The same
  * piece of sound (a series' intro, its end credits) gives nearly the
  * same numbers in every episode, so intros.js can find it again.
  *
@@ -10,9 +10,11 @@
  *   p.push(monoFloat32, sampleRate)           sound as it plays, from mediaTime on
  *   p.flush()                                 hand over what's waiting
  *
- * Frame n is the sound from n/8 s; a frame's number has one bit per pair
+ * Frame n is the sound from n/32 s; a frame's number has one bit per pair
  * of neighbouring frequency bands: did the louder one of the two change
  * the same way as 1/8 s before (Haitsma & Kalker)? 0 = no sound there.
+ * (Frames 1/8 s apart were too coarse: an intro that started between two
+ * frames in one episode and on one in another gave other numbers.)
  *
  * MUST stay the same as AudioPrint.java (the Fire TV / Google TV player):
  * prints are compared between devices. test/intros-test.js checks both.
@@ -22,8 +24,9 @@
 (function (root) {
   const RATE = 16000;              // the sound is brought to this rate first
   const WIN = 4096;                // samples looked at per frame (256 ms)
-  const HOP = 2000;                // 1/8 s between frames
-  const FPS = RATE / HOP;          // 8
+  const HOP = 500;                 // 1/32 s between frames
+  const FPS = RATE / HOP;          // 32
+  const LAG = 4;                   // a frame is compared with the one 1/8 s before
   // the 33 bands (250 Hz – 2.5 kHz, log-spaced), as FFT bins of WIN at RATE
   const EDGES = [64, 69, 74, 79, 85, 91, 97, 104, 112, 120, 129, 138, 148, 159, 170, 182, 195, 210, 225, 241, 258, 277, 297, 319, 342, 366, 393, 421, 452, 484, 519, 557, 597, 640];
   const BANDS = EDGES.length - 1;  // 33 -> 32 bits
@@ -65,16 +68,17 @@
     let step = 0, sum = 0, cnt = 0, seen = 0, edge = 0;
     let buf = new Float32Array(WIN * 4), have = 0;     // RATE samples not yet used up
     let startTime = 0, used = 0;                       // the media time of the first RATE sample, how many were dropped since
-    let prev = null, prevQuiet = true;
+    // the last LAG + 1 frames' bands (and were they quiet); count: frames since the start / a seek
+    const ring = Array.from({ length: LAG + 1 }, () => new Float64Array(BANDS)), quietAt = new Array(LAG + 1).fill(true);
+    let count = 0;
     const re = new Float64Array(WIN), im = new Float64Array(WIN);
-    let cur = new Float64Array(BANDS), last = new Float64Array(BANDS);
     let outFirst = -1, out = [];
 
     function emit(index, h) {
       if (outFirst >= 0 && index !== outFirst + out.length) flush();
       if (outFirst < 0) outFirst = index;
       out.push(h);
-      if (out.length >= 16) flush();
+      if (out.length >= FPS / 2) flush();    // half a second: the button shows soon after the intro starts
     }
     function flush() {
       if (out.length) onFrames(outFirst, Int32Array.from(out));
@@ -83,11 +87,13 @@
 
     function frames() {
       while (have >= WIN) {
+        const slot = count % (LAG + 1), cur = ring[slot], last = ring[(count + 1) % (LAG + 1)];
         const quiet = bands(buf, 0, re, im, cur) < QUIET;
+        quietAt[slot] = quiet;
         const index = Math.round((startTime + used / RATE) * FPS);
-        if (prev) {
+        if (count >= LAG) {
           let h = 0;
-          if (!quiet && !prevQuiet) {
+          if (!quiet && !quietAt[(count + 1) % (LAG + 1)]) {
             for (let m = 0; m < BANDS - 1; m++) {
               if ((cur[m] - cur[m + 1]) - (last[m] - last[m + 1]) > 0) h |= 1 << m;
             }
@@ -95,8 +101,7 @@
           }
           emit(index, h);
         }
-        const t = last; last = cur; cur = t;
-        prev = true; prevQuiet = quiet;
+        count++;
         buf.copyWithin(0, HOP, have);
         have -= HOP;
         used += HOP;
@@ -109,7 +114,7 @@
         flush();
         step = 0; sum = 0; cnt = 0; seen = 0; edge = 0; have = 0; used = 0;
         startTime = Math.max(0, Number(mediaTime) || 0);
-        prev = null; prevQuiet = true;
+        count = 0;
       },
       push(mono, rate) {
         if (!step) { step = rate / RATE; edge = step; }
@@ -135,7 +140,7 @@
     return Math.imul(x, 0x01010101) >>> 24;
   }
 
-  const api = { create, pop, FPS, RATE, WIN, HOP, EDGES };
+  const api = { create, pop, FPS, RATE, WIN, HOP, LAG, EDGES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AudioPrint = api;
 })(typeof window !== 'undefined' ? window : globalThis);
