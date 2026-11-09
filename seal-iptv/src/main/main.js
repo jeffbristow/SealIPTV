@@ -76,7 +76,7 @@ function init() {
   franchises.setStudios(studios.data());
   setTimeout(() => studios.refresh().then(d => { if (d) franchises.setStudios(d); }).catch(() => { /* next time */ }), 20000).unref();
   sync = new SyncService({
-    dataDir: dir, store, library, secure, appVersion: VERSION,
+    dataDir: dir, store, library, intros, secure, appVersion: VERSION,
     onApplied: types => send('sync:applied', [...types]),
     onProfileGone: id => catalog.remove(id),
     onProfileJoined: (from, to) => catalog.rename(from, to)
@@ -400,6 +400,12 @@ function registerIpc() {
   handle('intro:begin', o => intros.begin(o));
   handle('intro:add', (key, first, h, dur) => intros.add(key, first, h, dur));
   handle('intro:end', key => intros.end(key));
+  // Learn intros (introscan.js reads the episodes' files): the series on the Watchlist and in the user's own categories
+  handle('scan:targets', () => scanTargets());
+  handle('scan:url', async req => { await vpn.ensure(); return { url: (await catalog.streamUrl(pid(), req)).url }; });
+  handle('scan:seasons', show => intros.scannedSeasons(show));
+  handle('scan:season', o => intros.learnSeason(o || {}));
+  handle('scan:playing', () => playing);
   handle('play:external', req => playExternal(req));
   handle('play:findVlc', () => findVlc());
 }
@@ -412,6 +418,15 @@ function registerIpc() {
  * -> { url, live, key, resume: { pos, dur } | null }
  * Refuses (code 'VPN') when the VPN is required and not confirmed.
  */
+/** Learn intros: the series on the Watchlist and in the user's own categories [{ id, name }] */
+function scanTargets() {
+  const L = library._get(pid()), seen = new Map();
+  const add = (k, v) => { const m = /(?:^|\/)series:(.+)$/.exec(k); if (m && !seen.has(m[1])) seen.set(m[1], { id: m[1], name: (v && (v.name || v.title)) || '' }); };
+  for (const [k, v] of Object.entries(L.watch || {})) add(k, v);
+  for (const [k, v] of Object.entries(L.listed || {})) add(k, v);
+  return [...seen.values()];
+}
+
 async function preparePlay(req) {
   // a downloaded / recorded file: no provider, no stream used
   if (req.file) {

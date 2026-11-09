@@ -294,6 +294,51 @@ const fmtLeft = (pos, dur) => {
   const m = Math.max(1, Math.round((dur - pos) / 60));
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m} min left`;
 };
+/* ---- Learn intros (introscan.js): Settings -> Playback, and by itself now and then ---- */
+const Learn = (() => {
+  let ctl = null, last = null;
+  const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+  function line(x) {
+    if (x.note && !x.intro && !x.credits) return `<div><b>${esc(x.series)}</b>${x.season != null ? ` · season ${x.season}` : ''}: <span class="faint">${esc(x.note)}</span></div>`;
+    const at = (x.eps || []).map(e => e.intro).filter(Boolean)[0];
+    const parts = [];
+    parts.push(x.intro ? `intro ${mmss(x.intro.len)} long${at ? ` (at ${mmss(at.start)} in one episode)` : ''}, in ${x.intro.support} of ${x.intro.of} episodes` : 'no intro');
+    parts.push(x.credits ? `end credits ${mmss(x.credits.len)}, in ${x.credits.support} of ${x.credits.of}` : 'no end credits');
+    return `<div><b>${esc(x.series)}</b> · season ${x.season}: ${parts.join('; ')}</div>`;
+  }
+  function draw() {
+    const box = $('#lsNow'), list = $('#lsList');
+    if (!box) return;
+    show($('#lsGo'), !ctl); show($('#lsAll'), !ctl); show($('#lsStop'), !!ctl);
+    if (last) {
+      box.textContent = last.text || (ctl ? 'Working…' : '');
+      if (!box.textContent) box.textContent = ctl ? 'Working…' : 'Done.';
+      list.innerHTML = last.done.slice(-60).map(line).join('');
+    }
+  }
+  async function start(force, quiet = false) {
+    if (ctl || !window.IntroScan) return;
+    ctl = new AbortController();
+    last = { text: 'Starting…', done: [] };
+    draw();
+    try {
+      await IntroScan.run({ force, signal: ctl.signal, onStatus: st => { last = { ...st, done: st.done.slice() }; draw(); } });
+      if (!quiet) toast('Intros and end credits learned.');
+    } catch (e) {
+      if (e.name !== 'AbortError') { last = { ...(last || { done: [] }), text: 'Stopped: ' + e.message }; if (!quiet) fail(e); }
+    } finally { ctl = null; draw(); }
+  }
+  function stop() { if (ctl) ctl.abort(); }
+  // by itself: a while after starting, then twice a day (only seasons not read yet; waits while something plays)
+  function auto() {
+    if (TV || PHONE || !window.IntroScan) return;
+    const go = () => { if (state.settings && state.settings.playback.learnIntros !== false) start(false, true); };
+    setTimeout(go, 3 * 60 * 1000);
+    setInterval(go, 12 * 60 * 60 * 1000);
+  }
+  return { start, stop, draw, auto };
+})();
+
 const fmtDate = ms => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const fmtClock = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 const epLabel = (season, ep) => `S${season || 1} · E${ep || '?'}`;
@@ -788,6 +833,8 @@ async function toggleHiddenSearch() {
 
 /** After another PC changed something: reload what the window shows. */
 async function refreshAll(types = []) {
+  // intros / end credits from another device: nothing on screen changes
+  if (types.length && types.every(t => t === 'intro')) return;
   const r = await call('app:init');
   Object.assign(state, { settings: r.settings, profiles: r.profiles, summary: r.catalog, parental: r.parental, sync: r.sync, lists: r.lists || [] });
   renderProfiles(); renderMyNav(); updateCounts(); updateLockBtn(); updateVpn();
@@ -799,7 +846,7 @@ async function refreshAll(types = []) {
     return render();
   }
   // resume points alone don't change the lists; everything else (or pages that show them) is drawn again
-  const onlyPos = types.length && types.every(t => t === 'pos');
+  const onlyPos = types.length && types.every(t => t === 'pos' || t === 'intro');
   if (!onlyPos || ['home', 'movie', 'show', 'favorites', 'watchlist', 'collection', 'list'].includes(state.view)) render();
 }
 // the PIN may run out (Settings → "Stay unlocked"): check now and then
@@ -2712,6 +2759,14 @@ function renderSettings(view) {
     <div class="row gap"><input type="text" id="pExt" value="${esc(pb.externalPlayer)}" placeholder="Finds VLC by itself" spellcheck="false"><button class="btn small" id="pExtPick">Choose…</button></div>
     <p class="faint small" id="pExtNote"></p></div>
     <p class="faint small">${PHONE ? 'This phone plays HEVC, AC-3 / E-AC-3 sound (as the phone allows), MKV and TS itself. For anything else, use "Open in another app" (for example VLC); the VPN rule applies there too.' : TV ? 'Fire TV plays HEVC, AC-3 / E-AC-3 sound, MKV and TS itself. For anything else, use "Open in another app" (for example VLC for Fire TV); the VPN rule applies there too.' : 'Some movies use sound (AC-3, DTS) or formats the built-in player can\'t play. Use "Open in VLC" for those; the VPN rule applies there too.'}</p>
+    <div class="${TV || PHONE ? 'hidden' : ''}">
+    <h3 style="margin-top:16px">Skip intro and Next episode</h3>
+    <p class="muted small">Seal IPTV finds each season's intro and end credits by reading the sound of a few of its episodes (only the start and the end of each file). It does this for the series on your Watchlist and in your own categories, and your other devices get what it found through Sync. Other series are learned as you watch them.</p>
+    <label class="check"><input type="checkbox" id="pLearn" ${pb.learnIntros !== false ? 'checked' : ''}> Look at new seasons by itself when nothing is playing</label>
+    <div class="vpn-box" id="lsNow">Not run yet on this PC.</div>
+    <div class="row gap"><button class="btn" id="lsGo">Learn now</button><button class="btn hidden" id="lsStop">Stop</button><button class="btn" id="lsAll">Look at all seasons again</button></div>
+    <div id="lsList" class="small" style="margin-top:8px"></div>
+    </div>
     <h3 style="margin-top:16px">Audio sync</h3>
     <p class="muted small">Bluetooth headphones and speakers often play the sound a little late. Seal IPTV can hold the picture back by the same amount. Each audio device keeps its own value; ${PHONE ? 'in the player tap ⚙ → Audio sync.' : TV ? 'in the player press ☰ Menu → Audio sync.' : 'in the player use ⏱ Sync or the [ and ] keys.'}</p>
     <div class="vpn-box" id="avNow">Checking the sound output…</div>
@@ -2725,6 +2780,11 @@ function renderSettings(view) {
   pp.querySelector('#pSaver').onchange = e => saveSettings({ screensaver: { on: e.target.checked } });
   pp.querySelector('#pSaverMin').onchange = e => saveSettings({ screensaver: { minutes: Number(e.target.value) } });
   pp.querySelector('#pResume').onchange = e => saveSettings({ playback: { resume: e.target.value } });
+  pp.querySelector('#pLearn').onchange = e => saveSettings({ playback: { learnIntros: e.target.checked } });
+  pp.querySelector('#lsGo').onclick = () => Learn.start(false);
+  pp.querySelector('#lsAll').onclick = () => Learn.start(true);
+  pp.querySelector('#lsStop').onclick = () => Learn.stop();
+  Learn.draw();
   pp.querySelector('#pUa').onchange = e => { show(pp.querySelector('#pUaCustom'), e.target.value === 'custom'); saveSettings({ network: { userAgent: e.target.value } }); };
   pp.querySelector('#pUaCustom').onchange = e => saveSettings({ network: { customUserAgent: e.target.value } });
   const extNote = () => call('play:findVlc').then(p => { pp.querySelector('#pExtNote').textContent = p ? `Uses ${p}` : 'VLC wasn\'t found on this PC.'; }).catch(() => {});
@@ -3324,4 +3384,4 @@ const Saver = (() => {
 })();
 
 // two frames first, so the start-up screen is on show before the playlist is read
-requestAnimationFrame(() => requestAnimationFrame(() => start().finally(endSplash).catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; })));
+requestAnimationFrame(() => requestAnimationFrame(() => start().finally(endSplash).then(() => Learn.auto()).catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; })));

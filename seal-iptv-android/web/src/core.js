@@ -74,8 +74,11 @@ const studios = new Studios({ dir: DATA, allowed: () => vpn.allowed(), userAgent
 franchises.setStudios(studios.data());
 setTimeout(() => studios.refresh().then(d => { if (d) { franchises.setStudios(d); trace('studios: a newer list,', d.built); } }).catch(e => trace('studios:', e.message)), 20000);
 const sync = new SyncService({
-  dataDir: DATA, store, library, secure, appVersion: VERSION,
-  onApplied: types => send('sync:applied', [...types]),
+  dataDir: DATA, store, library, intros, secure, appVersion: VERSION,
+  onApplied: types => {
+    if (types.has('intro')) console.log('[seal] sync: intros and end credits from another device; ' + (intros.synced || 0) + ' records taken in');
+    send('sync:applied', [...types]);
+  },
   onProfileGone: id => catalog.remove(id),
   onProfileJoined: (from, to) => catalog.rename(from, to)
 });

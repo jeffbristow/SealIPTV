@@ -190,6 +190,9 @@ const Player = (() => {
       p.attachMediaElement(video);
       p.load();
     } else {
+      // asked with CORS (main.js adds the headers): the sound can be listened to for Skip intro — a
+      // file the provider sends from another server would otherwise be off limits (captureStream)
+      video.crossOrigin = 'anonymous';
       video.src = url;
     }
     const p = video.play();

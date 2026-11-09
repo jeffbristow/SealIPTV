@@ -28,6 +28,8 @@
  *   watch:<pid>:<key>             a movie / series on the watchlist
  *   next:<pid>:<series id>        a series' next episode (Continue watching)
  *   cwhide:<pid>:<movie:9|series:4>  taken off Continue watching
+ *   intro:<series>|<season>|intro|credits  a season's intro / end credits, learned from the episodes'
+ *                                 files (Learn intros, intros.js): Skip intro / Next episode everywhere
  *   A removal is a record too ({ d: null }), so it reaches every device.
  *   Not synced: the downloaded channel lists, which playlist is in use,
  *   the VPN adapter / home IP, the VLC location, whether the PIN is
@@ -57,10 +59,10 @@ const pbkdf2 = promisify(crypto.pbkdf2);
 const API_VERSION = 1;
 const DEFAULT_KDF = { alg: 'pbkdf2-sha256', iter: 600000 };
 const WRAP_AAD = 'sealiptv-vault-key';
-const TYPES = ['profile', 'settings', 'fav', 'seen', 'pos', 'cat', 'list', 'listed', 'watch', 'next', 'cwhide'];
+const TYPES = ['profile', 'settings', 'fav', 'seen', 'pos', 'cat', 'list', 'listed', 'watch', 'next', 'cwhide', 'intro'];
 /* Raised when TYPES grows: versions before skipped the new kinds of records while pulling,
    so the vault is read once more from the start (what's known already isn't applied again). */
-const PULL_VERSION = 5;   // 3: watch (1.6.0), 4: next (1.7.1), 5: cwhide (1.7.4)
+const PULL_VERSION = 6;   // 3: watch (1.6.0), 4: next (1.7.1), 5: cwhide (1.7.4), 6: intro (1.8.6)
 
 /* =================================================================
  * 1. CRYPTO
@@ -115,6 +117,7 @@ class SyncService {
    * @param o.dataDir     data folder (sync.json goes there)
    * @param o.store       Store
    * @param o.library     Library
+   * @param o.intros      Intros (intros.js; optional): the fixed intros / end credits
    * @param o.secure      { encrypt, decrypt } (safeStorage) or null in tests
    * @param o.onApplied   (Set of types, details) => void — after remote changes were applied
    * @param o.onProfileGone (pid) => void — a playlist was deleted on another device
@@ -123,6 +126,7 @@ class SyncService {
   constructor(o) {
     this.store = o.store;
     this.library = o.library;
+    this.intros = o.intros || null;
     this.secure = o.secure || null;
     this.file = path.join(o.dataDir, 'sync.json');
     this.fetch = o.fetch || ((...a) => fetch(...a));
@@ -136,6 +140,7 @@ class SyncService {
     // local changes from the store / library become pending records
     this.store.onChange = (k, d) => this.record(k, d);
     this.library.onChange = (k, d) => this.record(k, d);
+    if (this.intros) this.intros.onChange = (k, d) => this.record('intro:' + k, d);
   }
 
   /* =================================================================
@@ -257,6 +262,7 @@ class SyncService {
       for (const [k, v] of Object.entries(L.next)) add(`next:${p.id}:${k}`, v, v.at || 1);
       for (const [k, v] of Object.entries(L.cwHide)) add(`cwhide:${p.id}:${k}`, v, v.at || 1);
     }
+    if (this.intros) for (const [k, v] of this.intros.syncRecords()) add('intro:' + k, v, v.at || 1);
     this._save();
   }
 
@@ -271,6 +277,8 @@ class SyncService {
         else if (this.store.listProfiles().some(p => p.id === rest)) { this.store.deleteProfile(rest); this.library.remove(rest); this.onProfileGone(rest); }
       } else if (type === 'settings') {
         this.store.applySettings(rest, d);
+      } else if (type === 'intro') {
+        if (this.intros) this.intros.applySynced(rest, d);
       } else {
         const pid = rest.slice(0, rest.indexOf(':'));
         const key = rest.slice(pid.length + 1);

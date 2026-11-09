@@ -9,6 +9,7 @@ const { Store } = require('../src/main/store');
 const { Library } = require('../src/main/library');
 const { Parental } = require('../src/main/parental');
 const { SyncService } = require('../src/main/sync');
+const { Intros } = require('../src/main/intros');
 
 let passed = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓ ' + msg); };
@@ -34,8 +35,9 @@ function pc(name) {
   const dir = path.join(root, name);
   const store = new Store(dir, null);
   const library = new Library(dir);
-  const sync = new SyncService({ dataDir: dir, store, library, appVersion: 'test' });
-  return { dir, store, library, sync, parental: new Parental(store) };
+  const intros = new Intros(dir);
+  const sync = new SyncService({ dataDir: dir, store, library, intros, appVersion: 'test' });
+  return { dir, store, library, intros, sync, parental: new Parental(store) };
 }
 const PASS = 'correct horse battery staple';
 
@@ -85,6 +87,26 @@ const PASS = 'correct horse battery staple';
     await A.sync.sync();
     ok(A.library.favorites(pA.id, 'live').some(f => f.id === '202'), 'PC A gets PC B\'s favorite');
 
+    /* ---- Learn intros on A: the season's intro and end credits reach B ---- */
+    {
+      const F = 32, rnd = n => { const a = new Int32Array(n); for (let i = 0; i < n; i++) a[i] = ((Math.random() * 4294967296) | 0) || 1; return a; };
+      const intro = rnd(50 * F), credits = rnd(40 * F);
+      const eps = [0, 1, 2, 3].map(i => {
+        const head = rnd(900 * F); head.set(intro, (60 + i * 37) * F);
+        const tail = rnd(420 * F); tail.set(credits, 330 * F);
+        return { key: 'episode:50' + i, dur: 2700, head: { first: 0, h: head }, tail: { first: 2280 * F, h: tail } };
+      });
+      const res = A.intros.learnSeason({ show: 'FROM (2022)', season: 3, eps });
+      ok(res.intro && Math.abs(res.intro.len - 50) < 1 && res.credits && Math.abs(res.credits.len - 40) < 1, `A learns a season's intro (${res.intro && res.intro.len.toFixed(1)} s) and end credits (${res.credits && res.credits.len.toFixed(1)} s)`);
+      await A.sync.sync(); await B.sync.sync();
+      const got = B.intros._load('from 2022');
+      const bi = got.intro.find(t => t.season === 3 && t.fixed), bc = got.credits.find(t => t.season === 3 && t.fixed);
+      const ai = A.intros._load('from 2022').intro.find(t => t.season === 3 && t.fixed), ac = A.intros._load('from 2022').credits.find(t => t.season === 3 && t.fixed);
+      ok(bi && bc && bi.p.h.length === ai.p.h.length && bc.p.h.length === ac.p.h.length && bi.p.h.every((x, i) => x === ai.p.h[i]) && bi.from === ai.from && String(bi.core) === String(ai.core), 'B gets them through the sync server, exactly (fixed: Skip intro / Next episode there too)');
+      const raw2 = fs.readFileSync(path.join(vaultDir, 'vault.sqlite')).toString('latin1') + (fs.existsSync(path.join(vaultDir, 'vault.sqlite-wal')) ? fs.readFileSync(path.join(vaultDir, 'vault.sqlite-wal')).toString('latin1') : '');
+      ok(!/from 2022|FROM/.test(raw2) && /intro:[0-9a-f]{64}/.test(raw2), '… the server can not tell which series (scrambled like the rest)');
+    }
+
     /* ---- changes flow both ways ---- */
     B.library.setFavorite(pA.id, 'live:101', false);
     B.library.setWatched(pA.id, 'episode:9002', true, { name: 'S01E02' });
@@ -128,7 +150,7 @@ const PASS = 'correct horse battery staple';
     for (const k of Object.keys(B.sync.state.known)) if (/^list(ed)?:/.test(k)) delete B.sync.state.known[k];
     B.sync.state.pullVersion = 1;
     await B.sync.sync();
-    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 5, 'after updating from an older version: the categories are fetched again');
+    ok(B.library.listItems(pA.id, kids).length === 1 && B.sync.state.pullVersion === 6, 'after updating from an older version: the categories are fetched again');
     A.library.removeList(pA.id, kids);
     await A.sync.sync(); await B.sync.sync();
     ok(!B.library.lists(pA.id).length && !Object.keys(B.library._get(pA.id).listed).length, 'a category deleted on A goes on B, with its titles');

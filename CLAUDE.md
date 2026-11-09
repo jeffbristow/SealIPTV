@@ -87,6 +87,9 @@ seal-iptv/
     vpn.js                 VpnGuard (adapter + Proton API / ipinfo checks, watcher)
     parental.js            parental PIN (salted scrypt hash, unlock timer, wrong-PIN backoff)
     sync.js                Sync with seal-iptv-server: records + newest-wins, E2E encrypted (see header)
+    intros.js              Skip intro / Next episode: series' intro + end-credits templates (prints),
+                           learned while playing, or per season from the files (learnSeason: "fixed",
+                           never replaced by listening, synced as intro:<series>|<season>|intro|credits)
     language.js            "not in English" guesses from category tags/names and title tags/scripts
   src/renderer/
     index.html, styles.css app shell (same tokens as Sealpost)
@@ -94,6 +97,13 @@ seal-iptv/
     player.js              player (hls.js / mpegts.js / native, fallback chain)
     avsync.js              audio/video sync: picture delay (frame buffer -> canvas), sound
                            delay (Web Audio), per audio device; sync test + tap measuring
+    audioprint.js          sound -> prints, 32 a second (= AudioPrint.java on the TVs; tested)
+    introscan.js           Learn intros (Windows): reads only the start / end of 3 episodes per season
+                           of the Watchlist + own categories (MP4, MKV or AVI (idx1) demuxed here; AAC wrapped as
+                           ADTS -> decodeAudioData, others WebCodecs; AC-3 / E-AC-3 can't be read),
+                           -> scan:season -> intros.learnSeason. Provider: ~4 MB/s, one request at a time
+                           (parallel ranges are refused). Settings -> Playback; by itself 3 min after start
+                           and every 12 h (playback.learnIntros), waits while something plays.
     logo.svg, icon.png     seal + TV
   build/icon.ico, icon.png made by devtest/make-icons.js
   test/                    m3u, xtream (+catalog), library, vpn, store
@@ -235,7 +245,9 @@ any test run so the user's real settings/library are never touched.
   parental.allowChange().
 - Sync (sync.js): every change is a record — profile:<pid>, settings:<group> (store.js
   SYNC_GROUPS: per-PC things like activeProfile, VPN adapter/home IP, VLC path never
-  sync), fav/seen/pos:<pid>:<key>, cat:<pid>:<section>:<id>; removals are records with
+  sync), fav/seen/pos:<pid>:<key>, cat:<pid>:<section>:<id>, intro:<series>|<season>|<kind>
+  (intros.js fixed templates; a synced season counts as read, so other PCs don't scan it
+  again; the TVs' fs shim has no readdirSync, so they can't list them); removals are records with
   d:null. Store/Library call onChange(name, data); applying remote records sets
   sync.applying so they aren't sent back. Item ids on the server = type + HMAC(vault
   key, name). Newest t wins (pull: unless our pending copy is newer; push conflict: the

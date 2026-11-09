@@ -200,7 +200,7 @@ function commons(a, b, min, max, idx = indexOf(a), intro = false) {
  */
 const EARLY = 15 * FPS, LOGO = 20 * FPS;
 const logoLike = (from, to) => from < EARLY && to - from < LOGO;
-function agree(lists, min, intro) {
+function agree(lists, min, intro, cap = 2) {
   const all = [];
   lists.forEach((l, i) => l.forEach(([f, t]) => all.push({ f, t, i })));
   all.sort((x, y) => x.f - y.f);
@@ -227,7 +227,7 @@ function agree(lists, min, intro) {
     }
     if (eps.length === 1) { from = eps[0].f; to = eps[0].t; }
     if (ct - cf < min) continue;
-    const c = { from, to, core: [cf, ct], support: Math.min(2, eps.length), early: intro && logoLike(cf, ct) };
+    const c = { from, to, core: [cf, ct], support: Math.min(cap, eps.length), early: intro && logoLike(cf, ct) };
     if (!best || better(c, best)) best = c;
   }
   return best;
@@ -238,6 +238,23 @@ function better(c, had) {
   if (c.support !== had.support) return c.support > had.support;
   return c.to - c.from > had.to - had.from;
 }
+
+/** a fixed template as it's synced */
+const recordOf = t => ({ from: t.from, support: t.support, core: t.core, at: t.at, h: pack(t.p.h) });
+/** where template t is in print q (s): { start, end } or null */
+function locate(t, q) {
+  if (!t.idx) t.idx = indexOf(t.p);
+  let best = null;
+  for (const o of shifts(t.idx, q, -Infinity, Infinity, 8)) {
+    const r = longest(t.p, q, o, -Infinity, Infinity, 3 * FPS);
+    if (r && (!best || r.to - r.from > best.to - best.from)) best = r;
+  }
+  return best ? { start: best.from / FPS, end: best.to / FPS } : null;
+}
+/** templates to try for an episode of season: its own first, then the fixed ones, newest first */
+const order = (list, season) => [...list].sort((a, b) => (b.season === season) - (a.season === season) || !!b.fixed - !!a.fixed || b.at - a.at);
+/** the templates kept: all fixed ones, and a few others */
+const keep = list => { let n = 0; return list.filter(t => t.fixed || n++ < KEEP_TEMPLATES); };
 
 /* ---------------- one series' file ---------------- */
 class Intros {
@@ -259,7 +276,8 @@ class Intros {
     const out = {
       prints: (d.prints || []).map(p => ({ key: p.key, season: p.season, at: p.at, dur: p.dur || 0, head: part(p.head), tail: part(p.tail) })),
       intro: (d.intro || []).map(tpl),
-      credits: (d.credits || []).map(tpl)
+      credits: (d.credits || []).map(tpl),
+      scanned: d.scanned || {}
     };
     this.cache.set(show, out);
     return out;
@@ -269,9 +287,11 @@ class Intros {
     const d = this.cache.get(show);
     if (!d) return;
     const part = x => (x && x.h.length ? { first: x.first, h: pack(x.h) } : null);
-    const tpl = t => ({ season: t.season, at: t.at, from: t.from, support: t.support, core: t.core, h: pack(t.p.h) });
+    const tpl = t => ({ season: t.season, at: t.at, from: t.from, support: t.support, core: t.core, ...(t.fixed ? { fixed: true } : {}), h: pack(t.p.h) });
     const out = {
       fps: FPS,
+      show,
+      scanned: d.scanned || {},
       prints: d.prints.map(p => ({ key: p.key, season: p.season, at: p.at, dur: p.dur, head: part(p.head), tail: part(p.tail) })),
       intro: d.intro.map(tpl),
       credits: d.credits.map(tpl)
@@ -310,7 +330,7 @@ class Intros {
 
     // the intro: compared with the series' intros while in the first 15 minutes
     if ((!s.intro || s.introBy === 'learned') && end <= HEAD + 30 * FPS && d.intro.length) {
-      for (const t of d.intro) {
+      for (const t of order(d.intro, s.season)) {
         const m = this._live(t, cur, end);
         if (m) {
           const ce = t.core ? t.core[1] : t.p.h.length;
@@ -354,7 +374,7 @@ class Intros {
     }
     // the end credits: in the last 7 minutes
     if (!s.credits && durF > 0 && end >= durF - TAIL && d.credits.length) {
-      for (const t of d.credits) {
+      for (const t of order(d.credits, s.season)) {
         const m = this._live(t, cur, end);
         if (m) { s.credits = { start: Math.max(0, m.o) / FPS, end: Math.min(s.dur, (m.o + t.p.h.length) / FPS) }; break; }
       }
@@ -434,12 +454,99 @@ class Intros {
     const found = { start: (kind === 'intro' ? best.core[0] : a) / FPS, end: b / FPS };
     // the season's own already: kept unless this is better (it's heard while it plays: _live)
     const had = d[kind].find(t => t.season === s.season);
+    if (had && had.fixed) return false;      // learned from the files (Learn intros): kept
     if (had && !better(best, { from: had.from, to: had.from + had.p.h.length, support: had.support || 1, early: kind === 'intro' && logoLike(had.from + (had.core ? had.core[0] : 0), had.from + (had.core ? had.core[1] : had.p.h.length)) })) return false;
     const tpl = { season: s.season, at: Date.now(), from: a, support: best.support, core: [best.core[0] - a, best.core[1] - a], p: { first: 0, h: mine.h.slice(a - mine.first, b - mine.first) } };
-    d[kind] = [tpl, ...d[kind].filter(t => t.season !== s.season)].slice(0, KEEP_TEMPLATES);
+    d[kind] = keep([tpl, ...d[kind].filter(t => t.season !== s.season)]);
     s[kind] = found;
     if (kind === 'intro') s.introBy = 'learned';
     s.learned = true;
+    return true;
+  }
+
+  /* ---------------- Learn intros (introscan.js read the episodes' files) ---------------- */
+  /**
+   * Several episodes of one season, read from their files: what they share is the season's intro and
+   * end credits, kept as fixed (never replaced by what's heard while playing; synced to other devices).
+   *   eps: [{ key, dur, head: { first, h }, tail: { first, h } }]
+   * -> { show, season, intro: { len, core, support, of } | null, credits: …, eps: [{ key, intro: { start, end }, credits }] }
+   */
+  learnSeason({ show, season, eps = [] }) {
+    const name = showName(show);
+    if (!name) return null;
+    const d = this._load(name);
+    season = Number(season) || 0;
+    const res = { show: name, season, intro: null, credits: null, eps: eps.map(e => ({ key: e.key, intro: null, credits: null })) };
+    const arr = x => (x instanceof Int32Array ? x : Int32Array.from(x || []));
+    for (const kind of ['intro', 'credits']) {
+      const intro = kind === 'intro';
+      const min = intro ? INTRO_MIN : CREDITS_MIN, max = intro ? INTRO_MAX : CREDITS_MAX;
+      const parts = eps.map(e => { const x = intro ? e.head : e.tail; return x && x.h && x.h.length ? trim(arr(x.h), x.first || 0) : null; });
+      parts.forEach(q => { if (q) q.idx = indexOf(q); });
+      let best = null, bi = -1;
+      for (let i = 0; i < parts.length; i++) {
+        if (!parts[i]) continue;
+        const half = eps[i].dur > 0 ? (eps[i].dur * FPS) / 2 : Infinity;
+        const lists = [];
+        for (let j = 0; j < parts.length; j++) {
+          if (j === i || !parts[j]) continue;
+          const l = commons(parts[j], parts[i], min, max, parts[j].idx, intro);
+          if (l) lists.push(intro ? l.filter(([f]) => f < half) : l);
+        }
+        // intros: what most episodes share. End credits: the longest two share (their songs can differ
+        // from episode to episode, and only the last seconds are in all of them: the button would come late)
+        const c = agree(lists, min, intro, intro ? Infinity : 2);
+        if (c && (!best || better(c, best))) { best = c; bi = i; }
+      }
+      if (!best) continue;
+      const mine = parts[bi];
+      const tpl = { season, at: Date.now(), from: best.from, support: best.support + 1, core: [best.core[0] - best.from, best.core[1] - best.from], fixed: true, p: { first: 0, h: mine.h.slice(best.from - mine.first, best.to - mine.first) } };
+      d[kind] = keep([tpl, ...d[kind].filter(t => t.season !== season)]);
+      parts.forEach((q, i) => { if (q) res.eps[i][kind] = locate(tpl, q); });
+      const found = res.eps.filter(e => e[kind]).length;
+      res[kind] = { len: (best.to - best.from) / FPS, core: [tpl.core[0] / FPS, tpl.core[1] / FPS], support: found, of: parts.filter(Boolean).length };
+      tpl.support = found;
+      if (this.onChange) this.onChange(`${name}|${season}|${kind}`, recordOf(tpl));
+    }
+    d.scanned[season] = { at: Date.now(), n: eps.length, found: { intro: !!res.intro, credits: !!res.credits } };
+    this._save(name);
+    return res;
+  }
+
+  /** the seasons of a series read already (Learn intros) */
+  scannedSeasons(show) { const name = showName(show); return name ? { ...this._load(name).scanned } : {}; }
+
+  /** every fixed template, as sync records: [[name, record]] (name = "<series>|<season>|intro|credits") */
+  syncRecords() {
+    const out = [];
+    let files = [];
+    try { files = fs.readdirSync(this.dir).filter(f => f.endsWith('.json')); } catch { return out; }
+    for (const f of files) {
+      let raw;
+      try { raw = JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8')); } catch { continue; }
+      if ((raw.fps || 8) !== FPS || !raw.show) continue;
+      const d = this._load(raw.show);
+      for (const kind of ['intro', 'credits']) for (const t of d[kind]) if (t.fixed) out.push([`${raw.show}|${t.season}|${kind}`, recordOf(t)]);
+    }
+    return out;
+  }
+
+  /** a fixed template from another device (sync): d = record, or null = removed */
+  applySynced(name, d) {
+    const m = /^(.+)\|(-?\d+)\|(intro|credits)$/.exec(String(name));
+    if (!m) return false;
+    const show = showName(m[1]), season = Number(m[2]), kind = m[3];
+    if (!show) return false;
+    const x = this._load(show);
+    const others = x[kind].filter(t => t.season !== season);
+    if (d && d.h) {
+      const tpl = { season, at: Number(d.at) || Date.now(), from: Number(d.from) || 0, support: Number(d.support) || 2, core: Array.isArray(d.core) ? d.core.map(Number) : undefined, fixed: true, p: { first: 0, h: unpack(d.h) } };
+      if (!tpl.p.h.length) return false;
+      x[kind] = keep([tpl, ...others]);
+      x.scanned[season] = { at: tpl.at, n: 99, synced: true };     // (another PC read it: not again here)
+    } else x[kind] = [...x[kind].filter(t => !(t.season === season && t.fixed))];
+    this._save(show);
+    this.synced = (this.synced || 0) + 1;
     return true;
   }
 
@@ -471,4 +578,4 @@ class Intros {
   }
 }
 
-module.exports = { Intros, showName, common, commons, agree, indexOf, longest, shifts, pack, unpack, HEAD, TAIL, NEAR };
+module.exports = { Intros, showName, locate, common, commons, agree, indexOf, longest, shifts, pack, unpack, HEAD, TAIL, NEAR };

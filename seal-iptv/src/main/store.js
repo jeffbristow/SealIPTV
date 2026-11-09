@@ -38,6 +38,7 @@ const DEFAULTS = {
     autoNext: true,         // play the next episode after a countdown
     resume: 'ask',          // 'ask' | 'always' | 'never'
     externalPlayer: '',     // '' = find VLC
+    learnIntros: true,      // Learn intros: new seasons of the Watchlist / own categories read by themselves (Windows)
     // audio/video sync in ms (> 0: the picture waits for late sound, e.g. Bluetooth;
     // < 0: the sound waits). Per audio output device; def = when Windows gives no name.
     avSync: { def: 0, devices: {} }
@@ -258,6 +259,7 @@ class Store {
       if (typeof p.autoNext === 'boolean') s.playback.autoNext = p.autoNext;
       if (['ask', 'always', 'never'].includes(p.resume)) s.playback.resume = p.resume;
       if (typeof p.externalPlayer === 'string') s.playback.externalPlayer = p.externalPlayer.trim();
+      if (typeof p.learnIntros === 'boolean') s.playback.learnIntros = p.learnIntros;
       if (p.avSync && typeof p.avSync === 'object') {
         const a = s.playback.avSync = { def: 0, devices: {}, ...(s.playback.avSync || {}) };
         a.devices = { ...a.devices };
