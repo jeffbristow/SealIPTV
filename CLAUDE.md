@@ -102,8 +102,9 @@ seal-iptv/
                            of the Watchlist + own categories (MP4, MKV or AVI (idx1) demuxed here; AAC wrapped as
                            ADTS -> decodeAudioData, others WebCodecs; AC-3 / E-AC-3 can't be read),
                            -> scan:season -> intros.learnSeason. Provider: ~4 MB/s, one request at a time
-                           (parallel ranges are refused). Settings -> Playback; by itself 3 min after start
-                           and every 12 h (playback.learnIntros), waits while something plays.
+                           (parallel ranges are refused). Settings -> Playback, ONLY when the user starts it
+                           (never by itself: another device may be streaming on the same login); waits
+                           while something plays here.
     logo.svg, icon.png     seal + TV
   build/icon.ico, icon.png made by devtest/make-icons.js
   test/                    m3u, xtream (+catalog), library, vpn, store

@@ -294,7 +294,8 @@ const fmtLeft = (pos, dur) => {
   const m = Math.max(1, Math.round((dur - pos) / 60));
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m} min left`;
 };
-/* ---- Learn intros (introscan.js): Settings -> Playback, and by itself now and then ---- */
+/* ---- Learn intros (introscan.js): Settings -> Playback, only when the user starts it (it uses the
+ * provider's connection, which another device may be using to watch) ---- */
 const Learn = (() => {
   let ctl = null, last = null;
   const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -316,27 +317,20 @@ const Learn = (() => {
       list.innerHTML = last.done.slice(-60).map(line).join('');
     }
   }
-  async function start(force, quiet = false) {
+  async function start(force) {
     if (ctl || !window.IntroScan) return;
     ctl = new AbortController();
     last = { text: 'Starting…', done: [] };
     draw();
     try {
       await IntroScan.run({ force, signal: ctl.signal, onStatus: st => { last = { ...st, done: st.done.slice() }; draw(); } });
-      if (!quiet) toast('Intros and end credits learned.');
+      toast('Intros and end credits learned.');
     } catch (e) {
-      if (e.name !== 'AbortError') { last = { ...(last || { done: [] }), text: 'Stopped: ' + e.message }; if (!quiet) fail(e); }
+      if (e.name !== 'AbortError') { last = { ...(last || { done: [] }), text: 'Stopped: ' + e.message }; fail(e); }
     } finally { ctl = null; draw(); }
   }
   function stop() { if (ctl) ctl.abort(); }
-  // by itself: a while after starting, then twice a day (only seasons not read yet; waits while something plays)
-  function auto() {
-    if (TV || PHONE || !window.IntroScan) return;
-    const go = () => { if (state.settings && state.settings.playback.learnIntros !== false) start(false, true); };
-    setTimeout(go, 3 * 60 * 1000);
-    setInterval(go, 12 * 60 * 60 * 1000);
-  }
-  return { start, stop, draw, auto };
+  return { start, stop, draw };
 })();
 
 const fmtDate = ms => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -2762,7 +2756,7 @@ function renderSettings(view) {
     <div class="${TV || PHONE ? 'hidden' : ''}">
     <h3 style="margin-top:16px">Skip intro and Next episode</h3>
     <p class="muted small">Seal IPTV finds each season's intro and end credits by reading the sound of a few of its episodes (only the start and the end of each file). It does this for the series on your Watchlist and in your own categories, and your other devices get what it found through Sync. Other series are learned as you watch them.</p>
-    <label class="check"><input type="checkbox" id="pLearn" ${pb.learnIntros !== false ? 'checked' : ''}> Look at new seasons by itself when nothing is playing</label>
+    <p class="muted small">It only runs when you start it here. It uses your provider connection, so start it when nobody is watching on another device (most providers allow one stream at a time). It pauses while something plays on this PC.</p>
     <div class="vpn-box" id="lsNow">Not run yet on this PC.</div>
     <div class="row gap"><button class="btn" id="lsGo">Learn now</button><button class="btn hidden" id="lsStop">Stop</button><button class="btn" id="lsAll">Look at all seasons again</button></div>
     <div id="lsList" class="small" style="margin-top:8px"></div>
@@ -2780,7 +2774,6 @@ function renderSettings(view) {
   pp.querySelector('#pSaver').onchange = e => saveSettings({ screensaver: { on: e.target.checked } });
   pp.querySelector('#pSaverMin').onchange = e => saveSettings({ screensaver: { minutes: Number(e.target.value) } });
   pp.querySelector('#pResume').onchange = e => saveSettings({ playback: { resume: e.target.value } });
-  pp.querySelector('#pLearn').onchange = e => saveSettings({ playback: { learnIntros: e.target.checked } });
   pp.querySelector('#lsGo').onclick = () => Learn.start(false);
   pp.querySelector('#lsAll').onclick = () => Learn.start(true);
   pp.querySelector('#lsStop').onclick = () => Learn.stop();
@@ -3384,4 +3377,4 @@ const Saver = (() => {
 })();
 
 // two frames first, so the start-up screen is on show before the playlist is read
-requestAnimationFrame(() => requestAnimationFrame(() => start().finally(endSplash).then(() => Learn.auto()).catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; })));
+requestAnimationFrame(() => requestAnimationFrame(() => start().finally(endSplash).catch(e => { document.body.innerHTML = `<p style="padding:30px;color:#ff6464">Seal IPTV couldn't start: ${esc(e.message)}</p>`; })));
