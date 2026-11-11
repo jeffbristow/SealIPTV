@@ -12,7 +12,7 @@ const CHANNELS = new Set([
   'vpn:check', 'vpn:adapters', 'vpn:publicIp', 'vpn:openProton',
   'parental:status', 'parental:unlock', 'parental:lock', 'parental:setPin', 'parental:removePin', 'parental:options', 'parental:searchHidden', 'cats:flag',
   'sync:status', 'sync:probe', 'sync:connect', 'tv:find', 'tv:send', 'sync:now', 'sync:disconnect', 'sync:devices', 'sync:revoke', 'sync:destroy',
-  'play:prepare', 'play:stopped', 'play:external', 'play:findVlc', 'play:netlog', 'intro:begin', 'intro:add', 'intro:end', 'scan:targets', 'scan:url', 'scan:seasons', 'scan:season', 'scan:playing',
+  'play:prepare', 'play:stopped', 'play:external', 'play:findVlc', 'play:netlog', 'intro:begin', 'intro:add', 'intro:end', 'scan:targets', 'scan:url', 'scan:seasons', 'scan:known', 'scan:season', 'scan:playing',
   'art:find', 'art:keep', 'art:testKey', 'art:clear', 'ratings:find',
   'update:check', 'update:install', 'update:restart', 'update:openPage'
 ]);

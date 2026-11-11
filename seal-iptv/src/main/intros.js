@@ -516,6 +516,27 @@ class Intros {
   /** the seasons of a series read already (Learn intros) */
   scannedSeasons(show) { const name = showName(show); return name ? { ...this._load(name).scanned } : {}; }
 
+  /**
+   * What's known from Learn intros (here or from another device through Sync), for Settings:
+   * [{ show, seasons: [{ season, intro: s | null, credits: s | null, synced }] }]
+   */
+  known() {
+    const out = [];
+    let files = [];
+    try { files = fs.readdirSync(this.dir).filter(f => f.endsWith('.json')); } catch { return out; }
+    for (const f of files) {
+      let raw;
+      try { raw = JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8')); } catch { continue; }
+      if ((raw.fps || 8) !== FPS || !raw.show) continue;
+      const d = this._load(raw.show);
+      const len = (kind, season) => { const t = d[kind].find(x => x.fixed && x.season === season); return t ? t.p.h.length / FPS : null; };
+      const seasons = Object.keys(d.scanned || {}).map(Number).sort((a, b) => a - b)
+        .map(season => ({ season, intro: len('intro', season), credits: len('credits', season), synced: !!d.scanned[season].synced }));
+      if (seasons.length) out.push({ show: raw.show, seasons });
+    }
+    return out.sort((a, b) => a.show.localeCompare(b.show));
+  }
+
   /** every fixed template, as sync records: [[name, record]] (name = "<series>|<season>|intro|credits") */
   syncRecords() {
     const out = [];

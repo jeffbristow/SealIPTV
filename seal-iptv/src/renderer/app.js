@@ -307,10 +307,19 @@ const Learn = (() => {
     parts.push(x.credits ? `end credits ${mmss(x.credits.len)}, in ${x.credits.support} of ${x.credits.of}` : 'no end credits');
     return `<div><b>${esc(x.series)}</b> · season ${x.season}: ${parts.join('; ')}</div>`;
   }
+  // what's known already (learned here or synced from another PC), when no scan has run since starting
+  function known(k) {
+    const n = k.reduce((a, x) => a + x.seasons.length, 0);
+    const box = $('#lsNow'), list = $('#lsList');
+    if (!box || last) return;
+    box.textContent = n ? `Known: ${n} season${n === 1 ? '' : 's'} of ${k.length} series. "Learn now" looks only at seasons not read yet.` : 'Nothing learned yet. Press "Learn now" when nobody is watching on another device.';
+    list.innerHTML = k.map(x => `<div><b>${esc(x.name)}</b>: ${x.seasons.map(s => `S${s.season} ${s.intro ? 'intro ' + mmss(s.intro) : 'no intro'}${s.credits ? ', credits ' + mmss(s.credits) : ''}`).join(' · ')}</div>`).join('');
+  }
   function draw() {
     const box = $('#lsNow'), list = $('#lsList');
     if (!box) return;
     show($('#lsGo'), !ctl); show($('#lsAll'), !ctl); show($('#lsStop'), !!ctl);
+    if (!last) call('scan:known').then(known).catch(() => {});
     if (last) {
       box.textContent = last.text || (ctl ? 'Working…' : '');
       if (!box.textContent) box.textContent = ctl ? 'Working…' : 'Done.';
@@ -2757,7 +2766,7 @@ function renderSettings(view) {
     <h3 style="margin-top:16px">Skip intro and Next episode</h3>
     <p class="muted small">Seal IPTV finds each season's intro and end credits by reading the sound of a few of its episodes (only the start and the end of each file). It does this for the series on your Watchlist and in your own categories, and your other devices get what it found through Sync. Other series are learned as you watch them.</p>
     <p class="muted small">It only runs when you start it here. It uses your provider connection, so start it when nobody is watching on another device (most providers allow one stream at a time). It pauses while something plays on this PC.</p>
-    <div class="vpn-box" id="lsNow">Not run yet on this PC.</div>
+    <div class="vpn-box" id="lsNow">Checking what's known…</div>
     <div class="row gap"><button class="btn" id="lsGo">Learn now</button><button class="btn hidden" id="lsStop">Stop</button><button class="btn" id="lsAll">Look at all seasons again</button></div>
     <div id="lsList" class="small" style="margin-top:8px"></div>
     </div>
