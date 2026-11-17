@@ -103,7 +103,9 @@ seal-iptv/
                            ADTS -> decodeAudioData, others WebCodecs; AC-3 / E-AC-3 can't be read),
                            -> scan:season -> intros.learnSeason. Provider: ~4 MB/s, one request at a time
                            (parallel ranges are refused). Settings -> Playback, ONLY when the user starts it
-                           (never by itself: another device may be streaming on the same login); waits
+                           (never by itself: another device may be streaming on the same login); skips every
+                           season in scanned (learned, synced, or marked: AC-3 / provider 404 via
+                           scan:mark) unless "Learn all seasons again"; waits
                            while something plays here.
     logo.svg, icon.png     seal + TV
   build/icon.ico, icon.png made by devtest/make-icons.js
@@ -170,7 +172,9 @@ SEAL_TV + SEAL_PHONE, viewport = device width); MainActivity loads mobile.html, 
 scaling, no immersive / keep-screen-on. app.js: PHONE / DEVICE ('phone'), tap on a channel
 = play. phone.js: tab bar (a div — styles.css stacks <nav>s), More = the sidebar as a sheet,
 Category button + sheet, Settings sections over the list, __tvBack; tab switches clear
-history. PlayerActivity (PHONE): touch top bar, double-tap seek, drag volume / brightness,
+history. PlayerActivity: screensaver (logo on black) after 2 min paused with no key (cfg "saver";
+phones just drop keep-screen-on while paused); app.js Saver does the same on Windows, inside the
+full-screen element. PlayerActivity (PHONE): touch top bar, double-tap seek, drag volume / brightness,
 picture-in-picture, the ExoPlayer ⚙ opens our panel. src/mobile/AndroidManifest.xml:
 pages turn, player sensorLandscape, no leanback. Test on PC: TV_HARNESS=<abs path to
 devtest/phone-harness.js> node devtest/tv-run.js <out> (PHONE_LANDSCAPE=1 sideways).

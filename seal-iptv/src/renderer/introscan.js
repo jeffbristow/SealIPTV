@@ -36,7 +36,11 @@
     const r = await fetch(url, { headers: { Range: `bytes=${from}-${to}` }, signal });
     dbg.requests++;
     if (dbg.log) dbg.log.push(`${from}-${to} ${r.status} ${Date.now() - t0}ms ${String(r.url).slice(0, 30)}`);
-    if (r.status !== 206 && r.status !== 200) throw new Error(`The provider answered ${r.status}`);
+    if (r.status !== 206 && r.status !== 200) {
+      const x = new Error(r.status === 404 ? 'The provider doesn\'t have this episode (404)' : `The provider answered ${r.status}`);
+      if (r.status === 404) x.code = 'gone';
+      throw x;
+    }
     const b = new Uint8Array(await r.arrayBuffer());
     const total = Number(((r.headers.get('content-range') || '').split('/')[1]) || 0);
     // a server that ignores Range sends it all from 0
@@ -605,10 +609,10 @@
         const eps = (ss.episodes || []).filter(e => e && e.id);
         if (eps.length < 2) continue;
         const pick = choose(eps);
-        const before = read[ss.num];
-        if (!force && before && before.n >= pick.length) continue;
+        // read already (here or on another PC, or its sound can't be read here): only when asked to again
+        if (!force && read[ss.num]) continue;
         const got = [];
-        let note = '';
+        let note = '', codec = false, gone = 0;
         for (let k = 0; k < pick.length; k++) {
           const e = pick[k];
           while (await call('scan:playing')) { say('Waiting: something is playing', name); await sleep(10000, signal); }
@@ -620,16 +624,24 @@
                 const { url } = await call('scan:url', { kind: 'episode', id: e.id, ext: e.ext, seriesId: t.id });
                 r = await episode(url, { signal });
                 break;
-              } catch (y) { if (y.code === 'codec' || (signal && signal.aborted) || tries >= 1) throw y; await sleep(5000, signal); }
+              } catch (y) { if (y.code === 'codec' || y.code === 'gone' || (signal && signal.aborted) || tries >= 1) throw y; await sleep(5000, signal); }
             }
             got.push({ key: 'episode:' + e.id, dur: r.dur, head: r.head, tail: r.tail });
           } catch (x) {
             if (signal && signal.aborted) throw x;
             note = x.message;
-            if (x.code === 'codec') break;      // the season's other episodes are the same kind
+            if (x.code === 'gone') gone++;
+            if (x.code === 'codec') { codec = true; break; }      // the season's other episodes are the same kind
           }
         }
-        if (got.length < 2) { done.push({ series: name, season: ss.num, note: note || 'too few episodes could be read' }); say('', name); continue; }
+        if (got.length < 2) {
+          // the sound can't be read on this PC, or the provider hasn't got the episodes: noted, so it isn't
+          // tried each time ("Learn all seasons again" does). The provider failing otherwise: tried next time.
+          if (codec || gone >= pick.length - 1) await call('scan:mark', { show: name, season: ss.num, note });
+          done.push({ series: name, season: ss.num, note: note || 'too few episodes could be read' });
+          say('', name);
+          continue;
+        }
         const res = await call('scan:season', { show: name, season: ss.num, eps: got });
         done.push({ series: name, season: ss.num, intro: res && res.intro, credits: res && res.credits, eps: res && res.eps, note });
         say('', name);

@@ -147,6 +147,59 @@ public class PlayerActivity extends Activity {
         });
     });
 
+    /* ---------------- screensaver: paused for 2 minutes with no key pressed ----------------
+       TVs: the Seal IPTV logo moves around on black (the still picture would burn in; the player keeps
+       the screen on, so the TV's own screensaver never starts). Any key ends it and does nothing else.
+       Off with Settings -> Playback -> Screensaver (cfg "saver"). Phones: the screen may just sleep. */
+    private static final long SAVER_MS = 2 * 60 * 1000;
+    private FrameLayout saver;
+    private android.widget.ImageView saverLogo;
+    private long lastInput = System.currentTimeMillis(), pausedAt = 0;
+    private float saverX, saverY, saverDx = 1, saverDy = 1;
+    private int saverSwallow = -1;      // the key that ended it: its key-up is swallowed too
+    private final Runnable saverTick = new Runnable() {
+        @Override public void run() {
+            if (closed) return;
+            boolean paused = player != null && !player.getPlayWhenReady();
+            long now = System.currentTimeMillis();
+            if (!paused) { pausedAt = 0; if (saverOn()) hideSaver(); }
+            else if (pausedAt == 0) pausedAt = now;
+            if (BuildConfig.PHONE) {
+                view.setKeepScreenOn(!paused);
+                if (paused) getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } else if (paused && !inPip && !saverOn() && cfg.optBoolean("saver", true) && now - Math.max(lastInput, pausedAt) >= SAVER_MS) showSaver();
+            ui.postDelayed(this, 5000);
+        }
+    };
+    private final Runnable saverMove = new Runnable() {
+        @Override public void run() {
+            if (!saverOn()) return;
+            float size = saverLogo.getWidth(), maxX = Math.max(0, saver.getWidth() - size), maxY = Math.max(0, saver.getHeight() - size);
+            float step = dp(70) / 30f;      // 70 dp a second
+            saverX += saverDx * step; saverY += saverDy * step;
+            if (saverX <= 0) { saverX = 0; saverDx = 1; } else if (saverX >= maxX) { saverX = maxX; saverDx = -1; }
+            if (saverY <= 0) { saverY = 0; saverDy = 1; } else if (saverY >= maxY) { saverY = maxY; saverDy = -1; }
+            saverLogo.setTranslationX(saverX); saverLogo.setTranslationY(saverY);
+            ui.postDelayed(this, 33);
+        }
+    };
+    private boolean saverOn() { return saver != null && saver.getVisibility() == View.VISIBLE; }
+    private void showSaver() {
+        view.hideController();
+        saverX = (float) Math.random() * Math.max(0, saver.getWidth() - dp(140));
+        saverY = (float) Math.random() * Math.max(0, saver.getHeight() - dp(140));
+        saverDx = Math.random() < .5 ? -1 : 1; saverDy = Math.random() < .5 ? -1 : 1;
+        saver.setVisibility(View.VISIBLE);
+        saver.bringToFront();
+        ui.post(saverMove);
+    }
+    private void hideSaver() {
+        ui.removeCallbacks(saverMove);
+        saver.setVisibility(View.GONE);
+        lastInput = System.currentTimeMillis();
+    }
+
     // touch (phones)
     private View guideBtn, prevBtn, nextBtn;
     private boolean inPip = false;
@@ -309,6 +362,15 @@ public class PlayerActivity extends Activity {
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         sl.setMargins(0, 0, 0, dp(60));
         root.addView(seekBox, sl);
+
+        saver = new FrameLayout(this);
+        saver.setBackgroundColor(Color.BLACK);
+        saver.setVisibility(View.GONE);
+        saverLogo = new android.widget.ImageView(this);
+        saverLogo.setImageResource(R.mipmap.ic_launcher);
+        saver.addView(saverLogo, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.TOP | Gravity.START));
+        root.addView(saver, new FrameLayout.LayoutParams(-1, -1));
+        ui.postDelayed(saverTick, 5000);
 
         setContentView(root);
         view.setResizeMode(getSharedPreferences("player", MODE_PRIVATE).getInt("resize", AspectRatioFrameLayout.RESIZE_MODE_FIT));
@@ -552,6 +614,10 @@ public class PlayerActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+        lastInput = System.currentTimeMillis();
+        // the screensaver: any key ends it, and that key (down and up) does nothing else
+        if (saverOn()) { if (down) { hideSaver(); saverSwallow = k; } return true; }
+        if (saverSwallow == k) { if (!down) saverSwallow = -1; return true; }
         boolean live = cfg.optBoolean("live");
 
         // the guide / the ☰ panel have the remote while they're open
@@ -1039,6 +1105,8 @@ public class PlayerActivity extends Activity {
        picture is ours (tap = controls, double-tap = skip / pause, drag = volume / brightness) — the
        player's own touch handling (which hides the controls on any tap) never sees them. */
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+        lastInput = System.currentTimeMillis();
+        if (saverOn()) { if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) hideSaver(); return true; }
         if (!BuildConfig.PHONE || inPip || gestures == null) return super.dispatchTouchEvent(e);
         if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) touchOurs = !onControl(e);
         if (!touchOurs) return super.dispatchTouchEvent(e);

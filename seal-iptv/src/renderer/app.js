@@ -313,7 +313,7 @@ const Learn = (() => {
     const box = $('#lsNow'), list = $('#lsList');
     if (!box || last) return;
     box.textContent = n ? `Known: ${n} season${n === 1 ? '' : 's'} of ${k.length} series. "Learn now" looks only at seasons not read yet.` : 'Nothing learned yet. Press "Learn now" when nobody is watching on another device.';
-    list.innerHTML = k.map(x => `<div><b>${esc(x.name)}</b>: ${x.seasons.map(s => `S${s.season} ${s.intro ? 'intro ' + mmss(s.intro) : 'no intro'}${s.credits ? ', credits ' + mmss(s.credits) : ''}`).join(' · ')}</div>`).join('');
+    list.innerHTML = k.map(x => `<div><b>${esc(x.name)}</b>: ${x.seasons.map(s => s.note ? `S${s.season} <span class="faint">${esc(s.note)}</span>` : `S${s.season} ${s.intro ? 'intro ' + mmss(s.intro) : 'no intro'}${s.credits ? ', credits ' + mmss(s.credits) : ''}`).join(' · ')}</div>`).join('');
   }
   function draw() {
     const box = $('#lsNow'), list = $('#lsList');
@@ -2746,7 +2746,7 @@ function renderSettings(view) {
       <select id="pPct" style="width:auto;margin-left:4px">${[80, 85, 90, 95].map(n => `<option value="${n}" ${pb.watchedPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select></label>
     <label class="check"><input type="checkbox" id="pNext" ${pb.autoNext ? 'checked' : ''}> Play the next episode automatically</label>
     <label class="check${PHONE ? ' hidden' : ''}"><input type="checkbox" id="pSaver" ${sv.on !== false ? 'checked' : ''}><span class="check-text">Screensaver: the Seal IPTV logo moves around the screen after
-      <select id="pSaverMin">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing</span></label>
+      <select id="pSaverMin">${[2, 5, 10, 15, 30, 60].map(n => `<option value="${n}" ${(sv.minutes || 5) === n ? 'selected' : ''}>${n} minutes</option>`).join('')}</select> with nothing playing (2 minutes after a video is paused)</span></label>
     <div class="two-col">
       <div><label for="pResume">When I open something I've started</label><select id="pResume">
         <option value="ask" ${pb.resume === 'ask' ? 'selected' : ''}>Ask whether to resume</option>
@@ -2767,7 +2767,7 @@ function renderSettings(view) {
     <p class="muted small">Seal IPTV finds each season's intro and end credits by reading the sound of a few of its episodes (only the start and the end of each file). It does this for the series on your Watchlist and in your own categories, and your other devices get what it found through Sync. Other series are learned as you watch them.</p>
     <p class="muted small">It only runs when you start it here. It uses your provider connection, so start it when nobody is watching on another device (most providers allow one stream at a time). It pauses while something plays on this PC.</p>
     <div class="vpn-box" id="lsNow">Checking what's known…</div>
-    <div class="row gap"><button class="btn" id="lsGo">Learn now</button><button class="btn hidden" id="lsStop">Stop</button><button class="btn" id="lsAll">Look at all seasons again</button></div>
+    <div class="row gap"><button class="btn" id="lsGo">Learn now</button><button class="btn hidden" id="lsStop">Stop</button><button class="btn" id="lsAll">Learn all seasons again</button></div>
     <div id="lsList" class="small" style="margin-top:8px"></div>
     </div>
     <h3 style="margin-top:16px">Audio sync</h3>
@@ -3322,20 +3322,24 @@ const Upd = {
 /* =================================================================
  * 15. SCREENSAVER — the logo bouncing around the screen when nothing
  *     has played and nobody has touched anything for a while
- *     (Settings → Playback; per device). Any key, click or mouse move
+ *     (Settings → Playback; per device), or a video has been paused for
+ *     2 minutes (a still picture burns in; Fire TV: PlayerActivity's own).
+ *     Over the player when it's full screen too. Any key, click or mouse move
  *     ends it; that key isn't used for anything else. Fire TV: tvnav.js
  *     asks sealWake() first for OK / Back / ☰ Menu.
  * ================================================================= */
 const Saver = (() => {
   const SPEED = 70;   // px per second
+  const PAUSED_MS = 2 * 60000;
   let last = Date.now(), el = null, raf = 0, mx = -1, my = -1;
   const minutes = () => { if (PHONE) return 0; const s = state.settings && state.settings.screensaver; return !s || s.on === false ? 0 : Number(s.minutes) || 5; };
   // a video that's playing (paused counts as nothing playing; Fire TV: the player is Android's, open = playing)
   const playing = () => typeof Player !== 'undefined' && Player.isOpen() && (TV || !$('#video').paused);
+  const paused = () => !TV && typeof Player !== 'undefined' && Player.isOpen() && $('#video').paused;
 
   function begin() {
     el = h('<div id="saver"><img src="logo.svg" alt=""></div>');
-    document.body.appendChild(el);
+    (document.fullscreenElement || document.body).appendChild(el);    // full screen: only what's inside it shows
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     const img = el.firstElementChild;
     const size = 180;
@@ -3369,7 +3373,7 @@ const Saver = (() => {
   setInterval(() => {
     if (playing()) last = Date.now();
     const m = minutes();
-    if (!el && m && Date.now() - last > m * 60000) begin();
+    if (!el && m && Date.now() - last > (paused() ? Math.min(m * 60000, PAUSED_MS) : m * 60000)) begin();
   }, 5000);
   // the key / click that ends it does nothing else
   const swallow = e => { if (wake()) { e.preventDefault(); e.stopImmediatePropagation(); } };

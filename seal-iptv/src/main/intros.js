@@ -513,6 +513,17 @@ class Intros {
     return res;
   }
 
+  /** Learn intros: a season that can't be read on this PC (its sound): not tried again unless asked */
+  markSeason({ show, season, note } = {}) {
+    const name = showName(show);
+    if (!name || !Number.isFinite(Number(season))) return false;
+    const d = this._load(name);
+    if (d.scanned[season]) return false;
+    d.scanned[season] = { at: Date.now(), n: 0, note: String(note || '').slice(0, 120) };
+    this._save(name);
+    return true;
+  }
+
   /** the seasons of a series read already (Learn intros) */
   scannedSeasons(show) { const name = showName(show); return name ? { ...this._load(name).scanned } : {}; }
 
@@ -531,7 +542,7 @@ class Intros {
       const d = this._load(raw.show);
       const len = (kind, season) => { const t = d[kind].find(x => x.fixed && x.season === season); return t ? t.p.h.length / FPS : null; };
       const seasons = Object.keys(d.scanned || {}).map(Number).sort((a, b) => a - b)
-        .map(season => ({ season, intro: len('intro', season), credits: len('credits', season), synced: !!d.scanned[season].synced }));
+        .map(season => ({ season, intro: len('intro', season), credits: len('credits', season), synced: !!d.scanned[season].synced, ...(d.scanned[season].n === 0 ? { note: d.scanned[season].note || 'couldn\'t be read' } : {}) }));
       if (seasons.length) out.push({ show: raw.show, seasons });
     }
     return out.sort((a, b) => a.show.localeCompare(b.show));

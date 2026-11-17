@@ -92,6 +92,7 @@ const Player = (() => {
       canZap: !!(opts.channels && opts.channels.length > 1),
       next: nx && state.settings.playback.autoNext ? `${epLabel(nx.season, nx.episode)} · ${nx.name}` : '',
       hasNext: !!nx, guide: prep.live, prints: c.prints,
+      saver: !(state.settings.screensaver && state.settings.screensaver.on === false),
       ...(ch ? { index: opts.index, ...(ch !== sentList ? { channels: brief(ch) } : {}) } : { channels: [] })
     }));
     sentList = ch;

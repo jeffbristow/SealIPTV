@@ -404,6 +404,7 @@ function registerIpc() {
   handle('scan:targets', () => scanTargets());
   handle('scan:url', async req => { await vpn.ensure(); return { url: (await catalog.streamUrl(pid(), req)).url }; });
   handle('scan:seasons', show => intros.scannedSeasons(show));
+  handle('scan:mark', o => intros.markSeason(o || {}));
   handle('scan:known', () => {
     // the series' own names where the Watchlist / own categories have them (the files keep a plain key)
     const names = new Map(scanTargets().filter(t => t.name).map(t => [showName(t.name), t.name]));
